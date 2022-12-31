@@ -89,13 +89,33 @@ Arguments:
 Returns:
 	TODO
 """
-def package_plugins():
+def package_plugins_and_regions():
+	print("[DMR] Packaging plugins and regions...")
+	#print("(this may take several minutes)")
+	#package("plugins") TODO: uncomment
+	package("regions")
 
-	print("[DMR] Packaging plugins...")
-	print("(this may take several minutes)")
 
-	target = os.path.join("_DMR", "Plugins")
-	destination = os.path.join("_DMR", os.path.join("DMRTemp", "Plugins"))
+"""TODO
+
+Arguments:
+	TODO
+
+Returns:
+	TODO
+"""
+def package(type):
+
+	print("packaging " + type + "...")
+
+	directory = None
+	if (type == "plugins"):
+		directory = "Plugins"
+	elif (type == "regions"):
+		directory = "Regions"
+
+	target = os.path.join("_DMR", directory)
+	destination = os.path.join("_DMR", os.path.join("DMRTemp", directory))
 
 	if (os.path.exists(destination)):
 		os.remove(destination)
@@ -115,25 +135,36 @@ def start_server():
 
 	print("[DMR] Starting server...")
 
-	print("Creating socket...")
+	print("creating socket...")
 	s = socket.socket()
 
-	print("Binding host and port...")
+	print("binding host and port...")
 	s.bind((DMR_HOST, DMR_PORT))
 
-	print("Listening for connections...")
+	print("listening for connections...")
 	s.listen(5)
 
 	while (True):
 
+		#try:
+
 		c, address = s.accept()
-		print("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
+		print("connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
 
 		request = c.recv(DMR_BUFFER_SIZE).decode()
 
-		send_plugins(c)
+		print("request: " + request)
 
-		print("Connection closed.")
+		if (request == "plugins"):
+			send_plugins(c)
+		elif (request == "regions"):
+			send_regions(c)
+		
+		print("connection closed.")
+
+		#except:
+
+			#print("connection error.")
 
 
 """TODO
@@ -146,6 +177,23 @@ Returns:
 """
 def send_plugins(c):
 	filename = os.path.join("_DMR", os.path.join("DMRTemp", "Plugins.zip"))
+	send_file(c, filename)
+
+
+"""TODO
+
+Arguments:
+	TODO
+
+Returns:
+	TODO
+"""
+def send_regions(c):
+
+	package("regions")
+
+	filename = os.path.join("_DMR", os.path.join("DMRTemp", "Regions.zip"))
+
 	send_file(c, filename)
 	
 
@@ -172,7 +220,7 @@ def send_file(c, filename):
 				break
 			c.sendall(bytes_read)
 
-	c.close() #TODO: this might be a problem
+	c.close()
 
 
 """TODO
@@ -200,7 +248,7 @@ def main():
 	print("[DMR] Server version X.XX") #TODO version
 	create_subdirectories()
 	load_config()
-	#package_plugins()
+	package_plugins_and_regions()
 	start_server()
 	
 
