@@ -41,8 +41,10 @@ def create_subdirectories():
 		if not os.path.exists(new_directory):
 			try:
 				os.makedirs(new_directory)
+				if (directory == "Plugins" or "Regions"):
+					shutil.unpack_archive(os.path.join("resources", directory + ".zip"), new_directory)
 			except:
-				print ("Failed to create subdirectories.")
+				print ("Failed to create " + directory + " subdirectory.")
 
 
 """Loads the config file from the resources subdirectory or creates it if it does not yet exist.
@@ -61,7 +63,7 @@ def load_config():
 
 	print("[DMR] Loading config...")
 
-	configpath = os.path.join("_DMR", "config.ini")
+	configpath = os.path.join("_DMR", "serverconfig.ini")
 	try:
 		config = configparser.RawConfigParser()
 		config.read(configpath)
@@ -92,7 +94,7 @@ Returns:
 def package_plugins_and_regions():
 	print("[DMR] Packaging plugins and regions...")
 	#print("(this may take several minutes)")
-	#package("plugins") TODO: uncomment
+	package("plugins")
 	package("regions")
 
 
