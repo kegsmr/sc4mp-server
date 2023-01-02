@@ -9,6 +9,10 @@ import zipfile
 import string
 
 
+# Path to the resources subdirectory
+dmr_resources_path = "resources"
+
+
 # Default config values
 default_host = socket.gethostname()
 default_port = 7246
@@ -20,6 +24,18 @@ DMR_PORT = None
 # Hard-coded constants
 DMR_SEPARATOR = "<SEPARATOR>"
 DMR_BUFFER_SIZE = 4096
+
+
+"""Gives the path of a given file in the DMR "resources" subdirectory
+
+Arguments:
+	filename (str)
+
+Returns:
+	TODO type: the path to the given file
+"""
+def get_dmr_path(filename):
+	return os.path.join(dmr_resources_path, filename)
 
 
 """Creates the required subdirectories if they do not yet exist.
@@ -42,9 +58,10 @@ def create_subdirectories():
 			try:
 				os.makedirs(new_directory)
 				if (directory == "Plugins" or "Regions"):
-					shutil.unpack_archive(os.path.join("resources", directory + ".zip"), new_directory)
+					shutil.unpack_archive(get_dmr_path(directory + ".zip"), new_directory)
 			except:
 				print ("Failed to create " + directory + " subdirectory.")
+				print('(this may have been printed by error, check your "_DMR" subdirectory)')
 
 
 """Loads the config file from the resources subdirectory or creates it if it does not yet exist.
