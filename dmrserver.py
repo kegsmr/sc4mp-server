@@ -174,7 +174,9 @@ def start_server():
 
 		print("request: " + request)
 
-		if (request == "plugins"):
+		if (request== "ping"):
+			ping(c)
+		elif (request == "plugins"):
 			send_plugins(c)
 		elif (request == "regions"):
 			send_regions(c)
@@ -184,6 +186,12 @@ def start_server():
 		#except:
 
 			#print("connection error.")
+
+
+"""TODO"""
+def ping(c):
+	c.send(b"pong")
+	c.close
 
 
 """TODO
