@@ -180,6 +180,10 @@ def start_server():
 			send_plugins(c)
 		elif (request == "regions"):
 			send_regions(c)
+		#elif (request == "push_delete"):
+		#	delete(c)
+		#elif (request == "push_save"):
+		#	save(c)
 		
 		print("connection closed.")
 
