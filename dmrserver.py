@@ -180,10 +180,10 @@ def start_server():
 			send_plugins(c)
 		elif (request == "regions"):
 			send_regions(c)
-		#elif (request == "push_delete"):
-		#	delete(c)
-		#elif (request == "push_save"):
-		#	save(c)
+		elif (request == "push_delete"):
+			delete(c)
+		elif (request == "push_save"):
+			save(c)
 		
 		print("connection closed.")
 
@@ -228,6 +228,50 @@ def send_regions(c):
 	send_file(c, filename)
 	
 
+def delete(c):
+	"""TODO"""
+
+	c.send(b"ok")
+
+	user_id = c.recv(DMR_BUFFER_SIZE).decode()
+	c.send(b"ok")
+	region = c.recv(DMR_BUFFER_SIZE).decode()
+	c.send(b"ok")
+	city = c.recv(DMR_BUFFER_SIZE).decode()
+
+	c.send(b"ok") #TODO verify that the user can make the deletion
+
+	#TODO only delete file if user is authorized
+
+	filename = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, city)))
+
+	os.remove(filename)
+
+	c.close()
+
+
+def save(c):
+	"""TODO"""
+	
+	c.send(b"ok")
+
+	user_id = c.recv(DMR_BUFFER_SIZE).decode()
+	c.send(b"ok")
+	region = c.recv(DMR_BUFFER_SIZE).decode()
+	c.send(b"ok")
+	city = c.recv(DMR_BUFFER_SIZE).decode()
+
+	c.send(b"ok") #TODO verify that the user can make the claim
+
+	#TODO only receive file if user is authorized
+
+	filename = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, city)))
+
+	receive_file(c, filename)
+
+	c.close()
+
+
 """TODO
 
 Arguments:
@@ -252,6 +296,30 @@ def send_file(c, filename):
 			c.sendall(bytes_read)
 
 	c.close()
+
+
+def receive_file(c, filename):
+	"""TODO"""
+
+	filesize = c.recv(DMR_BUFFER_SIZE).decode()
+
+	c.send(b"ok")
+
+	print("[Socket] Receiving " + filesize + " bytes...")
+	print("writing to " + filename)
+
+	if (os.path.exists(filename)):
+		os.remove(filename)
+
+	filesize_read = 0
+	with open(filename, "wb") as f:
+		while True:
+			bytes_read = c.recv(DMR_BUFFER_SIZE)
+			if not bytes_read:    
+				break
+			f.write(bytes_read)
+			filesize_read += len(bytes_read)
+			#print('Downloading "' + filename + '" (' + str(filesize_read) + " / " + str(filesize) + " bytes)...", int(filesize_read), int(filesize)) #os.path.basename(os.path.normpath(filename))
 
 
 """TODO
