@@ -97,7 +97,9 @@ def load_config():
 
 	global DMR_HOST
 	global DMR_PORT
-	global DMR_BUFFER_SIZE
+	global DMR_SERVER_ID
+	global DMR_SERVER_NAME
+	global DMR_SERVER_DESCRIPTION
 
 	print("[DMR] Loading config...")
 
