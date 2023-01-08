@@ -4,6 +4,7 @@ import os
 import sys
 import shutil
 import socket
+import traceback
 import threading
 import random
 import string
@@ -73,7 +74,7 @@ Returns:
 """
 def create_subdirectories():
 
-	print("[DMR] Creating subdirectories...")
+	report("Creating subdirectories...")
 
 	directories = ["DMRBackups", "DMRProfiles", "DMRTemp", "Plugins", "Regions"]
 
@@ -85,8 +86,8 @@ def create_subdirectories():
 				if (directory == "Plugins" or "Regions"):
 					shutil.unpack_archive(get_dmr_path(directory + ".zip"), new_directory)
 			except:
-				print ("Failed to create " + directory + " subdirectory.")
-				print('(this may have been printed by error, check your "_DMR" subdirectory)')
+				report("Failed to create " + directory + " subdirectory.", None, "WARNING")
+				report('(this may have been printed by error, check your "_DMR" subdirectory)', None, "WARNING")
 
 
 """Loads the config file from the resources subdirectory or creates it if it does not yet exist.
@@ -105,7 +106,7 @@ def load_config():
 	global DMR_SERVER_NAME
 	global DMR_SERVER_DESCRIPTION
 
-	print("[DMR] Loading config...")
+	report("Loading config...")
 
 	config_path = os.path.join("_DMR", "serverconfig.ini")
 
@@ -149,7 +150,7 @@ Returns:
 	TODO
 """
 def package_plugins_and_regions():
-	print("[DMR] Packaging plugins and regions...")
+	report("Packaging plugins and regions...")
 	#print("(this may take several minutes)")
 	package("plugins")
 	package("regions")
@@ -165,7 +166,7 @@ Returns:
 """
 def package(type):
 
-	print("packaging " + type + "...")
+	report("- packaging " + type + "...")
 
 	directory = None
 	if (type == "plugins"):
@@ -192,50 +193,50 @@ Returns:
 """
 def start_server():
 
-	print("[DMR] Starting server...")
+	report("Starting server...")
 
-	print("creating socket...")
+	report("- creating socket...")
 	s = socket.socket()
 
-	print("binding host and port...")
+	report("- binding host and port...")
 	s.bind((DMR_HOST, DMR_PORT))
 
-	print("listening for connections...")
+	report("- listening for connections...")
 	s.listen(5)
 
 	while (True):
 
-		#try:
+		try:
 
-		c, address = s.accept()
-		print("connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
+			c, address = s.accept()
+			report("- connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
 
-		request = c.recv(DMR_BUFFER_SIZE).decode()
+			request = c.recv(DMR_BUFFER_SIZE).decode()
 
-		print("request: " + request)
+			report("- request: " + request)
 
-		if (request== "ping"):
-			ping(c)
-		elif (request == "server_id"):
-			send_server_id(c)
-		elif (request == "server_name"):
-			send_server_name(c)
-		elif (request == "server_description"):
-			send_server_description(c)
-		elif (request == "plugins"):
-			send_plugins(c)
-		elif (request == "regions"):
-			send_regions(c)
-		elif (request == "push_delete"):
-			delete(c)
-		elif (request == "push_save"):
-			save(c)
+			if (request== "ping"):
+				ping(c)
+			elif (request == "server_id"):
+				send_server_id(c)
+			elif (request == "server_name"):
+				send_server_name(c)
+			elif (request == "server_description"):
+				send_server_description(c)
+			elif (request == "plugins"):
+				send_plugins(c)
+			elif (request == "regions"):
+				send_regions(c)
+			elif (request == "push_delete"):
+				delete(c)
+			elif (request == "push_save"):
+				save(c)
 		
-		print("connection closed.")
+			report("- connection closed.")
 
-		#except:
+		except socket.error as e:
 
-			#print("connection error.")
+			report(str(e), None, "ERROR")
 
 
 """TODO"""
@@ -262,30 +263,16 @@ def send_server_description(c):
 	c.close
 
 
-"""TODO
-
-Arguments:
-	TODO
-
-Returns:
-	TODO
-"""
 def send_plugins(c):
-	
+	"""TODO"""
+
 	filename = os.path.join("_DMR", os.path.join("DMRTemp", "Plugins.zip"))
 	
 	send_or_cached(c, filename)
 
 
-"""TODO
-
-Arguments:
-	TODO
-
-Returns:
-	TODO
-"""
 def send_regions(c):
+	"""TODO"""
 
 	package("regions")	#TODO check to see if regions have changed before repackaging
 
@@ -357,7 +344,7 @@ Returns:
 """
 def send_file(c, filename):
 
-	print("Sending file " + filename + "...")
+	report("Sending file " + filename + "...")
 
 	filesize = os.path.getsize(filename)
 
@@ -380,8 +367,8 @@ def receive_file(c, filename):
 
 	c.send(b"ok")
 
-	print("[Socket] Receiving " + filesize + " bytes...")
-	print("writing to " + filename)
+	report("Receiving " + filesize + " bytes...")
+	report("writing to " + filename)
 
 	if (os.path.exists(filename)):
 		os.remove(filename)
@@ -395,6 +382,20 @@ def receive_file(c, filename):
 			f.write(bytes_read)
 			filesize_read += len(bytes_read)
 			#print('Downloading "' + filename + '" (' + str(filesize_read) + " / " + str(filesize) + " bytes)...", int(filesize_read), int(filesize)) #os.path.basename(os.path.normpath(filename))
+
+
+def report(message, object=None, type="INFO", ):
+	output = datetime.now().strftime("[%H:%M:%S] [DMR")
+	if (object != None):
+		output += "/" + type(object)
+	
+	output+= "] [" + type + "] " + message
+	color = '\033[94m '
+	if (type=="WARNING"):
+		color = '\033[93m '
+	elif (type == "ERROR" or type == "FATAL"):
+		color = '\033[91m '
+	print(color + output)
 
 
 """TODO
@@ -431,21 +432,25 @@ class Logger():
 		self.terminal.flush()
 
 
-"""The main method.
-
-Arguments:
-	None
-
-Returns:
-	None
-"""
 def main():
+	"""The main method."""
+
 	sys.stdout = Logger()
-	print("[DMR] Server version " + DMR_VERSION)
-	create_subdirectories()
-	load_config()
-	package_plugins_and_regions()
-	start_server()
+
+	report("Server version " + DMR_VERSION)
+
+	try:
+
+		create_subdirectories()
+		load_config()
+		package_plugins_and_regions()
+
+		start_server()
+	
+	except Exception as e:
+
+		report(str(e), None, "FATAL")
+		traceback.print_exc()
 	
 
 # Load the main function
