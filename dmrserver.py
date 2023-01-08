@@ -22,7 +22,7 @@ DMR_HOST = None
 DMR_PORT = None
 
 # Hard-coded constants
-DMR_SEPARATOR = "<SEPARATOR>"
+DMR_SEPARATOR = b"<SEPARATOR>"
 DMR_BUFFER_SIZE = 4096
 
 
