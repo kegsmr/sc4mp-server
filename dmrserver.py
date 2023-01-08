@@ -1,18 +1,17 @@
 import configparser
 import hashlib
 import os
+import sys
 import shutil
 import socket
 import threading
 import random
-import zipfile
-import py2exe
 import string
+from datetime import datetime
 
 
 # Version
 DMR_VERSION = "v1.0.0 Alpha"
-print("[DMR] Server version " + DMR_VERSION)
 
 # Path to the resources subdirectory
 dmr_resources_path = "resources"
@@ -411,6 +410,27 @@ Returns:
 	#TODO
 
 
+class Logger():
+	"""TODO"""
+	
+	def __init__(self):
+		"""TODO"""
+		self.terminal = sys.stdout
+		self.log = "dmrserver-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
+   
+
+	def write(self, message):
+		"""TODO"""
+		self.terminal.write(message)
+		with open(self.log, "a") as log:
+			log.write(message)
+			log.close()  
+
+	def flush(self):
+		"""TODO"""
+		self.terminal.flush()
+
+
 """The main method.
 
 Arguments:
@@ -420,6 +440,8 @@ Returns:
 	None
 """
 def main():
+	sys.stdout = Logger()
+	print("[DMR] Server version " + DMR_VERSION)
 	create_subdirectories()
 	load_config()
 	package_plugins_and_regions()

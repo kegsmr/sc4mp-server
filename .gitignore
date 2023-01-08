@@ -1,2 +1,4 @@
 _DMR
+dist
 *.bak
+*.log
