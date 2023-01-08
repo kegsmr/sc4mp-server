@@ -9,6 +9,10 @@ import zipfile
 import string
 
 
+# Version
+DMR_VERSION = "v1.0 Alpha"
+print("[DMR] Server version " + DMR_VERSION)
+
 # Path to the resources subdirectory
 dmr_resources_path = "resources"
 
@@ -415,7 +419,6 @@ Returns:
 	None
 """
 def main():
-	print("[DMR] Server version X.XX") #TODO version
 	create_subdirectories()
 	load_config()
 	package_plugins_and_regions()
