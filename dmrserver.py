@@ -15,7 +15,7 @@ dmr_resources_path = "resources"
 # Default config values
 default_host = socket.gethostname()
 default_port = 7246
-default_server_id =''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(16))
+default_server_id = generate_id(16)
 default_server_name = os.getlogin() + " on " + socket.gethostname()
 default_server_description = "Join and build your city.\n\nRules:\n- Feed the llamas\n- Balance your budget\n- Do uncle Vinny some favors"
 
@@ -58,6 +58,9 @@ def md5(filename):
 			hash_md5.update(chunk)
 	return hash_md5.hexdigest()
 
+
+def generate_id(length):
+	return ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(length))
 
 """Creates the required subdirectories if they do not yet exist.
 
