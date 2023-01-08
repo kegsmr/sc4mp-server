@@ -10,7 +10,7 @@ import string
 
 
 # Version
-DMR_VERSION = "v1.0 Alpha"
+DMR_VERSION = "v1.0.0 Alpha"
 print("[DMR] Server version " + DMR_VERSION)
 
 # Path to the resources subdirectory
