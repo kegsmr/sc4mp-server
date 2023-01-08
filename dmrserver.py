@@ -5,7 +5,7 @@ import sys
 import shutil
 import socket
 import traceback
-import threading
+import threading as th
 import random
 import string
 from datetime import datetime
@@ -209,28 +209,28 @@ def start_server():
 		try:
 
 			c, address = s.accept()
-			report("- connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
+			report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
 
 			request = c.recv(DMR_BUFFER_SIZE).decode()
 
 			report("- request: " + request)
 
 			if (request== "ping"):
-				ping(c)
+				th.Thread(task=ping(c))
 			elif (request == "server_id"):
-				send_server_id(c)
+				th.Thread(task=send_server_id(c))
 			elif (request == "server_name"):
-				send_server_name(c)
+				th.Thread(task=send_server_name(c))
 			elif (request == "server_description"):
-				send_server_description(c)
+				th.Thread(task=send_server_description(c))
 			elif (request == "plugins"):
-				send_plugins(c)
+				th.Thread(task=send_plugins(c))
 			elif (request == "regions"):
-				send_regions(c)
+				th.Thread(task=send_regions(c))
 			elif (request == "push_delete"):
-				delete(c)
+				th.Thread(task=delete(c))
 			elif (request == "push_save"):
-				save(c)
+				th.Thread(task=save(c))
 		
 			report("- connection closed.")
 
@@ -410,6 +410,13 @@ Returns:
 #class server_thread(threading.Thread):
 	#TODO
 
+
+# Workers
+
+#class RegionManager(th.Thread):
+
+
+# Logger
 
 class Logger():
 	"""TODO"""
