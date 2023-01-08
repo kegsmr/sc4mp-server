@@ -38,6 +38,22 @@ def get_dmr_path(filename):
 	return os.path.join(dmr_resources_path, filename)
 
 
+def md5(filename):
+	"""Creates the hashcode for a given file.
+
+	Arguments:
+		filename (str)
+
+	Returns:
+		TODO type: hashcode
+	"""
+	hash_md5 = hashlib.md5()
+	with open(filename, "rb") as f:
+		for chunk in iter(lambda: f.read(4096), b""):
+			hash_md5.update(chunk)
+	return hash_md5.hexdigest()
+
+
 """Creates the required subdirectories if they do not yet exist.
 
 Arguments:
@@ -207,8 +223,10 @@ Returns:
 	TODO
 """
 def send_plugins(c):
+	
 	filename = os.path.join("_DMR", os.path.join("DMRTemp", "Plugins.zip"))
-	send_file(c, filename)
+	
+	send_or_cached(c, filename)
 
 
 """TODO
@@ -225,8 +243,17 @@ def send_regions(c):
 
 	filename = os.path.join("_DMR", os.path.join("DMRTemp", "Regions.zip"))
 
-	send_file(c, filename)
+	send_or_cached(c, filename)
 	
+
+def send_or_cached(c, filename):
+	"""TODO"""
+	c.send(md5(filename).encode())
+	if (c.recv(DMR_BUFFER_SIZE).decode() == "not cached"):
+		send_file(c, filename)
+	else:
+		c.close()
+
 
 def delete(c):
 	"""TODO"""
