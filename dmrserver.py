@@ -6,6 +6,7 @@ import socket
 import threading
 import random
 import zipfile
+import py2exe
 import string
 
 
