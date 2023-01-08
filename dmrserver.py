@@ -239,7 +239,7 @@ Returns:
 """
 def send_regions(c):
 
-	package("regions")
+	package("regions")	#TODO check to see if regions have changed before repackaging
 
 	filename = os.path.join("_DMR", os.path.join("DMRTemp", "Regions.zip"))
 
