@@ -366,7 +366,7 @@ def receive_file(c, filename):
 def report(message, object=None, type="INFO", ):
 	output = datetime.now().strftime("[%H:%M:%S] [DMR")
 	if (object != None):
-		output += "/" + type(object)
+		output += "/" + object.__class__.__name__
 	
 	output+= "] [" + type + "] " + message
 	color = '\033[94m '
@@ -397,7 +397,7 @@ class RequestHandler(th.Thread):
 
 	def __init__(self, c):
 		"""TODO"""
-		super().__init__(self)
+		super().__init__()
 		self.c = c
 
 
