@@ -211,28 +211,7 @@ def start_server():
 			c, address = s.accept()
 			report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
 
-			request = c.recv(DMR_BUFFER_SIZE).decode()
-
-			report("- request: " + request)
-
-			if (request== "ping"):
-				th.Thread(task=ping(c))
-			elif (request == "server_id"):
-				th.Thread(task=send_server_id(c))
-			elif (request == "server_name"):
-				th.Thread(task=send_server_name(c))
-			elif (request == "server_description"):
-				th.Thread(task=send_server_description(c))
-			elif (request == "plugins"):
-				th.Thread(task=send_plugins(c))
-			elif (request == "regions"):
-				th.Thread(task=send_regions(c))
-			elif (request == "push_delete"):
-				th.Thread(task=delete(c))
-			elif (request == "push_save"):
-				th.Thread(task=save(c))
-		
-			report("- connection closed.")
+			RequestHandler(c).start()	
 
 		except socket.error as e:
 
@@ -413,7 +392,41 @@ Returns:
 
 # Workers
 
-#class RegionManager(th.Thread):
+class RequestHandler(th.Thread):
+
+
+	def __init__(self, c):
+		"""TODO"""
+		self.c = c
+
+
+	def run(self):
+		"""TODO"""
+
+		c = self.c
+
+		request = c.recv(DMR_BUFFER_SIZE).decode()
+
+		report("- request: " + request, self)
+
+		if (request== "ping"):
+			ping(c)
+		elif (request == "server_id"):
+			send_server_id(c)
+		elif (request == "server_name"):
+			send_server_name(c)
+		elif (request == "server_description"):
+			send_server_description(c)
+		elif (request == "plugins"):
+			send_plugins(c)
+		elif (request == "regions"):
+			send_regions(c)
+		elif (request == "push_delete"):
+			delete(c)
+		elif (request == "push_save"):
+			save(c)
+	
+		report("- connection closed.", self)
 
 
 # Logger
