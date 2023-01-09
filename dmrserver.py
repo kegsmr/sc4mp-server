@@ -211,8 +211,7 @@ def start_server():
 			c, address = s.accept()
 			report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
 
-			worker = RequestHandler(c)
-			worker.start()
+			RequestHandler(c).start()	
 
 		except socket.error as e:
 
@@ -398,6 +397,7 @@ class RequestHandler(th.Thread):
 
 	def __init__(self, c):
 		"""TODO"""
+		super().__init__(self)
 		self.c = c
 
 
