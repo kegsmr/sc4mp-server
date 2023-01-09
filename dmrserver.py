@@ -9,6 +9,9 @@ import sys
 import threading as th
 import traceback
 from datetime import datetime
+import dbpf.dbpf
+import dbpf.tgi
+import dbpf.tgimatch
 
 # Version
 DMR_VERSION = "v1.0.0 Alpha"

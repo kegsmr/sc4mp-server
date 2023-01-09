@@ -1,4 +1,8 @@
 _DMR
 dist
+*/__pycache__
+dbpf.py.old
+testing.py
 *.bak
 *.log
+*.sc4
