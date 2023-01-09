@@ -364,12 +364,12 @@ def receive_file(c, filename):
 
 
 def report(message, object=None, type="INFO", ):
+	color = '\033[0m '
 	output = datetime.now().strftime("[%H:%M:%S] [DMR")
 	if (object != None):
 		output += "/" + object.__class__.__name__
-	
+		color = '\033[94m '
 	output+= "] [" + type + "] " + message
-	color = '\033[94m '
 	if (type=="WARNING"):
 		color = '\033[93m '
 	elif (type == "ERROR" or type == "FATAL"):
