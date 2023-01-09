@@ -1,15 +1,14 @@
 import configparser
 import hashlib
 import os
-import sys
+import random
 import shutil
 import socket
-import traceback
-import threading as th
-import random
 import string
+import sys
+import threading as th
+import traceback
 from datetime import datetime
-
 
 # Version
 DMR_VERSION = "v1.0.0 Alpha"
@@ -36,20 +35,64 @@ DMR_SEPARATOR = b"<SEPARATOR>"
 DMR_BUFFER_SIZE = 4096
 
 
-"""Gives the path of a given file in the DMR "resources" subdirectory
+# Methods
 
-Arguments:
-	filename (str)
+def prep():
+	"""TODO"""
+	create_subdirectories()
+	load_config()
+	package_plugins_and_regions()
 
-Returns:
-	TODO type: the path to the given file
-"""
+
+def start():
+	"""TODO Starts the server.
+
+	Arguments:
+		None
+
+	Returns:
+		None
+	"""
+
+	report("Starting server...")
+
+	report("- creating socket...")
+	s = socket.socket()
+
+	report("- binding host and port...")
+	s.bind((DMR_HOST, DMR_PORT))
+
+	report("- listening for connections...")
+	s.listen(5)
+
+	while (True):
+
+		try:
+
+			c, address = s.accept()
+			report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
+
+			RequestHandler(c).start()	
+
+		except socket.error as e:
+
+			report(str(e), None, "ERROR")
+
+
 def get_dmr_path(filename):
+	"""TODO Gives the path of a given file in the DMR "resources" subdirectory
+
+	Arguments:
+		filename (str)
+
+	Returns:
+		TODO type: the path to the given file
+	"""
 	return os.path.join(dmr_resources_path, filename)
 
 
 def md5(filename):
-	"""Creates the hashcode for a given file.
+	"""TODO Creates the hashcode for a given file.
 
 	Arguments:
 		filename (str)
@@ -64,15 +107,15 @@ def md5(filename):
 	return hash_md5.hexdigest()
 
 
-"""Creates the required subdirectories if they do not yet exist.
-
-Arguments:
-	None
-
-Returns:
-	None
-"""
 def create_subdirectories():
+	"""TODO Creates the required subdirectories if they do not yet exist.
+
+	Arguments:
+		None
+
+	Returns:
+		None
+	"""
 
 	report("Creating subdirectories...")
 
@@ -90,15 +133,15 @@ def create_subdirectories():
 				report('(this may have been printed by error, check your "_DMR" subdirectory)', None, "WARNING")
 
 
-"""Loads the config file from the resources subdirectory or creates it if it does not yet exist.
-
-Arguments:
-	None
-
-Returns:
-	None
-"""
 def load_config():
+	"""TODO Loads the config file from the resources subdirectory or creates it if it does not yet exist.
+
+	Arguments:
+		None
+
+	Returns:
+		None
+	"""
 
 	global DMR_HOST
 	global DMR_PORT
@@ -141,30 +184,16 @@ def load_config():
 		DMR_SERVER_DESCRIPTION = default_server_description
 
 
-"""TODO
-
-Arguments:
-	TODO
-
-Returns:
-	TODO
-"""
 def package_plugins_and_regions():
+	"""TODO"""
 	report("Packaging plugins and regions...")
 	#print("(this may take several minutes)")
 	package("plugins")
 	package("regions")
 
 
-"""TODO
-
-Arguments:
-	TODO
-
-Returns:
-	TODO
-"""
 def package(type):
+	"""TODO"""
 
 	report("- packaging " + type + "...")
 
@@ -183,127 +212,6 @@ def package(type):
 	shutil.make_archive(destination, "zip", target)
 
 
-"""Starts the server.
-
-Arguments:
-	None
-
-Returns:
-	None
-"""
-def start_server():
-
-	report("Starting server...")
-
-	report("- creating socket...")
-	s = socket.socket()
-
-	report("- binding host and port...")
-	s.bind((DMR_HOST, DMR_PORT))
-
-	report("- listening for connections...")
-	s.listen(5)
-
-	while (True):
-
-		try:
-
-			c, address = s.accept()
-			report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
-
-			RequestHandler(c).start()	
-
-		except socket.error as e:
-
-			report(str(e), None, "ERROR")
-
-
-"""TODO"""
-def ping(c):
-	c.send(b"pong")
-	c.close
-
-
-def send_server_id(c):
-	"""TODO"""
-	c.send(DMR_SERVER_ID.encode())
-	c.close
-
-
-def send_server_name(c):
-	"""TODO"""
-	c.send(DMR_SERVER_NAME.encode())
-	c.close
-
-
-def send_server_description(c):
-	"""TODO"""
-	c.send(DMR_SERVER_DESCRIPTION.encode())
-	c.close
-
-
-def send_plugins(c):
-	"""TODO"""
-
-	filename = os.path.join("_DMR", os.path.join("DMRTemp", "Plugins.zip"))
-	
-	send_or_cached(c, filename)
-
-
-def send_regions(c):
-	"""TODO"""
-
-	package("regions")	#TODO check to see if regions have changed before repackaging
-
-	filename = os.path.join("_DMR", os.path.join("DMRTemp", "Regions.zip"))
-
-	send_or_cached(c, filename)
-
-
-def delete(c):
-	"""TODO"""
-
-	c.send(b"ok")
-
-	user_id = c.recv(DMR_BUFFER_SIZE).decode()
-	c.send(b"ok")
-	region = c.recv(DMR_BUFFER_SIZE).decode()
-	c.send(b"ok")
-	city = c.recv(DMR_BUFFER_SIZE).decode()
-
-	c.send(b"ok") #TODO verify that the user can make the deletion
-
-	#TODO only delete file if user is authorized
-
-	filename = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, city)))
-
-	os.remove(filename)
-
-	c.close()
-
-
-def save(c):
-	"""TODO"""
-	
-	c.send(b"ok")
-
-	user_id = c.recv(DMR_BUFFER_SIZE).decode()
-	c.send(b"ok")
-	region = c.recv(DMR_BUFFER_SIZE).decode()
-	c.send(b"ok")
-	city = c.recv(DMR_BUFFER_SIZE).decode()
-
-	c.send(b"ok") #TODO verify that the user can make the claim
-
-	#TODO only receive file if user is authorized
-
-	filename = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, city)))
-
-	receive_file(c, filename)
-
-	c.close()
-
-
 def send_or_cached(c, filename):
 	"""TODO"""
 	c.send(md5(filename).encode())
@@ -313,15 +221,8 @@ def send_or_cached(c, filename):
 		c.close()
 
 
-"""TODO
-
-Arguments:
-	TODO
-
-Returns:
-	TODO
-"""
 def send_file(c, filename):
+	"""TODO"""
 
 	report("Sending file " + filename + "...")
 
@@ -377,20 +278,49 @@ def report(message, object=None, type="INFO", ):
 	print(color + output)
 
 
-"""TODO
-
-Arguments:
-	TODO
-
-Returns:
-	TODO
-"""
-#TODO documentation
-#class server_thread(threading.Thread):
-	#TODO
-
-
 # Workers
+
+class BackupManager(th.Thread):
+	"""TODO"""
+
+	
+	def __init__(self):
+		"""TODO"""
+		super().__init__(self)
+	
+
+	def run(self):
+		"""TODO"""
+		print("TO IMPLEMENT")
+
+
+class ProfilesManager(th.Thread):
+	"""TODO"""
+
+	
+	def __init__(self):
+		"""TODO"""
+		super().__init__(self)
+	
+
+	def run(self):
+		"""TODO"""
+		print("TO IMPLEMENT")
+
+
+class RegionsManager(th.Thread):
+	"""TODO"""
+
+	
+	def __init__(self):
+		"""TODO"""
+		super().__init__(self)
+	
+
+	def run(self):
+		"""TODO"""
+		print("TO IMPLEMENT")
+
 
 class RequestHandler(th.Thread):
 
@@ -411,23 +341,109 @@ class RequestHandler(th.Thread):
 		report("Request: " + request, self)
 
 		if (request== "ping"):
-			ping(c)
+			self.ping(c)
 		elif (request == "server_id"):
-			send_server_id(c)
+			self.send_server_id(c)
 		elif (request == "server_name"):
-			send_server_name(c)
+			self.send_server_name(c)
 		elif (request == "server_description"):
-			send_server_description(c)
+			self.send_server_description(c)
 		elif (request == "plugins"):
-			send_plugins(c)
+			self.send_plugins(c)
 		elif (request == "regions"):
-			send_regions(c)
+			self.send_regions(c)
 		elif (request == "push_delete"):
-			delete(c)
+			self.delete(c)
 		elif (request == "push_save"):
-			save(c)
+			self.save(c)
 	
-		report("- connection closed.", self)
+		#report("- connection closed.", self)
+
+	
+	def ping(self, c):
+		"""TODO"""
+		c.send(b"pong")
+		c.close
+
+
+	def send_server_id(self, c):
+		"""TODO"""
+		c.send(DMR_SERVER_ID.encode())
+		c.close
+
+
+	def send_server_name(self, c):
+		"""TODO"""
+		c.send(DMR_SERVER_NAME.encode())
+		c.close
+
+
+	def send_server_description(self, c):
+		"""TODO"""
+		c.send(DMR_SERVER_DESCRIPTION.encode())
+		c.close
+
+
+	def send_plugins(self, c):
+		"""TODO"""
+
+		filename = os.path.join("_DMR", os.path.join("DMRTemp", "Plugins.zip"))
+		
+		send_or_cached(c, filename)
+
+
+	def send_regions(self, c):
+		"""TODO"""
+
+		package("regions")	#TODO check to see if regions have changed before repackaging
+
+		filename = os.path.join("_DMR", os.path.join("DMRTemp", "Regions.zip"))
+
+		send_or_cached(c, filename)
+
+
+	def delete(self, c):
+		"""TODO"""
+
+		c.send(b"ok")
+
+		user_id = c.recv(DMR_BUFFER_SIZE).decode()
+		c.send(b"ok")
+		region = c.recv(DMR_BUFFER_SIZE).decode()
+		c.send(b"ok")
+		city = c.recv(DMR_BUFFER_SIZE).decode()
+
+		c.send(b"ok") #TODO verify that the user can make the deletion
+
+		#TODO only delete file if user is authorized
+
+		filename = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, city)))
+
+		os.remove(filename)
+
+		c.close()
+
+
+	def save(self, c):
+		"""TODO"""
+		
+		c.send(b"ok")
+
+		user_id = c.recv(DMR_BUFFER_SIZE).decode()
+		c.send(b"ok")
+		region = c.recv(DMR_BUFFER_SIZE).decode()
+		c.send(b"ok")
+		city = c.recv(DMR_BUFFER_SIZE).decode()
+
+		c.send(b"ok") #TODO verify that the user can make the claim
+
+		#TODO only receive file if user is authorized
+
+		filename = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, city)))
+
+		receive_file(c, filename)
+
+		c.close()
 
 
 # Logger
@@ -453,6 +469,8 @@ class Logger():
 		self.terminal.flush()
 
 
+# Main Method
+
 def main():
 	"""The main method."""
 
@@ -461,19 +479,12 @@ def main():
 	report("Server version " + DMR_VERSION)
 
 	try:
-
-		create_subdirectories()
-		load_config()
-		package_plugins_and_regions()
-
-		start_server()
-	
+		prep()
+		start()
 	except Exception as e:
-
 		report(str(e), None, "FATAL")
 		traceback.print_exc()
 	
 
-# Load the main function
 if __name__ == '__main__':
 	main()
