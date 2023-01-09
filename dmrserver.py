@@ -211,7 +211,8 @@ def start_server():
 			c, address = s.accept()
 			report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
 
-			RequestHandler(c).start()	
+			worker = RequestHandler(c)
+			worker.start()
 
 		except socket.error as e:
 
@@ -407,7 +408,7 @@ class RequestHandler(th.Thread):
 
 		request = c.recv(DMR_BUFFER_SIZE).decode()
 
-		report("- request: " + request, self)
+		report("Request: " + request, self)
 
 		if (request== "ping"):
 			ping(c)
