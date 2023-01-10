@@ -9,9 +9,9 @@ import sys
 import threading as th
 import traceback
 from datetime import datetime
-import dbpf.dbpf
-import dbpf.tgi
-import dbpf.tgimatch
+#import dbpf.dbpf
+#import dbpf.tgi
+#import dbpf.tgimatch
 
 # Version
 DMR_VERSION = "v1.0.0 Alpha"
@@ -268,6 +268,7 @@ def receive_file(c, filename):
 
 
 def report(message, object=None, type="INFO", ):
+	"""TODO"""
 	color = '\033[94m '
 	output = datetime.now().strftime("[%H:%M:%S] [DMR")
 	if (object != None):
@@ -326,6 +327,7 @@ class RegionsManager(th.Thread):
 
 
 class RequestHandler(th.Thread):
+	"""TODO"""
 
 
 	def __init__(self, c):
