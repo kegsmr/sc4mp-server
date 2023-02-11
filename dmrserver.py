@@ -799,16 +799,16 @@ class RegionsManager(th.Thread):
 							# Proceed if save push has not been filtered out
 							if (not save_id in self.outputs.keys()):
 
+								# Delete previous save file if it exists
+								previous_filename = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, entry["filename"])))
+								if (os.path.exists(previous_filename)):
+									os.remove(previous_filename)
+
 								# Copy save file from temporary directory to regions directory
 								destination = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, coords + ".sc4")))
 								if (os.path.exists(destination)):
 									os.remove(destination)
 								shutil.copy(filename, destination)
-
-								# Delete previous save file if it still exists
-								previous_filename = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, entry["filename"])))
-								if (os.path.exists(previous_filename)):
-									os.remove(previous_filename)
 
 								# Set entry values
 								entry["filename"] = coords + ".sc4"
