@@ -785,6 +785,10 @@ class RegionsManager(th.Thread):
 							# Get city entry
 							entry = data[coords]
 
+							# Filter out cities that don't match the region configuration
+							if (entry == None):
+								self.outputs[save_id] = "Invalid city location."
+
 							# Filter out cities of the wrong size
 							if (savegameSizeX != savegameSizeY or savegameSizeX != entry["size"]):
 								self.outputs[save_id] = "Invalid city size."
