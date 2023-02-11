@@ -1,26 +1,24 @@
 import configparser
 import hashlib
+import io
+import json
 import os
 import random
 import shutil
 import socket
 import string
+import struct
 import sys
 import threading as th
 import traceback
+import time
 from datetime import datetime
-import struct
-import io
-#import dbpf.dbpf
-#import dbpf.tgi
-#import dbpf.tgimatch
-
 
 # Version
 DMR_VERSION = "v1.0.0 Alpha"
 
 # Path to the resources subdirectory
-dmr_resources_path = "resources"
+DMR_RESOURCES_PATH = "resources"
 
 # Default config values
 default_host = socket.gethostname()
@@ -39,7 +37,7 @@ DMR_SERVER_DESCRIPTION = None
 # Hard-coded constants
 DMR_SEPARATOR = b"<SEPARATOR>"
 DMR_BUFFER_SIZE = 4096
-
+DMR_DELAY = .1
 
 # Methods
 
@@ -47,6 +45,8 @@ def prep():
 	"""TODO"""
 	create_subdirectories()
 	load_config()
+	prep_profiles()
+	#TODO clear temp folder
 	package_plugins_and_regions()
 
 
@@ -94,7 +94,7 @@ def get_dmr_path(filename):
 	Returns:
 		TODO type: the path to the given file
 	"""
-	return os.path.join(dmr_resources_path, filename)
+	return os.path.join(DMR_RESOURCES_PATH, filename)
 
 
 def md5(filename):
@@ -111,6 +111,11 @@ def md5(filename):
 		for chunk in iter(lambda: f.read(4096), b""):
 			hash_md5.update(chunk)
 	return hash_md5.hexdigest()
+
+
+def string_md5(text):
+	"""TODO"""
+	return hashlib.md5(text.encode()).hexdigest()
 
 
 def create_subdirectories():
@@ -190,18 +195,142 @@ def load_config():
 		DMR_SERVER_DESCRIPTION = default_server_description
 
 
+def prep_profiles():
+	"""TODO"""
+
+	report("Preparing profiles...")
+
+	# Profiles directory
+	profiles_directory = os.path.join("_DMR", "DMRProfiles")
+
+	# Users database
+	filename = os.path.join(profiles_directory, "users.json")
+	if (not os.path.exists(filename)):
+		create_empty_json(filename)
+
+	# Claims directory
+	claims_directory = os.path.join(profiles_directory, "regions")
+	if (not os.path.exists(claims_directory)):
+		os.makedirs(claims_directory)
+
+	# Get region directory names
+	regions = []
+	regions_directory = os.path.join("_DMR", "Regions")
+	items = os.listdir(regions_directory)
+	for item in items:
+		path = os.path.join(regions_directory, item)
+		if (not os.path.isfile(path)):
+			regions.append(item)
+
+	# Create databases for each region
+	for region in regions:
+		
+		# Get database
+		filename = os.path.join(claims_directory, region + ".json")
+		data = None
+		try:
+			data = load_json(filename)
+		except:
+			data = dict()
+
+		# Region directory
+		region_directory = os.path.join(regions_directory, region)
+		
+		# Get savegame paths
+		savegame_paths = []
+		items = os.listdir(region_directory)
+		for item in items:
+			path = os.path.join(region_directory, item)
+			if (os.path.isfile(path) and path[-4:] == ".sc4"):
+				savegame_paths.append(path)
+
+		# Open savegames as DBPF objects
+		savegames = []
+		for savegame_path in savegame_paths:
+			savegames.append(DBPF(savegame_path))
+
+		# Get the region subfile of each DBPF object and update the database
+		for savegame in savegames:
+
+			# Get region subfile
+			savegame.get_SC4ReadRegionalCity()
+
+			# Get values from region subfile
+			savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
+			savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
+			savegameSize = savegame.SC4ReadRegionalCity["citySizeX"]
+
+			# Get dictionary for savegame data
+			savegame_data_key = str(savegameX) + " " + str(savegameY)
+			savegame_data = data.get(savegame_data_key, dict())
+			if (savegame_data == None):
+				savegame_data = dict()
+			data[savegame_data_key] = savegame_data
+
+			# Set values in savegame data dictionary
+			savegame_data.setdefault("filename", os.path.basename(os.path.normpath(savegame.filename)))
+			savegame_data.setdefault("size", savegameSize)
+			savegame_data.setdefault("owner", None)
+			savegame_data.setdefault("modified", None)
+
+			# Reserve tiles which the savegame occupies
+			for offsetX in range(savegameSize):
+				x = savegameX + offsetX
+				for offsetY in range(savegameSize):
+					y = savegameY + offsetY
+					data.setdefault(str(x) + " " + str(y), None)
+
+		update_json(filename, data)
+
+	# Profiles manager
+	global dmr_profiles_manager
+	dmr_profiles_manager = ProfilesManager()
+	dmr_profiles_manager.start()
+
+
+def create_empty_json(filename):
+	"""TODO"""
+	with open(filename, 'w') as file:
+		data = dict()
+		file.seek(0)
+		json.dump(data, file, indent=4)
+		file.truncate()
+
+
+def load_json(filename):
+	"""TODO"""
+	with open(filename, 'r') as file:
+		return json.load(file)
+
+
+def update_json(filename, data):
+	"""TODO"""
+	with open(filename, 'w') as file:
+		file.seek(0)
+		json.dump(data, file, indent=4)
+		file.truncate()
+
+
 def package_plugins_and_regions():
 	"""TODO"""
+
 	report("Packaging plugins and regions...")
 	#print("(this may take several minutes)")
+
+	report("- packaging plugins...")
 	package("plugins")
+
+	report("- packaging regions...")
 	package("regions")
+
+	# Regions manager
+	global dmr_regions_manager
+	dmr_regions_manager = RegionsManager()
+	dmr_regions_manager.start()
 
 
 def package(type):
 	"""TODO"""
-
-	report("- packaging " + type + "...")
 
 	directory = None
 	if (type == "plugins"):
@@ -210,7 +339,7 @@ def package(type):
 		directory = "Regions"
 
 	target = os.path.join("_DMR", directory)
-	destination = os.path.join("_DMR", os.path.join("DMRTemp", directory))
+	destination = os.path.join("_DMR", os.path.join("DMRTemp", os.path.join("Outbound", directory)))
 
 	if (os.path.exists(destination)):
 		os.remove(destination)
@@ -249,11 +378,11 @@ def send_file(c, filename):
 def receive_file(c, filename):
 	"""TODO"""
 
-	filesize = c.recv(DMR_BUFFER_SIZE).decode()
+	filesize = int(c.recv(DMR_BUFFER_SIZE).decode())
 
-	c.send(b"ok")
+	c.send(DMR_SEPARATOR)
 
-	report("Receiving " + filesize + " bytes...")
+	report("Receiving " + str(filesize) + " bytes...")
 	report("writing to " + filename)
 
 	if (os.path.exists(filename)):
@@ -261,7 +390,7 @@ def receive_file(c, filename):
 
 	filesize_read = 0
 	with open(filename, "wb") as f:
-		while True:
+		while (filesize_read < filesize):
 			bytes_read = c.recv(DMR_BUFFER_SIZE)
 			if not bytes_read:    
 				break
@@ -270,7 +399,11 @@ def receive_file(c, filename):
 			#print('Downloading "' + filename + '" (' + str(filesize_read) + " / " + str(filesize) + " bytes)...", int(filesize_read), int(filesize)) #os.path.basename(os.path.normpath(filename))
 
 
-def report(message, object=None, type="INFO", ):
+def xor(conditionA, conditionB):
+	return (conditionA or conditionB) and (not (conditionA and conditionB))
+
+
+def report(message, object=None, type="INFO", ): #TODO do this in the logger to make sure output prints correctly
 	"""TODO"""
 	color = '\033[94m '
 	output = datetime.now().strftime("[%H:%M:%S] [DMR")
@@ -360,7 +493,11 @@ class DBPF():
 		offset = ""
 
 		while (length > 0):
-			cc = self.read_UL1(self.file)
+			try:
+				cc = self.read_UL1(self.file)
+			except Exception as e:
+				report(str(e), self, "ERROR")
+				break
 			length -= 1
 			#print("Control char is " + str(cc) + ", length remaining is " + str(length) + ".\n")
 			if (cc >= 252): #0xFC
@@ -380,7 +517,7 @@ class DBPF():
 				byte3 = self.read_UL1(self.file)
 				numplain = cc & 3 #0x03
 				numcopy = ((cc & 12) << 6) + 5 + byte3 #12 = 0x0c
-				offset = ((cc & 16) << 12 ) + (byte1 << 8) + byte2 #16 = 0x10
+				offset = ((cc & 16) << 12) + (byte1 << 8) + byte2 #16 = 0x10
 			elif (cc >= 128): #0x80
 				length -= 2
 				byte1 = self.read_UL1(self.file)
@@ -402,7 +539,16 @@ class DBPF():
 				answer = answer + buf
 			fromoffset = len(answer) - (offset + 1)  # 0 == last char
 			for index in range(numcopy):
-				answer = answer + (answer[fromoffset + index]).to_bytes(1, 'little') #substr(fromoffset + index, 1)
+				#print(str(answer))
+				#print(str(cc))
+				#print(str(offset))
+				#print(str(fromoffset))
+				#TODO remove try and except block. decompression algorithm breaks with a control char of 206. the offset becomes larger than the length of the answer, causing a negative fromindex and an indexing error. for now it does not seem to affect city coordinates
+				try:
+					answer = answer + (answer[fromoffset + index]).to_bytes(1, 'little') #substr(fromoffset + index, 1)
+				except Exception as e:
+					report(str(e), self, "ERROR")
+					return io.BytesIO(answer)
 			answerlen += numplain
 			answerlen += numcopy
 
@@ -530,12 +676,45 @@ class ProfilesManager(th.Thread):
 	
 	def __init__(self):
 		"""TODO"""
-		super().__init__(self)
+
+		super().__init__()
 	
+		self.filename = os.path.join("_DMR", os.path.join("DMRProfiles", "users.json"))
+		self.data = self.load_json(self.filename)
+
 
 	def run(self):
 		"""TODO"""
-		print("TO IMPLEMENT")
+		report("Monitoring database for changes...", self) #TODO why is the spacing wrong?
+		old_data = str(self.data)
+		while (True): #TODO pretty dumb way of checking if a dictionary has been modified. also this thread probably needs to stop at some point
+			try:
+				time.sleep(DMR_DELAY)
+				new_data = str(self.data)
+				if (old_data != new_data):
+					report('Updating "' + self.filename + '"...', self)
+					self.update_json(self.filename, self.data)
+					report("Done.", self)
+				old_data = new_data
+			except Exception as e:
+				report(str(e), self, "ERROR")
+
+
+	def load_json(self, filename):
+		"""TODO"""
+		try:
+			with open(filename, 'r') as file:
+				return json.load(file)
+		except:
+			return dict()
+
+	
+	def update_json(self, filename, data):
+		"""TODO"""
+		with open(filename, 'w') as file:
+			file.seek(0)
+			json.dump(data, file, indent=4)
+			file.truncate()
 
 
 class RegionsManager(th.Thread):
@@ -544,12 +723,141 @@ class RegionsManager(th.Thread):
 	
 	def __init__(self):
 		"""TODO"""
-		super().__init__(self)
+
+		super().__init__()
+
+		self.regions_modified = False
+		self.package_regions = False
+		self.tasks = []
+		self.outputs = dict()
 	
 
 	def run(self):
 		"""TODO"""
-		print("TO IMPLEMENT")
+		
+		while(True): #TODO end thread
+
+			try:
+
+				# Package regions if requested, otherwise check for new tasks
+				if (self.package_regions):
+
+					report("Packaging regions as requested...", self)
+
+					package("regions")
+
+					self.regions_modified = False
+					self.package_regions = False
+
+				else:
+
+					# Check for the next task
+					if (len(self.tasks) > 0):
+
+						# Get the next task
+						task = self.tasks.pop()
+
+						# Read values from tuple
+						save_id = task[0]
+						user_id = task[1]
+						region = task[2]
+						savegame = task[3]
+
+						report('Processing task "' + save_id + '"...', self)
+
+						# Another layer of exception handling so that the request handler isn't waiting around in the event of an error
+						try:
+
+							# Get values from savegame
+							filename = savegame.filename
+							savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
+							savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
+							savegameSizeX = savegame.SC4ReadRegionalCity["citySizeX"]
+							savegameSizeY = savegame.SC4ReadRegionalCity["citySizeY"]
+
+							# Set "coords" variable. Used as a key in the region database and also for the name of the new save file
+							coords = str(savegameX) + " " + str(savegameY)
+
+							# Get region database
+							data_filename = os.path.join("_DMR", os.path.join("DMRProfiles", os.path.join("regions", region + ".json")))
+							data = self.load_json(data_filename)
+							
+							# Get city entry
+							entry = data[coords]
+
+							# Filter out cities of the wrong size
+							if (savegameSizeX != savegameSizeY or savegameSizeX != entry["size"]):
+								self.outputs[save_id] = "Invalid city size."
+
+							# Filter out claims on tiles with unexpired claims of other users
+							owner = entry["owner"]
+							if (owner != None and owner != user_id):
+								expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + datetime.timedelta(days=30) #TODO make the expiry date configurable
+								if (expires > datetime.now()):
+									self.outputs[save_id] = "City already claimed."
+
+							# Proceed if save push has not been filtered out
+							if (not save_id in self.outputs.keys()):
+
+								# Copy save file from temporary directory to regions directory
+								destination = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, coords + ".sc4")))
+								if (os.path.exists(destination)):
+									os.remove(destination)
+								shutil.copy(filename, destination)
+
+								# Delete previous save file if it still exists
+								previous_filename = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, entry["filename"])))
+								if (os.path.exists(previous_filename)):
+									os.remove(previous_filename)
+
+								# Set entry values
+								entry["filename"] = coords + ".sc4"
+								entry["owner"] = user_id
+								entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+								# Update database
+								self.update_json(data_filename, data)
+
+								# Mark regions as modified
+								self.regions_modified = True
+
+								# Report success
+								self.outputs[save_id] = "ok"
+
+						except Exception as e:
+
+							# Report an error to the request handler
+							self.outputs[save_id] = "Unexpected error."
+
+							# Raise the exception so that it appears in the server's output
+							raise e
+
+						report("Done.", self)
+
+					else:
+						
+						time.sleep(DMR_DELAY)
+
+			except Exception as e:
+
+				report(str(e), self, "ERROR")
+
+
+	def load_json(self, filename):
+		"""TODO"""
+		try:
+			with open(filename, 'r') as file:
+				return json.load(file)
+		except:
+			return dict()
+
+	
+	def update_json(self, filename, data):
+		"""TODO"""
+		with open(filename, 'w') as file:
+			file.seek(0)
+			json.dump(data, file, indent=4)
+			file.truncate()
 
 
 class RequestHandler(th.Thread):
@@ -579,6 +887,10 @@ class RequestHandler(th.Thread):
 			self.send_server_name(c)
 		elif (request == "server_description"):
 			self.send_server_description(c)
+		elif (request == "user_id"):
+			self.send_user_id(c)
+		elif (request == "salt"):
+			self.send_salt(c)
 		elif (request == "plugins"):
 			self.send_plugins(c)
 		elif (request == "regions"):
@@ -587,6 +899,8 @@ class RequestHandler(th.Thread):
 			self.delete(c)
 		elif (request == "push_save"):
 			self.save(c)
+
+		c.close()
 	
 		#report("- connection closed.", self)
 
@@ -594,31 +908,70 @@ class RequestHandler(th.Thread):
 	def ping(self, c):
 		"""TODO"""
 		c.send(b"pong")
-		c.close
 
 
 	def send_server_id(self, c):
 		"""TODO"""
 		c.send(DMR_SERVER_ID.encode())
-		c.close
 
 
 	def send_server_name(self, c):
 		"""TODO"""
 		c.send(DMR_SERVER_NAME.encode())
-		c.close
 
 
 	def send_server_description(self, c):
 		"""TODO"""
 		c.send(DMR_SERVER_DESCRIPTION.encode())
-		c.close
+
+	
+	def send_user_id(self, c):
+		"""TODO"""
+		
+		c.send(DMR_SEPARATOR)
+		
+		hash = c.recv(DMR_BUFFER_SIZE).decode()
+
+		# Get database
+		data = dmr_profiles_manager.data
+
+		# Send the user_id that matches the hash
+		for user_id in data.keys():
+			salt = data[user_id]["salt"]
+			if (hashlib.md5((user_id + salt).encode()).hexdigest() == hash):
+				c.send(user_id.encode())
+
+
+	def send_salt(self, c):
+		"""TODO"""
+
+		c.send(DMR_SEPARATOR)
+		
+		user_id = self.receive_user_id(c)
+
+		salt = ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(16))
+
+		# Get database
+		data = dmr_profiles_manager.data
+
+		# Get database entry for user
+		key = user_id
+		entry = data.get(key, dict())
+		if (entry == None):
+			entry = dict()
+		data[key] = entry
+
+		# Set salt in database entry
+		entry["salt"] = salt
+
+		# Send salt
+		c.send(salt.encode())
 
 
 	def send_plugins(self, c):
 		"""TODO"""
 
-		filename = os.path.join("_DMR", os.path.join("DMRTemp", "Plugins.zip"))
+		filename = os.path.join("_DMR", os.path.join("DMRTemp", os.path.join("Outbound", "Plugins.zip")))
 		
 		send_or_cached(c, filename)
 
@@ -626,9 +979,12 @@ class RequestHandler(th.Thread):
 	def send_regions(self, c):
 		"""TODO"""
 
-		package("regions")	#TODO check to see if regions have changed before repackaging
+		if (dmr_regions_manager.regions_modified):
+			dmr_regions_manager.package_regions = True
+			while (dmr_regions_manager.package_regions):
+				time.sleep(DMR_DELAY)
 
-		filename = os.path.join("_DMR", os.path.join("DMRTemp", "Regions.zip"))
+		filename = os.path.join("_DMR", os.path.join("DMRTemp", os.path.join("Outbound", "Regions.zip")))
 
 		send_or_cached(c, filename)
 
@@ -636,15 +992,15 @@ class RequestHandler(th.Thread):
 	def delete(self, c):
 		"""TODO"""
 
-		c.send(b"ok")
+		c.send(DMR_SEPARATOR)
 
-		user_id = c.recv(DMR_BUFFER_SIZE).decode()
-		c.send(b"ok")
+		user_id = self.receive_user_id(c)
+		c.send(DMR_SEPARATOR)
 		region = c.recv(DMR_BUFFER_SIZE).decode()
-		c.send(b"ok")
+		c.send(DMR_SEPARATOR)
 		city = c.recv(DMR_BUFFER_SIZE).decode()
 
-		c.send(b"ok") #TODO verify that the user can make the deletion
+		c.send(DMR_SEPARATOR) #TODO verify that the user can make the deletion
 
 		#TODO only delete file if user is authorized
 
@@ -652,29 +1008,161 @@ class RequestHandler(th.Thread):
 
 		os.remove(filename)
 
-		c.close()
-
 
 	def save(self, c):
 		"""TODO"""
 		
-		c.send(b"ok")
+		# Separator
+		c.send(DMR_SEPARATOR)
 
+		#TODO receive password if required
+
+		# Receive user id
+		user_id = self.receive_user_id(c)
+		c.send(DMR_SEPARATOR) #TODO verify real user?
+
+		# Receive file count
+		file_count = int(c.recv(DMR_BUFFER_SIZE).decode())
+		c.send(DMR_SEPARATOR)
+
+		# Set save id
+		save_id = datetime.now().strftime("%Y%m%d%H%M%S") + string_md5(user_id)
+
+		# Receive files
+		for count in range(file_count):
+
+			# Receive region name
+			region = c.recv(DMR_BUFFER_SIZE).decode()
+			c.send(DMR_SEPARATOR)
+
+			# Receive city name
+			city = c.recv(DMR_BUFFER_SIZE).decode()
+			c.send(DMR_SEPARATOR)
+
+			# Receive file
+			path = os.path.join("_DMR", os.path.join("DMRTemp", os.path.join("Inbound", os.path.join(save_id, region))))
+			if (not os.path.exists(path)):
+				os.makedirs(path)
+			filename = os.path.join(path, str(count) + ".sc4")
+			receive_file(c, filename)
+			c.send(DMR_SEPARATOR)
+
+		# Separator
+		c.recv(DMR_BUFFER_SIZE)
+
+		# Get path to save directory
+		path = os.path.join("_DMR", os.path.join("DMRTemp", os.path.join("Inbound", save_id)))
+
+		# Get regions in save directory
+		regions = os.listdir(path)
+
+		# Only allow save pushes of one region
+		if (len(regions) > 1):
+			c.send(b"Too many regions.")
+			return		
+
+		# Loop through regions. Should only loop once since save pushes of multiple regions are filtered out.
+		for region in regions:
+
+			# Get region path
+			region_path = os.path.join(path, region)
+
+			# Create DBPF objects for each file
+			savegames = []
+			for filename in os.listdir(region_path):
+				filename = os.path.join(region_path, filename)
+				savegames.append(DBPF(filename))
+
+			# Extract the region subfile from each DBPF
+			for savegame in savegames:
+				savegame.get_SC4ReadRegionalCity()
+			
+			# Filter out tiles that do not border every other tile
+			new_savegames = []
+			for savegame in savegames:
+				add = True
+				savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
+				savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
+				savegameSizeX = savegame.SC4ReadRegionalCity["citySizeX"]
+				savegameSizeY = savegame.SC4ReadRegionalCity["citySizeY"]
+				for neighbor in savegames:
+					if (neighbor == savegame):
+						continue
+					neighborX = neighbor.SC4ReadRegionalCity["tileXLocation"]
+					neighborY = neighbor.SC4ReadRegionalCity["tileYLocation"]
+					neighborSizeX = neighbor.SC4ReadRegionalCity["citySizeX"]
+					neighborSizeY = neighbor.SC4ReadRegionalCity["citySizeY"]
+					conditionX1 = (neighborX == savegameX - neighborSizeX)
+					conditionX2 = (neighborX == savegameX + savegameSizeX)
+					conditionY1 = (neighborY == savegameY - neighborSizeY)
+					conditionY2 = (neighborY == savegameY + savegameSizeY)
+					conditionX = xor(conditionX1, conditionX2) and ((neighborY + neighborSizeY > savegameY) or (neighborY < savegameY + savegameSizeY))
+					conditionY = xor(conditionY1, conditionY2) and ((neighborX + neighborSizeX > savegameX) or (neighborX < savegameX + savegameSizeX))
+					condition = xor(conditionX, conditionY)
+					if (not condition):
+						add = False
+				if (add):
+					new_savegames.append(savegame)
+					report("YES (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+				else:
+					report("NO (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+			savegames = new_savegames
+
+			# TODO more filters
+			if(len(savegames) > 1):
+				c.send(b"TO IMPLEMENT")
+
+			# If one savegame remains, pass it to the regions manager, otherwise report to the client that the save push is invalid
+			if (len(savegames) == 1):
+
+				# Get the savegame
+				savegame = savegames[0]
+
+				# Send the task to the regions manager
+				dmr_regions_manager.tasks.append((save_id, user_id, region, savegame))
+
+				# Wait for the output
+				while (not save_id in dmr_regions_manager.outputs.keys()):
+					time.sleep(DMR_DELAY)
+
+				# Send the output to the client
+				c.send((dmr_regions_manager.outputs[save_id]).encode())
+
+			else:
+
+				# Report to the client that the save push is invalid
+				c.send(b"Save push invalid.")
+
+		#TODO delete temp directory
+		
+
+	def receive_user_id(self, c):
+		"""TODO"""
+		
 		user_id = c.recv(DMR_BUFFER_SIZE).decode()
-		c.send(b"ok")
-		region = c.recv(DMR_BUFFER_SIZE).decode()
-		c.send(b"ok")
-		city = c.recv(DMR_BUFFER_SIZE).decode()
+		
+		data = dmr_profiles_manager.data
+		
+		entry = None
+		try:
+			entry = data[user_id]
+		except:
+			entry = dict()
+			data[user_id] = entry
 
-		c.send(b"ok") #TODO verify that the user can make the claim
+		entry.setdefault("IPs", [])
+		entry.setdefault("ban", False)
+		#entry.setdefault("banIPs", False) #TODO implement
 
-		#TODO only receive file if user is authorized
+		ip = c.getpeername()[0]
+		IPs_entry = entry["IPs"]
+		if (not ip in IPs_entry):
+			IPs_entry.append(ip)
 
-		filename = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, city)))
-
-		receive_file(c, filename)
-
-		c.close()
+		if (entry["ban"]):
+			return None
+		else:
+			return user_id
 
 
 # Logger
@@ -707,7 +1195,6 @@ def test_DBPF():
 	savegame = DBPF("City - Big City Tutorial.sc4")
 	data = savegame.get_SC4ReadRegionalCity()
 	print(data)
-	#print(savegame.SC4ReadRegionalCity['minorVersion'])
 
 
 def main():
