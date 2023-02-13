@@ -118,6 +118,14 @@ def string_md5(text):
 	return hashlib.md5(text.encode()).hexdigest()
 
 
+def file_md5(file):
+	"""TODO"""
+	hash_md5 = hashlib.md5()
+	for chunk in iter(lambda: file.read(4096), b""):
+		hash_md5.update(chunk)
+	return hash_md5.hexdigest()
+
+
 def create_subdirectories():
 	"""TODO Creates the required subdirectories if they do not yet exist.
 
@@ -260,6 +268,9 @@ def prep_profiles():
 			savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
 			savegameSize = savegame.SC4ReadRegionalCity["citySizeX"]
 
+			# Get md5 hashcode of date subfile
+			savegame_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
+
 			# Get dictionary for savegame data
 			savegame_data_key = str(savegameX) + " " + str(savegameY)
 			savegame_data = data.get(savegame_data_key, dict())
@@ -272,6 +283,7 @@ def prep_profiles():
 			savegame_data.setdefault("size", savegameSize)
 			savegame_data.setdefault("owner", None)
 			savegame_data.setdefault("modified", None)
+			savegame_data.setdefault("date_subfile_hash", savegame_date_subfile_hash)
 
 			# Reserve tiles which the savegame occupies
 			for offsetX in range(savegameSize):
@@ -603,6 +615,12 @@ class DBPF():
 		return entry['filesize']
 
 
+	#def get_subfile_header(self, type_id):
+	#	"""TODO"""
+	#	self.goto_subfile(type_id)
+	#	return (self.read_UL4(), self.read_ID(), ) #TODO how to read these values?
+
+
 	def decompress_subfile(self, type_id):
 		"""TODO"""
 		self.goto_subfile(type_id)
@@ -652,6 +670,19 @@ class DBPF():
 		#TODO keep reading file
 
 		return self.SC4ReadRegionalCity
+
+	
+	def get_cSC4Simulator(self):
+		"""TODO"""
+
+		data = self.decompress_subfile("2990c1e5")
+
+		print(data.read())
+		data.seek(0)
+
+		self.cSC4Simulator = dict()
+
+		#TODO
 
 
 # Workers
@@ -783,30 +814,38 @@ class RegionsManager(th.Thread):
 							data = self.load_json(data_filename)
 							
 							# Get city entry
-							entry = data[coords]
+							entry = None
+							try:
+								entry = data[coords]
+							except:
+								entry = dict()
+								data[coords] = entry
 
 							# Filter out cities that don't match the region configuration
 							if (entry == None):
 								self.outputs[save_id] = "Invalid city location."
 
 							# Filter out cities of the wrong size
-							if (savegameSizeX != savegameSizeY or savegameSizeX != entry["size"]):
-								self.outputs[save_id] = "Invalid city size."
+							if ("size" in entry.keys()):
+								if (savegameSizeX != savegameSizeY or savegameSizeX != entry["size"]):
+									self.outputs[save_id] = "Invalid city size."
 
 							# Filter out claims on tiles with unexpired claims of other users
-							owner = entry["owner"]
-							if (owner != None and owner != user_id):
-								expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + datetime.timedelta(days=30) #TODO make the expiry date configurable
-								if (expires > datetime.now()):
-									self.outputs[save_id] = "City already claimed."
+							if ("owner" in entry.keys()):
+								owner = entry["owner"]
+								if (owner != None and owner != user_id):
+									expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + datetime.timedelta(days=30) #TODO make the expiry date configurable
+									if (expires > datetime.now()):
+										self.outputs[save_id] = "City already claimed."
 
 							# Proceed if save push has not been filtered out
 							if (not save_id in self.outputs.keys()):
 
 								# Delete previous save file if it exists
-								previous_filename = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, entry["filename"])))
-								if (os.path.exists(previous_filename)):
-									os.remove(previous_filename)
+								if ("filename" in entry.keys()):
+									previous_filename = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, entry["filename"])))
+									if (os.path.exists(previous_filename)):
+										os.remove(previous_filename)
 
 								# Copy save file from temporary directory to regions directory
 								destination = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, coords + ".sc4")))
@@ -818,6 +857,7 @@ class RegionsManager(th.Thread):
 								entry["filename"] = coords + ".sc4"
 								entry["owner"] = user_id
 								entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+								entry["date_subfile_hash"] = file_md5(savegame.decompress_subfile("2990c1e5"))
 
 								# Update database
 								self.update_json(data_filename, data)
@@ -1082,6 +1122,7 @@ class RequestHandler(th.Thread):
 				savegame.get_SC4ReadRegionalCity()
 			
 			# Filter out tiles that do not border every other tile
+			report("Savegame filter 1", self)
 			new_savegames = []
 			for savegame in savegames:
 				add = True
@@ -1112,9 +1153,28 @@ class RequestHandler(th.Thread):
 					report("NO (" + str(savegameX) + ", " + str(savegameY) + ")", self)
 			savegames = new_savegames
 
-			# TODO more filters
+			# Filter out tiles which have identical date subfiles as their previous versions
 			if(len(savegames) > 1):
-				c.send(b"TO IMPLEMENT")
+				report("Savegame filter 2", self)
+				new_savegames = []
+				for savegame in savegames:
+					savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
+					savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
+					coords = str(savegameX) + " " + str(savegameY)
+					data = load_json(os.path.join("_DMR", os.path.join("DMRProfiles", os.path.join("regions", os.path.join(region + ".json")))))
+					if (coords in data.keys()):
+						entry = data[coords]
+						date_subfile_hash = entry["date_subfile_hash"]
+						new_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
+						if (date_subfile_hash != new_date_subfile_hash):
+							new_savegames.append(savegame)
+							report("YES (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+						else:
+							report("NO (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+					else:
+						new_savegames.append(savegame)
+						report("YES (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+				savegames = new_savegames
 
 			# If one savegame remains, pass it to the regions manager, otherwise report to the client that the save push is invalid
 			if (len(savegames) == 1):
@@ -1135,7 +1195,7 @@ class RequestHandler(th.Thread):
 			else:
 
 				# Report to the client that the save push is invalid
-				c.send(b"Save push invalid.")
+				c.send(b"Unpause the game and retry.")
 
 		#TODO delete temp directory
 		
@@ -1196,9 +1256,8 @@ class Logger():
 
 def test_DBPF():
 	"""TODO"""
-	savegame = DBPF("City - Big City Tutorial.sc4")
-	data = savegame.get_SC4ReadRegionalCity()
-	print(data)
+	savegame = DBPF("City - Big City Tutorial (2).sc4")
+	print(file_md5(savegame.decompress_subfile("2990c1e5")))
 
 
 def main():
