@@ -272,18 +272,14 @@ def prep_profiles():
 			savegame_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
 
 			# Get dictionary for savegame data
-			savegame_data_key = str(savegameX) + " " + str(savegameY)
-			savegame_data = data.get(savegame_data_key, dict())
-			if (savegame_data == None):
-				savegame_data = dict()
-			data[savegame_data_key] = savegame_data
+			coords = str(savegameX) + " " + str(savegameY)
+			entry = data.get(coords, dict())
+			if (entry == None):
+				entry = dict()
+			data[coords] = entry
 
-			# Set values in savegame data dictionary
-			savegame_data.setdefault("filename", os.path.basename(os.path.normpath(savegame.filename)))
-			savegame_data.setdefault("size", savegameSize)
-			savegame_data.setdefault("owner", None)
-			savegame_data.setdefault("modified", None)
-			savegame_data.setdefault("date_subfile_hash", savegame_date_subfile_hash)
+			# Set entry values
+			set_savegame_data(entry, savegame)
 
 			# Reserve tiles which the savegame occupies
 			for offsetX in range(savegameSize):
@@ -313,6 +309,28 @@ def load_json(filename):
 	"""TODO"""
 	with open(filename, 'r') as file:
 		return json.load(file)
+
+
+def set_savegame_data(entry, savegame):
+	"""TODO entry values"""
+
+	# No overwrite
+	entry.setdefault("filename", os.path.basename(os.path.normpath(savegame.filename)))
+	entry.setdefault("owner", None)
+	entry.setdefault("modified", None)
+
+	# Overwrite
+	entry["size"] = savegame.SC4ReadRegionalCity["citySizeX"]
+	entry["date_subfile_hash"] = file_md5(savegame.decompress_subfile("2990c1e5"))
+	entry["gamemode"] = savegame.SC4ReadRegionalCity["modeFlag"]
+	entry["difficulty"] = savegame.SC4ReadRegionalCity["starCount"]
+	entry["mayor_rating"] = savegame.SC4ReadRegionalCity["mayorRating"]
+	entry["residential_population"] = savegame.SC4ReadRegionalCity["residentialPopulation"]
+	entry["commercial_population"] = savegame.SC4ReadRegionalCity["commercialPopulation"]
+	entry["industrial_population"] = savegame.SC4ReadRegionalCity["industrialPopulation"]
+	entry["population"] = entry["residential_population"] + entry["commercial_population"] + entry["industrial_population"]
+	entry["population_density"] = round(entry["population"] / (entry["size"] * entry["size"]))
+	entry["residential_population_density"] = round(entry["residential_population"] / (entry["size"] * entry["size"]))
 
 
 def update_json(filename, data):
@@ -857,7 +875,7 @@ class RegionsManager(th.Thread):
 								entry["filename"] = coords + ".sc4"
 								entry["owner"] = user_id
 								entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-								entry["date_subfile_hash"] = file_md5(savegame.decompress_subfile("2990c1e5"))
+								set_savegame_data(entry, savegame)
 
 								# Update database
 								self.update_json(data_filename, data)
@@ -1175,6 +1193,8 @@ class RequestHandler(th.Thread):
 						new_savegames.append(savegame)
 						report("YES (" + str(savegameX) + ", " + str(savegameY) + ")", self)
 				savegames = new_savegames
+			else:
+				report("Skipping savegame filter 2", self)
 
 			# If one savegame remains, pass it to the regions manager, otherwise report to the client that the save push is invalid
 			if (len(savegames) == 1):
