@@ -46,8 +46,8 @@ def prep():
 	create_subdirectories()
 	load_config()
 	prep_profiles()
-	#TODO clear temp folder
-	package_plugins_and_regions()
+	clear_temp()
+	prep_regions() 
 
 
 def start():
@@ -203,6 +203,12 @@ def load_config():
 		DMR_SERVER_DESCRIPTION = default_server_description
 
 
+def clear_temp():
+	"""TODO"""
+	report("Clearing temporary files...")
+	purge_directory(os.path.join("_DMR", "DMRTemp"))
+
+
 def prep_profiles():
 	"""TODO"""
 
@@ -345,13 +351,25 @@ def package_plugins_and_regions():
 	"""TODO"""
 
 	report("Packaging plugins and regions...")
-	#print("(this may take several minutes)")
 
 	report("- packaging plugins...")
 	package("plugins")
 
 	report("- packaging regions...")
 	package("regions")
+
+	# Regions manager
+	global dmr_regions_manager
+	dmr_regions_manager = RegionsManager()
+	dmr_regions_manager.start()
+
+
+def prep_regions():
+	"""TODO"""
+
+	report("Preparing regions...")
+
+	export("regions")
 
 	# Regions manager
 	global dmr_regions_manager
@@ -377,6 +395,98 @@ def package(type):
 	shutil.make_archive(destination, "zip", target)
 
 
+def export(type):
+	"""TODO"""
+
+	# Select directory name from input
+	directory = None
+	if (type == "plugins"):
+		directory = "Plugins"
+	elif (type == "regions"):
+		directory = "Regions"
+
+	# Set target and destination directories
+	target = os.path.join("_DMR", directory)
+	destination = os.path.join("_DMR", os.path.join("DMRTemp", os.path.join("Outbound", directory)))
+
+	# Delete destination directory if it exists 
+	if (os.path.exists(destination)):
+		shutil.rmtree(destination)
+	
+	# Create the parent directories if they do not yet exist
+	#if (not os.path.exists(destination)):
+	#	os.makedirs(destination)
+	
+	# Copy recursively
+	shutil.copytree(target, destination)	
+
+
+def purge_directory(directory):
+	"""TODO
+
+	Arguments:
+		TODO
+
+	Returns:
+		TODO
+	"""
+	for filename in os.listdir(directory):
+		file_path = os.path.join(directory, filename)
+		try:
+			if os.path.isfile(file_path) or os.path.islink(file_path):
+				os.unlink(file_path)
+			elif os.path.isdir(file_path):
+				shutil.rmtree(file_path)
+		except PermissionError as e:
+			raise CustomException('Failed to delete "' + file_path + '" because the file is being used by another process.') #\n\n' + str(e)
+
+
+def send_tree(c, rootpath):
+	"""TODO"""
+
+	# Loop through all files in path and append them to a list
+	fullpaths = []
+	for path, directories, files in os.walk(rootpath):
+		for file in files:
+			fullpaths.append(os.path.join(path, file))
+
+	# Send file count
+	c.send(str(len(fullpaths)).encode())
+
+	# Loop through the file list and send each one to the client
+	for fullpath in fullpaths:
+
+		# Separator
+		c.recv(DMR_BUFFER_SIZE)
+
+		# Get relative path to file 
+		relpath = os.path.relpath(fullpath, rootpath)
+
+		# Send hashcode
+		c.send(md5(fullpath).encode())
+
+		# Separator
+		c.recv(DMR_BUFFER_SIZE)
+
+		# Send filesize
+		c.send(str(os.path.getsize(fullpath)).encode())
+
+		# Separator
+		c.recv(DMR_BUFFER_SIZE)
+
+		# Send relative path
+		c.send(relpath.encode())
+
+		# Send the file if not cached
+		if (c.recv(DMR_BUFFER_SIZE).decode() != "cached"):
+			with open(fullpath, "rb") as file:
+				while True:
+					bytes_read = file.read(DMR_BUFFER_SIZE)
+					if not bytes_read:
+						break
+					c.sendall(bytes_read)
+
+
 def send_or_cached(c, filename):
 	"""TODO"""
 	c.send(md5(filename).encode())
@@ -392,7 +502,6 @@ def send_file(c, filename):
 	report("Sending file " + filename + "...")
 
 	filesize = os.path.getsize(filename)
-
 	c.send(str(filesize).encode())
 
 	with open(filename, "rb") as f:
@@ -401,8 +510,6 @@ def send_file(c, filename):
 			if not bytes_read:
 				break
 			c.sendall(bytes_read)
-
-	c.close()
 
 
 def receive_file(c, filename):
@@ -776,7 +883,7 @@ class RegionsManager(th.Thread):
 		super().__init__()
 
 		self.regions_modified = False
-		self.package_regions = False
+		self.export_regions = False
 		self.tasks = []
 		self.outputs = dict()
 	
@@ -789,14 +896,14 @@ class RegionsManager(th.Thread):
 			try:
 
 				# Package regions if requested, otherwise check for new tasks
-				if (self.package_regions):
+				if (self.export_regions):
 
-					report("Packaging regions as requested...", self)
+					report("Exporting regions as requested...", self)
 
-					package("regions")
+					export("regions")
 
 					self.regions_modified = False
-					self.package_regions = False
+					self.export_regions = False
 
 				else:
 
@@ -1033,22 +1140,24 @@ class RequestHandler(th.Thread):
 	def send_plugins(self, c):
 		"""TODO"""
 
-		filename = os.path.join("_DMR", os.path.join("DMRTemp", os.path.join("Outbound", "Plugins.zip")))
-		
-		send_or_cached(c, filename)
+		#filename = os.path.join("_DMR", os.path.join("DMRTemp", os.path.join("Outbound", "Plugins.zip")))
+		#send_or_cached(c, filename)
+
+		send_tree(c, os.path.join("_DMR", "Plugins"))
 
 
 	def send_regions(self, c):
 		"""TODO"""
 
 		if (dmr_regions_manager.regions_modified):
-			dmr_regions_manager.package_regions = True
-			while (dmr_regions_manager.package_regions):
+			dmr_regions_manager.export_regions = True
+			while (dmr_regions_manager.export_regions):
 				time.sleep(DMR_DELAY)
 
-		filename = os.path.join("_DMR", os.path.join("DMRTemp", os.path.join("Outbound", "Regions.zip")))
+		#filename = os.path.join("_DMR", os.path.join("DMRTemp", os.path.join("Outbound", "Regions.zip")))
+		#send_or_cached(c, filename)
 
-		send_or_cached(c, filename)
+		send_tree(c, os.path.join("_DMR", "DMRTemp", "Outbound", "Regions"))
 
 
 	def delete(self, c):
@@ -1217,7 +1326,8 @@ class RequestHandler(th.Thread):
 				# Report to the client that the save push is invalid
 				c.send(b"Unpause the game and retry.")
 
-		#TODO delete temp directory
+		# Delete temporary files
+		shutil.rmtree(path)
 		
 
 	def receive_user_id(self, c):
