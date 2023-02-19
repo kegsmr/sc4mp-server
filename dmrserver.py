@@ -46,7 +46,7 @@ def prep():
 	create_subdirectories()
 	load_config()
 	prep_profiles()
-	clear_temp()
+	#clear_temp()
 	prep_regions() 
 
 
