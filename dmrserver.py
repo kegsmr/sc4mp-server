@@ -980,7 +980,7 @@ class RegionsManager(th.Thread):
 										os.remove(previous_filename)
 
 								# Copy save file from temporary directory to regions directory
-								destination = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, coords + ".sc4")))
+								destination = os.path.join("_DMR", os.path.join("Regions", os.path.join(region, coords + ".sc4"))) #TODO include city name
 								if (os.path.exists(destination)):
 									os.remove(destination)
 								shutil.copy(filename, destination)
