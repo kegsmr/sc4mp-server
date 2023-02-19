@@ -624,7 +624,7 @@ class DBPF():
 
 	def decompress(self, length):
 
-		report('Decompressing ' + str(length) + ' bytes...', self)
+		#report('Decompressing ' + str(length) + ' bytes...', self)
 
 		buf = ""
 		answer = bytes()
@@ -752,7 +752,7 @@ class DBPF():
 
 	def decompress_subfile(self, type_id):
 		"""TODO"""
-		report('Decompressing "' + type_id + '"...', self)
+		#report('Decompressing "' + type_id + '"...', self)
 		self.goto_subfile(type_id)
 		self.file.read(self.NONSENSE_BYTE_OFFSET)
 		return self.decompress(self.get_subfile_size(type_id))
