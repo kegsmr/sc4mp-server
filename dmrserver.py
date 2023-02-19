@@ -564,7 +564,7 @@ class DBPF():
 	def __init__(self, filename, offset=0):
 		"""TODO"""
 
-		report('Parsing "' + filename + '"...')
+		report('Parsing "' + filename + '"...', self)
 
 		self.filename = filename
 		self.offset = offset
@@ -623,6 +623,8 @@ class DBPF():
 
 
 	def decompress(self, length):
+
+		report('Decompressing ' + str(length) + ' bytes...', self)
 
 		buf = ""
 		answer = bytes()
@@ -750,6 +752,7 @@ class DBPF():
 
 	def decompress_subfile(self, type_id):
 		"""TODO"""
+		report('Decompressing "' + type_id + '"...', self)
 		self.goto_subfile(type_id)
 		self.file.read(self.NONSENSE_BYTE_OFFSET)
 		return self.decompress(self.get_subfile_size(type_id))
@@ -757,6 +760,8 @@ class DBPF():
 
 	def get_SC4ReadRegionalCity(self):
 		"""TODO"""
+
+		report('Parsing region view subfile of "' + self.filename + '"...', self)
 
 		data = self.decompress_subfile("ca027edb")
 	
