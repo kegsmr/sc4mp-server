@@ -564,6 +564,8 @@ class DBPF():
 	def __init__(self, filename, offset=0):
 		"""TODO"""
 
+		report('Parsing "' + filename + '"...')
+
 		self.filename = filename
 		self.offset = offset
 
