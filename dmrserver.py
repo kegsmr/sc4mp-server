@@ -13,6 +13,7 @@ import threading as th
 import traceback
 import time
 from datetime import datetime
+import inspect
 
 # Version
 DMR_VERSION = "v1.0.0 Alpha"
@@ -453,6 +454,15 @@ def send_tree(c, rootpath):
 	# Send file count
 	c.send(str(len(fullpaths)).encode())
 
+	# Separator
+	c.recv(DMR_BUFFER_SIZE)
+
+	# Send size
+	size = 0
+	for fullpath in fullpaths:
+		size += os.path.getsize(fullpath)
+	c.send(str(size).encode())
+
 	# Loop through the file list and send each one to the client
 	for fullpath in fullpaths:
 
@@ -544,6 +554,14 @@ def report(message, object=None, type="INFO", ): #TODO do this in the logger to 
 	"""TODO"""
 	color = '\033[94m '
 	output = datetime.now().strftime("[%H:%M:%S] [DMR")
+	object = None
+	for item in inspect.stack():
+		if (object != None):
+			break
+		try:
+			object = item[0].f_locals["self"]
+		except:
+			pass
 	if (object != None):
 		output += "/" + object.__class__.__name__
 		color = '\033[0m '
