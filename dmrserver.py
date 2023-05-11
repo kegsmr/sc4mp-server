@@ -13,6 +13,7 @@ import threading as th
 import traceback
 import time
 from datetime import datetime
+from datetime import timedelta
 import inspect
 
 # Version
@@ -984,7 +985,7 @@ class RegionsManager(th.Thread):
 							if ("owner" in entry.keys()):
 								owner = entry["owner"]
 								if (owner != None and owner != user_id):
-									expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + datetime.timedelta(days=30) #TODO make the expiry date configurable
+									expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + timedelta(days=30) #TODO make the expiry date configurable
 									if (expires > datetime.now()):
 										self.outputs[save_id] = "City already claimed."
 
@@ -1131,9 +1132,13 @@ class RequestHandler(th.Thread):
 
 		# Send the user_id that matches the hash
 		for user_id in data.keys():
-			salt = data[user_id]["salt"]
-			if (hashlib.md5((user_id + salt).encode()).hexdigest() == hash):
-				c.send(user_id.encode())
+			try:
+				salt = data[user_id]["salt"]
+				if (hashlib.md5((user_id + salt).encode()).hexdigest() == hash):
+					c.send(user_id.encode())
+					break
+			except:
+				pass
 
 
 	def send_salt(self, c):
