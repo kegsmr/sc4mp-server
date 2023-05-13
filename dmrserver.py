@@ -989,6 +989,9 @@ class RegionsManager(th.Thread):
 									if (expires > datetime.now()):
 										self.outputs[save_id] = "City already claimed."
 
+							# Filter out godmode savegames if required
+							#TODO
+
 							# Proceed if save push has not been filtered out
 							if (not save_id in self.outputs.keys()):
 
