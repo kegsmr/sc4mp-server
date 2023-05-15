@@ -25,7 +25,7 @@ DMR_RESOURCES_PATH = "resources"
 # Default config values
 default_host = socket.gethostname()
 default_port = 7246
-default_server_id =''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(16))
+default_server_id =''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))
 default_server_name = os.getlogin() + " on " + socket.gethostname()
 default_server_description = "Join and build your city.\n\nRules:\n- Feed the llamas\n- Balance your budget\n- Do uncle Vinny some favors"
 
@@ -1087,8 +1087,8 @@ class RequestHandler(th.Thread):
 			self.send_server_description(c)
 		elif (request == "user_id"):
 			self.send_user_id(c)
-		elif (request == "salt"):
-			self.send_salt(c)
+		elif (request == "token"):
+			self.send_token(c)
 		elif (request == "plugins"):
 			self.send_plugins(c)
 		elif (request == "regions"):
@@ -1136,22 +1136,22 @@ class RequestHandler(th.Thread):
 		# Send the user_id that matches the hash
 		for user_id in data.keys():
 			try:
-				salt = data[user_id]["salt"]
-				if (hashlib.md5((user_id + salt).encode()).hexdigest() == hash):
+				token = data[user_id]["token"]
+				if (hashlib.sha256((user_id + token).encode()).hexdigest() == hash):
 					c.send(user_id.encode())
 					break
 			except:
 				pass
 
 
-	def send_salt(self, c):
+	def send_token(self, c):
 		"""TODO"""
 
 		c.send(DMR_SEPARATOR)
 		
 		user_id = self.receive_user_id(c)
 
-		salt = ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(16))
+		token = ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))
 
 		# Get database
 		data = dmr_profiles_manager.data
@@ -1163,11 +1163,11 @@ class RequestHandler(th.Thread):
 			entry = dict()
 		data[key] = entry
 
-		# Set salt in database entry
-		entry["salt"] = salt
+		# Set token in database entry
+		entry["token"] = token
 
-		# Send salt
-		c.send(salt.encode())
+		# Send token
+		c.send(token.encode())
 
 
 	def send_plugins(self, c):
@@ -1230,7 +1230,7 @@ class RequestHandler(th.Thread):
 		c.send(DMR_SEPARATOR)
 
 		# Set save id
-		save_id = datetime.now().strftime("%Y%m%d%H%M%S") + string_md5(user_id)
+		save_id = datetime.now().strftime("%Y%m%d%H%M%S") + user_id
 
 		# Receive files
 		for count in range(file_count):
@@ -1363,10 +1363,10 @@ class RequestHandler(th.Thread):
 		shutil.rmtree(path)
 		
 
-	def receive_user_id(self, c):
+	def receive_user_id(self, c): #TODO change method name to something more descriptive
 		"""TODO"""
-		
-		user_id = c.recv(DMR_BUFFER_SIZE).decode()
+
+		user_id = hashlib.sha256(c.recv(DMR_BUFFER_SIZE)).hexdigest()[:32]
 		
 		data = dmr_profiles_manager.data
 		
@@ -1388,8 +1388,8 @@ class RequestHandler(th.Thread):
 
 		if (entry["ban"]):
 			return None
-		else:
-			return user_id
+		
+		return user_id
 
 
 # Logger
