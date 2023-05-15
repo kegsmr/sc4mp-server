@@ -1149,7 +1149,7 @@ class RequestHandler(th.Thread):
 
 		c.send(DMR_SEPARATOR)
 		
-		user_id = self.receive_user_id(c)
+		user_id = self.log_user(c)
 
 		token = ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))
 
@@ -1198,7 +1198,7 @@ class RequestHandler(th.Thread):
 
 		c.send(DMR_SEPARATOR)
 
-		user_id = self.receive_user_id(c)
+		user_id = self.log_user(c)
 		c.send(DMR_SEPARATOR)
 		region = c.recv(DMR_BUFFER_SIZE).decode()
 		c.send(DMR_SEPARATOR)
@@ -1222,7 +1222,7 @@ class RequestHandler(th.Thread):
 		#TODO receive password if required
 
 		# Receive user id
-		user_id = self.receive_user_id(c)
+		user_id = self.log_user(c)
 		c.send(DMR_SEPARATOR) #TODO verify real user?
 
 		# Receive file count
@@ -1363,13 +1363,16 @@ class RequestHandler(th.Thread):
 		shutil.rmtree(path)
 		
 
-	def receive_user_id(self, c): #TODO change method name to something more descriptive
+	def log_user(self, c):
 		"""TODO"""
 
+		# Use a hashcode of the user id for extra security
 		user_id = hashlib.sha256(c.recv(DMR_BUFFER_SIZE)).hexdigest()[:32]
 		
+		# Get profile database
 		data = dmr_profiles_manager.data
 		
+		# Get data entry that matches user id
 		entry = None
 		try:
 			entry = data[user_id]
@@ -1377,18 +1380,27 @@ class RequestHandler(th.Thread):
 			entry = dict()
 			data[user_id] = entry
 
+		# Set default values if missing
 		entry.setdefault("IPs", [])
 		entry.setdefault("ban", False)
+		entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 		#entry.setdefault("banIPs", False) #TODO implement
 
+		# Close conneciton and throw error if the user is banned
+		if (entry["ban"]):
+			c.close()
+			raise Exception() #TODO CustomException("Authentication error.")
+		
+		# Log the time
+		entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+		# Log the IP
 		ip = c.getpeername()[0]
 		IPs_entry = entry["IPs"]
 		if (not ip in IPs_entry):
 			IPs_entry.append(ip)
-
-		if (entry["ban"]):
-			return None
 		
+		# Return the user id
 		return user_id
 
 
