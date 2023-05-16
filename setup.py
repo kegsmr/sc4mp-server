@@ -31,11 +31,11 @@ def find_data_files(source,target,patterns):
 
 setup(
 	console=[{
-		"script": "dmrserver.py",
+		"script": "sc4mpserver.py",
 		"icon_resources": [(1, "resources/icon.ico")],
-		"name": "DMR Server",
-		"author": "DMR",
-        "description": "DMR Multiplayer Mod for SimCity 4",
+		"name": "SC4MP Server",
+		"author": "SC4MP",
+        "description": "SC4MP Multiplayer Mod for SimCity 4",
 		"version": "v1.0.0 Alpha"
 	}],
     zipfile=None,
