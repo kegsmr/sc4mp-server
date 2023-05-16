@@ -17,7 +17,7 @@ from datetime import timedelta
 import inspect
 
 # Version
-DMR_VERSION = "v1.0.0 Alpha"
+DMR_VERSION = (1,0,0)
 
 # Path to the resources subdirectory
 DMR_RESOURCES_PATH = "resources"
@@ -37,6 +37,7 @@ DMR_SERVER_NAME = None
 DMR_SERVER_DESCRIPTION = None
 
 # Hard-coded constants
+DMR_TITLE = "DMR Server v" + str(DMR_VERSION[0]) + "." + str(DMR_VERSION[1]) + "." + str(DMR_VERSION[2])
 DMR_SEPARATOR = b"<SEPARATOR>"
 DMR_BUFFER_SIZE = 4096
 DMR_DELAY = .1
@@ -1440,7 +1441,7 @@ def main():
 
 	sys.stdout = Logger()
 
-	report("Server version " + DMR_VERSION)
+	report(DMR_TITLE)
 
 	try:
 		prep()
