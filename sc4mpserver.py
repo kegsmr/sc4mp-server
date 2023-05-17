@@ -957,6 +957,7 @@ class RegionsManager(th.Thread):
 							savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
 							savegameSizeX = savegame.SC4ReadRegionalCity["citySizeX"]
 							savegameSizeY = savegame.SC4ReadRegionalCity["citySizeY"]
+							savegameModeFlag = savegame.SC4ReadRegionalCity["modeFlag"]
 
 							# Set "coords" variable. Used as a key in the region database and also for the name of the new save file
 							coords = str(savegameX) + " " + str(savegameY)
@@ -991,7 +992,9 @@ class RegionsManager(th.Thread):
 										self.outputs[save_id] = "City already claimed."
 
 							# Filter out godmode savegames if required
-							#TODO
+							if (True): #TODO check if server is configured to filter out godmode saves
+								if (savegameModeFlag == 0):
+									self.outputs[save_id] = "No city established yet."
 
 							# Proceed if save push has not been filtered out
 							if (not save_id in self.outputs.keys()):
