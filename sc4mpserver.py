@@ -17,7 +17,7 @@ from datetime import timedelta
 import inspect
 
 # Version
-SC4MP_VERSION = (1,0,0)
+SC4MP_VERSION = (0,1,0)
 
 # Path to the resources subdirectory
 SC4MP_RESOURCES_PATH = "resources"
