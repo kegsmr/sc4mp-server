@@ -1101,6 +1101,9 @@ class RequestHandler(th.Thread):
 			self.delete(c)
 		elif (request == "push_save"):
 			self.save(c)
+		elif (request == "add_server"):
+			if (True): #TODO discoverable setting on
+				self.add_server(c)
 
 		c.close()
 	
@@ -1365,7 +1368,15 @@ class RequestHandler(th.Thread):
 
 		# Delete temporary files
 		shutil.rmtree(path)
-		
+
+
+	def add_server(self, c):
+		"""TODO"""
+
+		c.send(SC4MP_SEPARATOR)
+
+		#TODO
+
 
 	def log_user(self, c):
 		"""TODO"""
@@ -1390,7 +1401,7 @@ class RequestHandler(th.Thread):
 		entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 		#entry.setdefault("banIPs", False) #TODO implement
 
-		# Close conneciton and throw error if the user is banned
+		# Close connection and throw error if the user is banned
 		if (entry["ban"]):
 			c.close()
 			raise Exception() #TODO CustomException("Authentication error.")
