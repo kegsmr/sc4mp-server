@@ -974,6 +974,11 @@ class RegionsManager(th.Thread):
 								entry = dict()
 								data[coords] = entry
 
+							# Filter out godmode savegames if required
+							if (True): #TODO check if server is configured to filter out godmode saves
+								if (savegameModeFlag == 0):
+									self.outputs[save_id] = "No city established yet."
+							
 							# Filter out cities that don't match the region configuration
 							if (entry == None):
 								self.outputs[save_id] = "Invalid city location."
@@ -990,11 +995,6 @@ class RegionsManager(th.Thread):
 									expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + timedelta(days=30) #TODO make the expiry date configurable
 									if (expires > datetime.now()):
 										self.outputs[save_id] = "City already claimed."
-
-							# Filter out godmode savegames if required
-							if (True): #TODO check if server is configured to filter out godmode saves
-								if (savegameModeFlag == 0):
-									self.outputs[save_id] = "No city established yet."
 
 							# Proceed if save push has not been filtered out
 							if (not save_id in self.outputs.keys()):
