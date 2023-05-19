@@ -225,11 +225,6 @@ def prep_profiles():
 	if (not os.path.exists(filename)):
 		create_empty_json(filename)
 
-	# Claims directory
-	claims_directory = os.path.join(profiles_directory, "regions")
-	if (not os.path.exists(claims_directory)):
-		os.makedirs(claims_directory)
-
 	# Get region directory names
 	regions = []
 	regions_directory = os.path.join("_SC4MP", "Regions")
@@ -242,16 +237,23 @@ def prep_profiles():
 	# Create databases for each region
 	for region in regions:
 		
+		# Region directory
+		region_directory = os.path.join(regions_directory, region)
+
+		# Create subdirectories in region directory
+		region_subdirectories = ["_Profiles", "_Backups"]
+		for region_subdirectory in region_subdirectories:
+			directory = os.path.join(region_directory, region_subdirectory)
+			if (not os.path.exists(directory)):
+				os.makedirs(directory)
+
 		# Get database
-		filename = os.path.join(claims_directory, region + ".json")
+		filename = os.path.join(region_directory, os.path.join("_Profiles", "region.json"))
 		data = None
 		try:
 			data = load_json(filename)
 		except:
 			data = dict()
-
-		# Region directory
-		region_directory = os.path.join(regions_directory, region)
 		
 		# Get savegame paths
 		savegame_paths = []
@@ -421,7 +423,7 @@ def export(type):
 	#	os.makedirs(destination)
 	
 	# Copy recursively
-	shutil.copytree(target, destination)	
+	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups', '_Profiles'))	
 
 
 def purge_directory(directory):
@@ -963,7 +965,7 @@ class RegionsManager(th.Thread):
 							coords = str(savegameX) + " " + str(savegameY)
 
 							# Get region database
-							data_filename = os.path.join("_SC4MP", os.path.join("_Profiles", os.path.join("regions", region + ".json")))
+							data_filename = os.path.join("_SC4MP", os.path.join("Regions", os.path.join(region, os.path.join("_Profiles", "region.json"))))
 							data = self.load_json(data_filename)
 							
 							# Get city entry
@@ -1328,7 +1330,7 @@ class RequestHandler(th.Thread):
 					savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
 					savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
 					coords = str(savegameX) + " " + str(savegameY)
-					data = load_json(os.path.join("_SC4MP", os.path.join("_Profiles", os.path.join("regions", os.path.join(region + ".json")))))
+					data = load_json(os.path.join("_SC4MP", os.path.join("Regions", os.path.join(region, os.path.join("_Profiles", "region.json")))))
 					if (coords in data.keys()):
 						entry = data[coords]
 						date_subfile_hash = entry["date_subfile_hash"]
