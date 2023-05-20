@@ -308,6 +308,9 @@ def prep_profiles():
 					y = savegameY + offsetY
 					data.setdefault(str(x) + " " + str(y), None)
 
+		# Cleanup DBPF objects to avoid errors when attempting to delete save files
+		savegames = None
+
 		update_json(filename, data)
 
 	# Profiles manager
@@ -1023,7 +1026,7 @@ class RegionsManager(th.Thread):
 									os.remove(destination)
 								shutil.copy(filename, destination)
 
-								# Copy save file from temporary driectory to backup directory
+								# Copy save file from temporary directory to backup directory
 								backup_directory = os.path.join("_SC4MP", os.path.join("Regions", os.path.join(region, os.path.join("_Backups", coords))))
 								if (not os.path.exists(backup_directory)):
 									os.makedirs(backup_directory)
