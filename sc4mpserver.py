@@ -289,6 +289,15 @@ def prep_profiles():
 				entry = dict()
 			data[coords] = entry
 
+			# Create reset savegame file if needed
+			if (not "reset" in entry.keys()):
+				reset_directory = os.path.join(region_directory, os.path.join("_Backups", coords))
+				if (not os.path.exists(reset_directory)):
+					os.makedirs(reset_directory)
+				reset_filename = os.path.join(reset_directory, "reset.sc4")
+				shutil.copy(savegame.filename, reset_filename)
+				entry["reset"] = reset_filename
+
 			# Set entry values
 			set_savegame_data(entry, savegame)
 
@@ -329,6 +338,7 @@ def set_savegame_data(entry, savegame):
 	entry.setdefault("filename", os.path.basename(os.path.normpath(savegame.filename)))
 	entry.setdefault("owner", None)
 	entry.setdefault("modified", None)
+	entry.setdefault("reset", None)
 
 	# Overwrite
 	entry["size"] = savegame.SC4ReadRegionalCity["citySizeX"]
@@ -1013,6 +1023,14 @@ class RegionsManager(th.Thread):
 									os.remove(destination)
 								shutil.copy(filename, destination)
 
+								# Copy save file from temporary driectory to backup directory
+								backup_directory = os.path.join("_SC4MP", os.path.join("Regions", os.path.join(region, os.path.join("_Backups", coords))))
+								if (not os.path.exists(backup_directory)):
+									os.makedirs(backup_directory)
+								destination = os.path.join(backup_directory, datetime.now().strftime("%Y%m%d%H%M%S") + ".sc4")
+								shutil.copy(filename, destination)
+								#TODO delete old backups
+
 								# Set entry values
 								entry["filename"] = coords + ".sc4"
 								entry["owner"] = user_id
@@ -1369,7 +1387,7 @@ class RequestHandler(th.Thread):
 				c.send(b"Unpause the game and retry.")
 
 		# Delete temporary files
-		shutil.rmtree(path)
+		#shutil.rmtree(path) #TODO error!
 
 
 	def add_server(self, c):
