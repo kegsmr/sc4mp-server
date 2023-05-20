@@ -290,13 +290,13 @@ def prep_profiles():
 			data[coords] = entry
 
 			# Create reset savegame file if needed
-			if (not "reset" in entry.keys()):
+			if (not "reset_filename" in entry.keys()):
 				reset_directory = os.path.join(region_directory, os.path.join("_Backups", coords))
 				if (not os.path.exists(reset_directory)):
 					os.makedirs(reset_directory)
 				reset_filename = os.path.join(reset_directory, "reset.sc4")
 				shutil.copy(savegame.filename, reset_filename)
-				entry["reset"] = reset_filename
+				entry["reset_filename"] = reset_filename
 
 			# Set entry values
 			set_savegame_data(entry, savegame)
@@ -338,7 +338,7 @@ def set_savegame_data(entry, savegame):
 	entry.setdefault("filename", os.path.basename(os.path.normpath(savegame.filename)))
 	entry.setdefault("owner", None)
 	entry.setdefault("modified", None)
-	entry.setdefault("reset", None)
+	entry.setdefault("reset_filename", None)
 
 	# Overwrite
 	entry["size"] = savegame.SC4ReadRegionalCity["citySizeX"]
