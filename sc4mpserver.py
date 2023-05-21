@@ -49,7 +49,7 @@ def prep():
 	create_subdirectories()
 	load_config()
 	prep_profiles()
-	#clear_temp()
+	clear_temp()
 	prep_regions() 
 	prep_backups()
 
@@ -209,7 +209,9 @@ def load_config():
 
 def clear_temp():
 	"""TODO"""
+
 	report("Clearing temporary files...")
+
 	purge_directory(os.path.join("_SC4MP", "_Temp"))
 
 
@@ -406,7 +408,7 @@ def package(type):
 		directory = "Regions"
 
 	target = os.path.join("_SC4MP", directory)
-	destination = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("Outbound", directory)))
+	destination = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("outbound", directory)))
 
 	if (os.path.exists(destination)):
 		os.remove(destination)
@@ -426,7 +428,7 @@ def export(type):
 
 	# Set target and destination directories
 	target = os.path.join("_SC4MP", directory)
-	destination = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("Outbound", directory)))
+	destination = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("outbound", directory)))
 
 	# Delete destination directory if it exists 
 	if (os.path.exists(destination)):
@@ -901,19 +903,19 @@ class BackupsManager(th.Thread):
 				for fullpath in fullpaths:
 					hashcode = md5(fullpath)
 					filesize = os.path.getsize(fullpath)
-					directory = os.path.join("_SC4MP", os.path.join("_Backups", os.path.join("data", hashcode)))
+					directory = os.path.join("_SC4MP", os.path.join("_Backups", "data"))
 					if (not os.path.exists(directory)):
 						os.makedirs(directory)
-					filename = os.path.join(directory, str(filesize))
+					filename = os.path.join(directory, hashcode + "_" + str(filesize))
 					if (not os.path.exists(filename) or (not hashcode == md5(filename)) or (not filesize == os.path.getsize(filename))):
-						report('- backing up "' + fullpath + '"...', self)
+						report('- copying "' + fullpath + '"...', self)
 						if (os.path.exists(filename)):
 							os.remove(filename)
 						shutil.copy(fullpath, filename)
 					fullpath_entry = dict()
 					fullpath_entry["hashcode"] = hashcode
 					fullpath_entry["size"] = filesize
-					fullpath_entry["backup_filename"] = filename
+					#fullpath_entry["backup_filename"] = filename
 					files_entry[fullpath] = fullpath_entry
 
 				# Create dictionary for backup and add the files entry
@@ -936,7 +938,7 @@ class BackupsManager(th.Thread):
 				report(str(e), self, "ERROR")
 
 				# Delay until retrying backup
-				time.sleep(60) #TODO make configurable
+				time.sleep(60)
 
 
 	def load_json(self, filename):
@@ -1291,7 +1293,7 @@ class RequestHandler(th.Thread):
 	def send_plugins(self, c):
 		"""TODO"""
 
-		#filename = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("Outbound", "Plugins.zip")))
+		#filename = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("outbound", "Plugins.zip")))
 		#send_or_cached(c, filename)
 
 		send_tree(c, os.path.join("_SC4MP", "Plugins"))
@@ -1305,10 +1307,10 @@ class RequestHandler(th.Thread):
 			while (sc4mp_regions_manager.export_regions):
 				time.sleep(SC4MP_DELAY)
 
-		#filename = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("Outbound", "Regions.zip")))
+		#filename = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("outbound", "Regions.zip")))
 		#send_or_cached(c, filename)
 
-		send_tree(c, os.path.join("_SC4MP", "_Temp", "Outbound", "Regions"))
+		send_tree(c, os.path.join("_SC4MP", "_Temp", "outbound", "Regions"))
 
 
 	def delete(self, c):
@@ -1362,7 +1364,7 @@ class RequestHandler(th.Thread):
 			c.send(SC4MP_SEPARATOR)
 
 			# Receive file
-			path = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("Inbound", os.path.join(save_id, region))))
+			path = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("inbound", os.path.join(save_id, region))))
 			if (not os.path.exists(path)):
 				os.makedirs(path)
 			filename = os.path.join(path, str(count) + ".sc4")
@@ -1373,7 +1375,7 @@ class RequestHandler(th.Thread):
 		c.recv(SC4MP_BUFFER_SIZE)
 
 		# Get path to save directory
-		path = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("Inbound", save_id)))
+		path = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("inbound", save_id)))
 
 		# Get regions in save directory
 		regions = os.listdir(path)
