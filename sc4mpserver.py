@@ -51,6 +51,7 @@ def prep():
 	prep_profiles()
 	#clear_temp()
 	prep_regions() 
+	prep_backups()
 
 
 def start():
@@ -437,6 +438,17 @@ def export(type):
 	
 	# Copy recursively
 	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups', '_Profiles'))	
+
+
+def prep_backups():
+	"""TODO"""
+
+	report("Preparing backups...")
+
+	# Backups manager
+	global sc4mp_backups_manager
+	sc4mp_backups_manager = BackupsManager()
+	sc4mp_backups_manager.start()
 
 
 def purge_directory(directory):
@@ -854,18 +866,94 @@ class DBPF():
 
 # Workers
 
-class BackupManager(th.Thread):
+class BackupsManager(th.Thread):
 	"""TODO"""
 
 	
 	def __init__(self):
 		"""TODO"""
-		super().__init__(self)
+
+		super().__init__()
 	
 
 	def run(self):
 		"""TODO"""
-		print("TO IMPLEMENT")
+
+		time.sleep(SC4MP_DELAY)
+
+		while (True): #TODO needs to stop at some point
+
+			try:
+
+				# Report creating backups
+				report("Creating backup...", self)
+
+				# Loop through all files in server directory and append them to a list
+				fullpaths = []
+				for path, directories, files in os.walk("_SC4MP"):
+					for file in files:
+						fullpaths.append(os.path.join(path, file))
+
+				# Create a files entry for the backup dictionary
+				files_entry = dict()
+
+				# Loop through fullpaths and backup the files and add them to the files entry
+				for fullpath in fullpaths:
+					hashcode = md5(fullpath)
+					filesize = os.path.getsize(fullpath)
+					directory = os.path.join("_SC4MP", os.path.join("_Backups", os.path.join("data", hashcode)))
+					if (not os.path.exists(directory)):
+						os.makedirs(directory)
+					filename = os.path.join(directory, str(filesize))
+					if (not os.path.exists(filename) or (not hashcode == md5(filename)) or (not filesize == os.path.getsize(filename))):
+						report('- backing up "' + fullpath + '"...', self)
+						if (os.path.exists(filename)):
+							os.remove(filename)
+						shutil.copy(fullpath, filename)
+					fullpath_entry = dict()
+					fullpath_entry["hashcode"] = hashcode
+					fullpath_entry["size"] = filesize
+					fullpath_entry["backup_filename"] = filename
+					files_entry[fullpath] = fullpath_entry
+
+				# Create dictionary for backup and add the files entry
+				backup_data = dict()
+				backup_data["files"] = files_entry
+
+				# Update database
+				backup_filename = os.path.join("_SC4MP", os.path.join("_Backups", datetime.now().strftime("%Y%m%d%H%M%S") + ".json"))
+				self.update_json(backup_filename, backup_data)
+
+				# Report done
+				report("Done.", self)
+
+				# Delay until next backup
+				time.sleep(60 * 60) #TODO make configurable (by minutes)
+
+			except Exception as e:
+
+				# Report error
+				report(str(e), self, "ERROR")
+
+				# Delay until retrying backup
+				time.sleep(60) #TODO make configurable
+
+
+	def load_json(self, filename):
+		"""TODO"""
+		try:
+			with open(filename, 'r') as file:
+				return json.load(file)
+		except:
+			return dict()
+
+	
+	def update_json(self, filename, data):
+		"""TODO"""
+		with open(filename, 'w') as file:
+			file.seek(0)
+			json.dump(data, file, indent=4)
+			file.truncate()
 
 
 class ProfilesManager(th.Thread):
