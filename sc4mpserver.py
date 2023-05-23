@@ -149,11 +149,12 @@ def create_subdirectories():
 		if not os.path.exists(new_directory):
 			try:
 				os.makedirs(new_directory)
-				if (directory == "Plugins" or "Regions"):
+				if (directory == "Plugins" or directory == "Regions"):
 					shutil.unpack_archive(get_sc4mp_path(directory + ".zip"), new_directory)
-			except:
-				report("Failed to create " + directory + " subdirectory.", None, "WARNING")
-				report('(this may have been printed by error, check your "_SC4MP" subdirectory)', None, "WARNING")
+			except Exception as e:
+				report(str(e), None, "ERROR")
+				#report("Failed to create " + directory + " subdirectory.", None, "WARNING")
+				#report('(this may have been printed by error, check your "_SC4MP" subdirectory)', None, "WARNING")
 
 
 def load_config():
