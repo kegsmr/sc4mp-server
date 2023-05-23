@@ -1150,6 +1150,16 @@ class RegionsManager(th.Thread):
 						report("Done.", self)
 
 					else:
+
+						# Clean up inbound temporary files and outputs
+						try:
+							path = os.path.join("_SC4MP", os.path.join("_Temp", "inbound"))
+							for directory in os.listdir(path):
+								if (directory in self.outputs.keys()):
+									shutil.rmtree(os.path.join(path, directory))
+									self.outputs.pop(directory)
+						except Exception as e:
+							pass
 						
 						time.sleep(SC4MP_DELAY)
 
@@ -1454,6 +1464,7 @@ class RequestHandler(th.Thread):
 					else:
 						new_savegames.append(savegame)
 						report("YES (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+					savegame = None
 				savegames = new_savegames
 			else:
 				report("Skipping savegame filter 2", self)
@@ -1479,8 +1490,15 @@ class RequestHandler(th.Thread):
 				# Report to the client that the save push is invalid
 				c.send(b"Unpause the game and retry.")
 
-		# Delete temporary files
-		#shutil.rmtree(path) #TODO error!
+			# Delete savegame arrays to avoid file deletion errors
+			savegames = None
+			new_savegames = None
+
+		# Try to delete temporary files
+		try:
+			shutil.rmtree(path)
+		except:
+			pass
 
 
 	def add_server(self, c):
