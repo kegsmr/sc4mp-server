@@ -1151,12 +1151,13 @@ class RegionsManager(th.Thread):
 
 					else:
 
-						# Delete old temporary files
+						# Clean up inbound temporary files and outputs
 						try:
 							path = os.path.join("_SC4MP", os.path.join("_Temp", "inbound"))
 							for directory in os.listdir(path):
-								if ((not directory in self.tasks) and (not directory in self.outputs.keys())):
+								if (directory in self.outputs.keys()):
 									shutil.rmtree(os.path.join(path, directory))
+									self.outputs.pop(directory)
 						except Exception as e:
 							pass
 						
@@ -1482,7 +1483,7 @@ class RequestHandler(th.Thread):
 					time.sleep(SC4MP_DELAY)
 
 				# Send the output to the client
-				c.send((sc4mp_regions_manager.outputs.pop(save_id)).encode())
+				c.send((sc4mp_regions_manager.outputs[save_id]).encode())
 
 			else:
 
