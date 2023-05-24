@@ -1035,6 +1035,8 @@ class RegionsManager(th.Thread):
 
 					export("regions")
 
+					report("Done.", self)
+
 					self.regions_modified = False
 					self.export_regions = False
 
