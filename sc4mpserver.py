@@ -1143,7 +1143,7 @@ class RegionsManager(th.Thread):
 						except Exception as e:
 
 							# Report an error to the request handler
-							self.outputs[save_id] = "Unexpected error."
+							self.outputs[save_id] = "Unexpected server-side error."
 
 							# Raise the exception so that it appears in the server's output
 							raise e
