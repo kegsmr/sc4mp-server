@@ -34,9 +34,8 @@ setup(
 		"script": "sc4mpserver.py",
 		"icon_resources": [(1, "resources/icon.ico")],
 		"name": "SC4MP Server",
-		"author": "SC4MP",
-        "description": "SC4MP Multiplayer Mod for SimCity 4",
-		"version": "v1.0.0 Alpha"
+		"author": "Simcity 4 Multiplayer Project",
+        "description": "Multiplayer server for Simcity 4",
 	}],
     zipfile=None,
 	options={
@@ -45,7 +44,8 @@ setup(
             "bundle_files": 1,
 			"optimize": 2,
 			"compressed": True,
-            "excludes":["Tkinter"]
+            "excludes":[],
+            "verbose": 4
 		}
 	},
 	data_files=find_data_files('resources','resources',['*'])
