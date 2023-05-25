@@ -23,7 +23,7 @@ SC4MP_VERSION = (0,1,0)
 SC4MP_RESOURCES_PATH = "resources"
 
 # Default config values
-default_host = socket.gethostname()
+default_host = "0.0.0.0"
 default_port = 7246
 default_server_id =''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))
 default_server_name = os.getlogin() + " on " + socket.gethostname()
@@ -609,7 +609,67 @@ def report(message, object=None, type="INFO", ): #TODO do this in the logger to 
 
 # Objects
 
-class DBPF():
+class Config:
+	"""TODO"""
+
+
+	def __init__(self, path, defaults):
+		"""TODO"""
+
+		# Parameters
+		self.PATH = path
+		self.DEFAULTS = defaults
+
+		# Create dictionary with default config settings
+		self.data = dict()
+		for section in self.DEFAULTS:
+			section_name = section[0]
+			section_items = section[1]
+			self.data.setdefault(section_name, dict())
+			for item in section_items:
+				item_name = item[0]
+				item_value = item[1]
+				self.data[section_name].setdefault(item_name, item_value)
+		
+		# Try to read settings from the config file and update the dictionary accordingly
+		parser = configparser.RawConfigParser()
+		try:
+			parser.read(self.PATH)
+			for section_name in self.data.keys():
+				section = self.data[section_name]
+				try:
+					for item_name in section.keys():
+						try:
+							self.data[section_name][item_name] = parser.get(section_name, item_name)
+						except:
+							pass
+				except:
+					pass
+		except:
+			pass
+
+		# Update config file
+		self.update()
+
+
+	def update(self):
+		"""TODO"""
+		parser = configparser.RawConfigParser()
+		for section_name in self.data.keys():
+			parser.add_section(section_name)
+			section = self.data[section_name]
+			for item_name in section.keys():
+				item_value = section[item_name]
+				parser.set(section_name, item_name, item_value)
+		with open(self.PATH, 'wt') as file:
+			parser.write(file)
+		try:
+			update_config_constants(self)
+		except:
+			pass
+
+
+class DBPF:
 	"""TODO include credits to original php file"""
 
 
@@ -981,7 +1041,7 @@ class ProfilesManager(th.Thread):
 
 	def run(self):
 		"""TODO"""
-		report("Monitoring database for changes...", self) #TODO why is the spacing wrong?
+		#report("Monitoring database for changes...", self) #TODO why is the spacing wrong?
 		old_data = str(self.data)
 		while (True): #TODO pretty dumb way of checking if a dictionary has been modified. also this thread probably needs to stop at some point
 			try:
@@ -1601,12 +1661,6 @@ class Logger():
 
 
 # Main Method
-
-def test_DBPF():
-	"""TODO"""
-	savegame = DBPF("City - Big City Tutorial (2).sc4")
-	print(file_md5(savegame.decompress_subfile("2990c1e5")))
-
 
 def main():
 	"""The main method."""
