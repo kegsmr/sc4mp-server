@@ -42,6 +42,7 @@ SC4MP_SEPARATOR = b"<SEPARATOR>"
 SC4MP_BUFFER_SIZE = 4096
 SC4MP_DELAY = .1
 
+
 # Methods
 
 def prep():
