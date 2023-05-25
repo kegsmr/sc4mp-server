@@ -287,7 +287,7 @@ def prep_profiles():
 			savegame_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
 
 			# Get dictionary for savegame data
-			coords = str(savegameX) + " " + str(savegameY)
+			coords = str(savegameX) + "_" + str(savegameY)
 			entry = data.get(coords, dict())
 			if (entry == None):
 				entry = dict()
@@ -310,7 +310,7 @@ def prep_profiles():
 				x = savegameX + offsetX
 				for offsetY in range(savegameSize):
 					y = savegameY + offsetY
-					data.setdefault(str(x) + " " + str(y), None)
+					data.setdefault(str(x) + "_" + str(y), None)
 
 		# Cleanup DBPF objects to avoid errors when attempting to delete save files
 		savegames = None
@@ -1068,7 +1068,7 @@ class RegionsManager(th.Thread):
 							savegameModeFlag = savegame.SC4ReadRegionalCity["modeFlag"]
 
 							# Set "coords" variable. Used as a key in the region database and also for the name of the new save file
-							coords = str(savegameX) + " " + str(savegameY)
+							coords = str(savegameX) + "_" + str(savegameY)
 
 							# Get region database
 							data_filename = os.path.join("_SC4MP", os.path.join("Regions", os.path.join(region, os.path.join("_Profiles", "region.json"))))
@@ -1453,7 +1453,7 @@ class RequestHandler(th.Thread):
 				for savegame in savegames:
 					savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
 					savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
-					coords = str(savegameX) + " " + str(savegameY)
+					coords = str(savegameX) + "_" + str(savegameY)
 					data = load_json(os.path.join("_SC4MP", os.path.join("Regions", os.path.join(region, os.path.join("_Profiles", "region.json")))))
 					if (coords in data.keys()):
 						entry = data[coords]
