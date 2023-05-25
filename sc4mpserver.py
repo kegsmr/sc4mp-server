@@ -1560,6 +1560,23 @@ class RequestHandler(th.Thread):
 		return user_id
 
 
+# Exceptions
+
+class CustomException(Exception):
+	"""TODO"""
+
+
+	def __init__(self, message, *args):
+		"""TODO"""
+		super().__init__(args)
+		self.message = message
+	
+
+	def __str__(self):
+		"""TODO"""
+		return self.message
+
+
 # Logger
 
 class Logger():
