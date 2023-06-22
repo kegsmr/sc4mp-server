@@ -42,6 +42,9 @@ SC4MP_SEPARATOR = b"<SEPARATOR>"
 SC4MP_BUFFER_SIZE = 4096
 SC4MP_DELAY = .1
 
+# Server path
+sc4mp_server_path = "_SC4MP"
+
 
 # Methods
 
@@ -64,6 +67,9 @@ def start():
 	Returns:
 		None
 	"""
+
+	if (sc4mp_nostart):
+		return
 
 	report("Starting server...")
 
@@ -146,7 +152,7 @@ def create_subdirectories():
 	directories = ["_Backups", "_Profiles", "_Temp", "Plugins", "Regions"]
 
 	for directory in directories:
-		new_directory = os.path.join("_SC4MP", directory)
+		new_directory = os.path.join(sc4mp_server_path, directory)
 		if not os.path.exists(new_directory):
 			try:
 				os.makedirs(new_directory)
@@ -155,7 +161,7 @@ def create_subdirectories():
 			except Exception as e:
 				report(str(e), None, "ERROR")
 				#report("Failed to create " + directory + " subdirectory.", None, "WARNING")
-				#report('(this may have been printed by error, check your "_SC4MP" subdirectory)', None, "WARNING")
+				#report('(this may have been printed by error, check your sc4mp_server_path subdirectory)', None, "WARNING")
 
 
 def load_config():
@@ -176,7 +182,7 @@ def load_config():
 
 	report("Loading config...")
 
-	config_path = os.path.join("_SC4MP", "serverconfig.ini")
+	config_path = os.path.join(sc4mp_server_path, "serverconfig.ini")
 
 	try:
 
@@ -214,7 +220,7 @@ def clear_temp():
 
 	report("Clearing temporary files...")
 
-	purge_directory(os.path.join("_SC4MP", "_Temp"))
+	purge_directory(os.path.join(sc4mp_server_path, "_Temp"))
 
 
 def prep_profiles():
@@ -223,7 +229,7 @@ def prep_profiles():
 	report("Preparing profiles...")
 
 	# Profiles directory
-	profiles_directory = os.path.join("_SC4MP", "_Profiles")
+	profiles_directory = os.path.join(sc4mp_server_path, "_Profiles")
 
 	# Users database
 	filename = os.path.join(profiles_directory, "users.json")
@@ -232,7 +238,7 @@ def prep_profiles():
 
 	# Get region directory names
 	regions = []
-	regions_directory = os.path.join("_SC4MP", "Regions")
+	regions_directory = os.path.join(sc4mp_server_path, "Regions")
 	items = os.listdir(regions_directory)
 	for item in items:
 		path = os.path.join(regions_directory, item)
@@ -318,6 +324,9 @@ def prep_profiles():
 
 		update_json(filename, data)
 
+	if (sc4mp_nostart):
+		return
+
 	# Profiles manager
 	global sc4mp_profiles_manager
 	sc4mp_profiles_manager = ProfilesManager()
@@ -390,6 +399,9 @@ def package_plugins_and_regions():
 def prep_regions():
 	"""TODO"""
 
+	if (sc4mp_nostart):
+		return
+
 	report("Preparing regions...")
 
 	export("regions")
@@ -409,8 +421,8 @@ def package(type):
 	elif (type == "regions"):
 		directory = "Regions"
 
-	target = os.path.join("_SC4MP", directory)
-	destination = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("outbound", directory)))
+	target = os.path.join(sc4mp_server_path, directory)
+	destination = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", directory)))
 
 	if (os.path.exists(destination)):
 		os.remove(destination)
@@ -429,8 +441,8 @@ def export(type):
 		directory = "Regions"
 
 	# Set target and destination directories
-	target = os.path.join("_SC4MP", directory)
-	destination = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("outbound", directory)))
+	target = os.path.join(sc4mp_server_path, directory)
+	destination = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", directory)))
 
 	# Delete destination directory if it exists 
 	if (os.path.exists(destination)):
@@ -453,7 +465,8 @@ def prep_backups():
 	global sc4mp_backups_manager
 	sc4mp_backups_manager = BackupsManager()
 	sc4mp_backups_manager.backup()
-	sc4mp_backups_manager.start()
+	if (not sc4mp_nostart):
+		sc4mp_backups_manager.start()
 
 
 def purge_directory(directory):
@@ -988,7 +1001,7 @@ class BackupsManager(th.Thread):
 				
 		# Loop through all files in server directory and append them to a list
 		fullpaths = []
-		for path, directories, files in os.walk("_SC4MP"):
+		for path, directories, files in os.walk(sc4mp_server_path):
 			for file in files:
 				fullpaths.append(os.path.join(path, file))
 
@@ -999,7 +1012,7 @@ class BackupsManager(th.Thread):
 		for fullpath in fullpaths:
 			hashcode = md5(fullpath)
 			filesize = os.path.getsize(fullpath)
-			directory = os.path.join("_SC4MP", os.path.join("_Backups", "data"))
+			directory = os.path.join(sc4mp_server_path, os.path.join("_Backups", "data"))
 			if (not os.path.exists(directory)):
 				os.makedirs(directory)
 			filename = os.path.join(directory, hashcode + "_" + str(filesize))
@@ -1019,7 +1032,7 @@ class BackupsManager(th.Thread):
 		backup_data["files"] = files_entry
 
 		# Update database
-		backup_filename = os.path.join("_SC4MP", os.path.join("_Backups", datetime.now().strftime("%Y%m%d%H%M%S") + ".json"))
+		backup_filename = os.path.join(sc4mp_server_path, os.path.join("_Backups", datetime.now().strftime("%Y%m%d%H%M%S") + ".json"))
 		self.update_json(backup_filename, backup_data)
 
 		# Report done
@@ -1035,7 +1048,7 @@ class ProfilesManager(th.Thread):
 
 		super().__init__()
 	
-		self.filename = os.path.join("_SC4MP", os.path.join("_Profiles", "users.json"))
+		self.filename = os.path.join(sc4mp_server_path, os.path.join("_Profiles", "users.json"))
 		self.data = self.load_json(self.filename)
 
 
@@ -1138,7 +1151,7 @@ class RegionsManager(th.Thread):
 							coords = str(savegameX) + "_" + str(savegameY)
 
 							# Get region database
-							data_filename = os.path.join("_SC4MP", os.path.join("Regions", os.path.join(region, os.path.join("_Profiles", "region.json"))))
+							data_filename = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, os.path.join("_Profiles", "region.json"))))
 							data = self.load_json(data_filename)
 							
 							# Get city entry
@@ -1176,18 +1189,18 @@ class RegionsManager(th.Thread):
 
 								# Delete previous save file if it exists
 								if ("filename" in entry.keys()):
-									previous_filename = os.path.join("_SC4MP", os.path.join("Regions", os.path.join(region, entry["filename"])))
+									previous_filename = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, entry["filename"])))
 									if (os.path.exists(previous_filename)):
 										os.remove(previous_filename)
 
 								# Copy save file from temporary directory to regions directory
-								destination = os.path.join("_SC4MP", os.path.join("Regions", os.path.join(region, coords + ".sc4"))) #TODO include city name
+								destination = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, coords + ".sc4"))) #TODO include city name
 								if (os.path.exists(destination)):
 									os.remove(destination)
 								shutil.copy(filename, destination)
 
 								# Copy save file from temporary directory to backup directory
-								backup_directory = os.path.join("_SC4MP", os.path.join("Regions", os.path.join(region, os.path.join("_Backups", coords))))
+								backup_directory = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, os.path.join("_Backups", coords))))
 								if (not os.path.exists(backup_directory)):
 									os.makedirs(backup_directory)
 								destination = os.path.join(backup_directory, datetime.now().strftime("%Y%m%d%H%M%S") + ".sc4")
@@ -1223,7 +1236,7 @@ class RegionsManager(th.Thread):
 
 						# Clean up inbound temporary files and outputs
 						try:
-							path = os.path.join("_SC4MP", os.path.join("_Temp", "inbound"))
+							path = os.path.join(sc4mp_server_path, os.path.join("_Temp", "inbound"))
 							for directory in os.listdir(path):
 								if (directory in self.outputs.keys()):
 									shutil.rmtree(os.path.join(path, directory))
@@ -1261,7 +1274,9 @@ class RequestHandler(th.Thread):
 
 	def __init__(self, c):
 		"""TODO"""
+
 		super().__init__()
+		
 		self.c = c
 
 
@@ -1373,10 +1388,10 @@ class RequestHandler(th.Thread):
 	def send_plugins(self, c):
 		"""TODO"""
 
-		#filename = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("outbound", "Plugins.zip")))
+		#filename = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", "Plugins.zip")))
 		#send_or_cached(c, filename)
 
-		send_tree(c, os.path.join("_SC4MP", "Plugins"))
+		send_tree(c, os.path.join(sc4mp_server_path, "Plugins"))
 
 
 	def send_regions(self, c):
@@ -1387,10 +1402,10 @@ class RequestHandler(th.Thread):
 			while (sc4mp_regions_manager.export_regions):
 				time.sleep(SC4MP_DELAY)
 
-		#filename = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("outbound", "Regions.zip")))
+		#filename = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", "Regions.zip")))
 		#send_or_cached(c, filename)
 
-		send_tree(c, os.path.join("_SC4MP", "_Temp", "outbound", "Regions"))
+		send_tree(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
 
 
 	def delete(self, c):
@@ -1408,7 +1423,7 @@ class RequestHandler(th.Thread):
 
 		#TODO only delete file if user is authorized
 
-		filename = os.path.join("_SC4MP", os.path.join("Regions", os.path.join(region, city)))
+		filename = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, city)))
 
 		os.remove(filename)
 
@@ -1444,7 +1459,7 @@ class RequestHandler(th.Thread):
 			c.send(SC4MP_SEPARATOR)
 
 			# Receive file
-			path = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("inbound", os.path.join(save_id, region))))
+			path = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("inbound", os.path.join(save_id, region))))
 			if (not os.path.exists(path)):
 				os.makedirs(path)
 			filename = os.path.join(path, str(count) + ".sc4")
@@ -1455,7 +1470,7 @@ class RequestHandler(th.Thread):
 		c.recv(SC4MP_BUFFER_SIZE)
 
 		# Get path to save directory
-		path = os.path.join("_SC4MP", os.path.join("_Temp", os.path.join("inbound", save_id)))
+		path = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("inbound", save_id)))
 
 		# Get regions in save directory
 		regions = os.listdir(path)
@@ -1521,7 +1536,7 @@ class RequestHandler(th.Thread):
 					savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
 					savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
 					coords = str(savegameX) + "_" + str(savegameY)
-					data = load_json(os.path.join("_SC4MP", os.path.join("Regions", os.path.join(region, os.path.join("_Profiles", "region.json")))))
+					data = load_json(os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, os.path.join("_Profiles", "region.json")))))
 					if (coords in data.keys()):
 						entry = data[coords]
 						date_subfile_hash = entry["date_subfile_hash"]
@@ -1670,13 +1685,32 @@ def main():
 	report(SC4MP_TITLE)
 
 	try:
+		
+		try:
+
+			args = sys.argv
+
+			global sc4mp_nostart
+			sc4mp_nostart = "-prep" in args
+
+			global sc4mp_server_path
+			ARGUMENT = "--server-path"
+			if (ARGUMENT in args):
+				sc4mp_server_path = args[args.index(ARGUMENT) + 1]
+		
+		except Exception as e:
+			
+			report("Invalid arguments.", None, "FATAL")
+			sys.exit()
+
 		prep()
 		start()
+
 	except Exception as e:
+		
 		report(str(e), None, "FATAL")
 		traceback.print_exc()
 	
 
 if __name__ == '__main__':
 	main()
-	#test_DBPF()
