@@ -22,6 +22,15 @@ SC4MP_VERSION = (0,1,0)
 # Path to the resources subdirectory
 SC4MP_RESOURCES_PATH = "resources"
 
+# Global variables
+sc4mp_server_path = "_SC4MP"
+
+# Global constants
+SC4MP_TITLE = "SC4MP Server v" + str(SC4MP_VERSION[0]) + "." + str(SC4MP_VERSION[1]) + "." + str(SC4MP_VERSION[2])
+SC4MP_SEPARATOR = b"<SEPARATOR>"
+SC4MP_BUFFER_SIZE = 4096
+SC4MP_DELAY = .1
+
 # Default config values
 default_host = "0.0.0.0"
 default_port = 7246
@@ -35,15 +44,6 @@ SC4MP_PORT = None
 SC4MP_SERVER_ID = None
 SC4MP_SERVER_NAME = None
 SC4MP_SERVER_DESCRIPTION = None
-
-# Hard-coded constants
-SC4MP_TITLE = "SC4MP Server v" + str(SC4MP_VERSION[0]) + "." + str(SC4MP_VERSION[1]) + "." + str(SC4MP_VERSION[2])
-SC4MP_SEPARATOR = b"<SEPARATOR>"
-SC4MP_BUFFER_SIZE = 4096
-SC4MP_DELAY = .1
-
-# Server path
-sc4mp_server_path = "_SC4MP"
 
 
 # Methods
@@ -124,9 +124,9 @@ def md5(filename):
 	return hash_md5.hexdigest()
 
 
-def string_md5(text):
+'''def string_md5(text):
 	"""TODO"""
-	return hashlib.md5(text.encode()).hexdigest()
+	return hashlib.md5(text.encode()).hexdigest()'''
 
 
 def file_md5(file):
