@@ -23,7 +23,7 @@ SC4MP_VERSION = (0,1,0)
 SC4MP_RESOURCES_PATH = "resources"
 
 # Global variables
-sc4mp_server_path = "_SC4MP"
+sc4mp_server_path = "_Server"
 
 # Global constants
 SC4MP_TITLE = "SC4MP Server v" + str(SC4MP_VERSION[0]) + "." + str(SC4MP_VERSION[1]) + "." + str(SC4MP_VERSION[2])
