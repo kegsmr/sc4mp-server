@@ -16,45 +16,47 @@ from datetime import datetime
 from datetime import timedelta
 import inspect
 
-
-# Version
-
 SC4MP_VERSION = (0,1,0)
 
+SC4MP_SERVERS = [("64.223.232.94", 7246)]
 
-# Global variables
-
-sc4mp_args = sys.argv
-sc4mp_server_path = "_Server"
-sc4mp_server_running = False
-
-
-# Global constants
-
+SC4MP_CONFIG_PATH = None
 SC4MP_LOG_PATH = "sc4mpserver-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
 SC4MP_RESOURCES_PATH = "resources"
+
 SC4MP_TITLE = "SC4MP Server v" + str(SC4MP_VERSION[0]) + "." + str(SC4MP_VERSION[1]) + "." + str(SC4MP_VERSION[2])
+SC4MP_ICON = os.path.join(SC4MP_RESOURCES_PATH, "icon.ico")
+
 SC4MP_SEPARATOR = b"<SEPARATOR>"
 SC4MP_BUFFER_SIZE = 4096
+
 SC4MP_DELAY = .1
 
-
-# Default config values #TODO incorporate in config class
-
-default_host = "0.0.0.0"
-default_port = 7246
-default_server_id =''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))
-default_server_name = os.getlogin() + " on " + socket.gethostname()
-default_server_description = "Join and build your city.\n\nRules:\n- Feed the llamas\n- Balance your budget\n- Do uncle Vinny some favors"
-
-
-# Config constants #TODO incorporate in config class
+SC4MP_CONFIG_DEFAULTS = [
+	("HOSTING", [
+		("host", "0.0.0.0"),
+		("port", 7246)
+	]),
+	("INFO", [
+		("server_id", ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))),
+		("server_name", os.getlogin() + " on " + socket.gethostname()),
+		("server_description", "Join and build your city.\n\nRules:\n- Feed the llamas\n- Balance your budget\n- Do uncle Vinny some favors")
+	]),
+	("RULES", [
+	])
+]
 
 SC4MP_HOST = None
 SC4MP_PORT = None
 SC4MP_SERVER_ID = None
 SC4MP_SERVER_NAME = None
 SC4MP_SERVER_DESCRIPTION = None
+
+sc4mp_args = sys.argv
+
+sc4mp_server_path = "_Server"
+
+sc4mp_server_running = False
 
 
 # Methods
@@ -357,6 +359,22 @@ def report(message, object=None, type="INFO", ): #TODO do this in the logger to 
 		color = '\033[91m '
 	print(color + output)'''
 	print("[" + type + "] " + message)
+
+
+def update_config_constants(config):
+	"""TODO"""
+
+	global SC4MP_HOST
+	global SC4MP_PORT
+	global SC4MP_SERVER_ID
+	global SC4MP_SERVER_NAME
+	global SC4MP_SERVER_DESCRIPTION
+
+	SC4MP_HOST = config.data['HOSTING']['host']
+	SC4MP_PORT = config.data['HOSTING']['port']
+	SC4MP_SERVER_ID = config.data['INFO']['server_id']
+	SC4MP_SERVER_NAME = config.data['INFO']['server_name']
+	SC4MP_SERVER_DESCRIPTION = config.data['INFO']['server_description']
 
 
 # Objects
@@ -712,7 +730,7 @@ class Server(th.Thread):
 		s = socket.socket()
 
 		report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
-		s.bind((SC4MP_HOST, SC4MP_PORT))
+		s.bind((SC4MP_HOST, int(SC4MP_PORT)))
 
 		report("- listening for connections...")
 		s.listen(5)
@@ -763,7 +781,14 @@ class Server(th.Thread):
 	def load_config(self):
 		"""TODO"""
 
-		global SC4MP_HOST
+		global sc4mp_config, SC4MP_CONFIG_PATH
+		SC4MP_CONFIG_PATH = os.path.join(sc4mp_server_path, "serverconfig.ini")
+
+		report("Loading config...")
+		
+		sc4mp_config = Config(SC4MP_CONFIG_PATH, SC4MP_CONFIG_DEFAULTS)
+
+		'''global SC4MP_HOST
 		global SC4MP_PORT
 		global SC4MP_SERVER_ID
 		global SC4MP_SERVER_NAME
@@ -801,7 +826,7 @@ class Server(th.Thread):
 			SC4MP_PORT = default_port
 			SC4MP_SERVER_ID = default_server_id
 			SC4MP_SERVER_NAME = default_server_name
-			SC4MP_SERVER_DESCRIPTION = default_server_description
+			SC4MP_SERVER_DESCRIPTION = default_server_description'''
 
 
 	def prep_profiles(self):
