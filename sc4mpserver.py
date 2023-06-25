@@ -87,10 +87,6 @@ def start():
 
 	try:
 
-		while(not sc4mp_server_running):
-			
-			time.sleep(SC4MP_DELAY)
-
 		while (sc4mp_server_running):
 
 			try:
@@ -104,7 +100,7 @@ def start():
 
 				report(str(e), None, "ERROR")
 		
-	except KeyboardInterrupt as e:
+	except SystemExit as e:
 
 		pass
 
@@ -1747,7 +1743,6 @@ def main():
 		
 		report(str(e), None, "FATAL")
 		traceback.print_exc()
-	
 
 if __name__ == '__main__':
 	main()
