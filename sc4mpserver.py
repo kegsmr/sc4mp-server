@@ -24,6 +24,7 @@ SC4MP_RESOURCES_PATH = "resources"
 
 # Global variables
 sc4mp_server_path = "_Server"
+sc4mp_server_running = False
 
 # Global constants
 SC4MP_TITLE = "SC4MP Server v" + str(SC4MP_VERSION[0]) + "." + str(SC4MP_VERSION[1]) + "." + str(SC4MP_VERSION[2])
@@ -72,28 +73,48 @@ def start():
 		return
 
 	report("Starting server...")
+	global sc4mp_server_running
+	sc4mp_server_running = True
 
 	report("- creating socket...")
 	s = socket.socket()
 
-	report("- binding host and port...")
+	report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
 	s.bind((SC4MP_HOST, SC4MP_PORT))
 
 	report("- listening for connections...")
 	s.listen(5)
 
-	while (True):
+	try:
 
-		try:
+		while(not sc4mp_server_running):
+			
+			time.sleep(SC4MP_DELAY)
 
-			c, address = s.accept()
-			report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
+		while (sc4mp_server_running):
 
-			RequestHandler(c).start()	
+			try:
 
-		except socket.error as e:
+				c, address = s.accept()
+				report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
 
-			report(str(e), None, "ERROR")
+				RequestHandler(c).start()	
+
+			except socket.error as e:
+
+				report(str(e), None, "ERROR")
+		
+	except KeyboardInterrupt as e:
+
+		pass
+
+
+def shutdown():
+	"""TODO"""
+
+	report("Shutting down...")
+	global sc4mp_server_running
+	sc4mp_server_running = False
 
 
 def get_sc4mp_path(filename):
@@ -226,7 +247,7 @@ def clear_temp():
 def prep_profiles():
 	"""TODO"""
 
-	report("Preparing profiles...")
+	report("Preparing database...")
 
 	# Profiles directory
 	profiles_directory = os.path.join(sc4mp_server_path, "_Profiles")
@@ -957,7 +978,11 @@ class BackupsManager(th.Thread):
 	def run(self):
 		"""TODO"""
 
-		while (True): #TODO needs to stop at some point
+		while(not sc4mp_server_running):
+			
+			time.sleep(SC4MP_DELAY)
+
+		while (sc4mp_server_running): #TODO needs to stop at some point
 
 			try:
 
@@ -993,7 +1018,7 @@ class BackupsManager(th.Thread):
 			file.truncate()
 
 
-	def backup(self):
+	def backup(self): #TODO stop backing up the backups subdirectory
 		"""TODO"""
 
 		# Report creating backups
@@ -1054,9 +1079,16 @@ class ProfilesManager(th.Thread):
 
 	def run(self):
 		"""TODO"""
+		
+		while(not sc4mp_server_running):
+			
+			time.sleep(SC4MP_DELAY)
+
 		#report("Monitoring database for changes...", self) #TODO why is the spacing wrong?
+		
 		old_data = str(self.data)
-		while (True): #TODO pretty dumb way of checking if a dictionary has been modified. also this thread probably needs to stop at some point
+		
+		while (sc4mp_server_running): #TODO pretty dumb way of checking if a dictionary has been modified. also this thread probably needs to stop at some point
 			try:
 				time.sleep(SC4MP_DELAY)
 				new_data = str(self.data)
@@ -1103,8 +1135,12 @@ class RegionsManager(th.Thread):
 
 	def run(self):
 		"""TODO"""
+
+		while(not sc4mp_server_running):
+			
+			time.sleep(SC4MP_DELAY)
 		
-		while(True): #TODO end thread
+		while (sc4mp_server_running):
 
 			try:
 
@@ -1289,7 +1325,7 @@ class RequestHandler(th.Thread):
 
 		report("Request: " + request, self)
 
-		if (request== "ping"):
+		if (request == "ping"):
 			self.ping(c)
 		elif (request == "server_id"):
 			self.send_server_id(c)
@@ -1705,6 +1741,7 @@ def main():
 
 		prep()
 		start()
+		shutdown()
 
 	except Exception as e:
 		
