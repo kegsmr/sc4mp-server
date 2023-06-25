@@ -16,30 +16,40 @@ from datetime import datetime
 from datetime import timedelta
 import inspect
 
+
 # Version
+
 SC4MP_VERSION = (0,1,0)
 
-# Path to the resources subdirectory
-SC4MP_RESOURCES_PATH = "resources"
 
 # Global variables
+
+sc4mp_args = sys.argv
 sc4mp_server_path = "_Server"
 sc4mp_server_running = False
 
+
 # Global constants
+
+SC4MP_LOG_PATH = "sc4mpserver-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
+SC4MP_RESOURCES_PATH = "resources"
 SC4MP_TITLE = "SC4MP Server v" + str(SC4MP_VERSION[0]) + "." + str(SC4MP_VERSION[1]) + "." + str(SC4MP_VERSION[2])
 SC4MP_SEPARATOR = b"<SEPARATOR>"
 SC4MP_BUFFER_SIZE = 4096
 SC4MP_DELAY = .1
 
-# Default config values
+
+# Default config values #TODO incorporate in config class
+
 default_host = "0.0.0.0"
 default_port = 7246
 default_server_id =''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))
 default_server_name = os.getlogin() + " on " + socket.gethostname()
 default_server_description = "Join and build your city.\n\nRules:\n- Feed the llamas\n- Balance your budget\n- Do uncle Vinny some favors"
 
-# Config constants
+
+# Config constants #TODO incorporate in config class
+
 SC4MP_HOST = None
 SC4MP_PORT = None
 SC4MP_SERVER_ID = None
@@ -48,70 +58,6 @@ SC4MP_SERVER_DESCRIPTION = None
 
 
 # Methods
-
-def prep():
-	"""TODO"""
-	create_subdirectories()
-	load_config()
-	prep_profiles()
-	clear_temp()
-	prep_regions() 
-	prep_backups()
-
-
-def start():
-	"""TODO Starts the server.
-
-	Arguments:
-		None
-
-	Returns:
-		None
-	"""
-
-	if (sc4mp_nostart):
-		return
-
-	report("Starting server...")
-	global sc4mp_server_running
-	sc4mp_server_running = True
-
-	report("- creating socket...")
-	s = socket.socket()
-
-	report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
-	s.bind((SC4MP_HOST, SC4MP_PORT))
-
-	report("- listening for connections...")
-	s.listen(5)
-
-	try:
-
-		while (sc4mp_server_running):
-
-			try:
-
-				c, address = s.accept()
-				report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
-
-				RequestHandler(c).start()	
-
-			except socket.error as e:
-
-				report(str(e), None, "ERROR")
-		
-	except SystemExit as e:
-
-		pass
-
-
-def shutdown():
-	"""TODO"""
-
-	report("Shutting down...")
-	global sc4mp_server_running
-	sc4mp_server_running = False
-
 
 def get_sc4mp_path(filename):
 	"""TODO Gives the path of a given file in the SC4MP "resources" subdirectory
@@ -152,202 +98,6 @@ def file_md5(file):
 	for chunk in iter(lambda: file.read(4096), b""):
 		hash_md5.update(chunk)
 	return hash_md5.hexdigest()
-
-
-def create_subdirectories():
-	"""TODO Creates the required subdirectories if they do not yet exist.
-
-	Arguments:
-		None
-
-	Returns:
-		None
-	"""
-
-	report("Creating subdirectories...")
-
-	directories = ["_Backups", "_Profiles", "_Temp", "Plugins", "Regions"]
-
-	for directory in directories:
-		new_directory = os.path.join(sc4mp_server_path, directory)
-		if not os.path.exists(new_directory):
-			try:
-				os.makedirs(new_directory)
-				if (directory == "Plugins" or directory == "Regions"):
-					shutil.unpack_archive(get_sc4mp_path(directory + ".zip"), new_directory)
-			except Exception as e:
-				report(str(e), None, "ERROR")
-				#report("Failed to create " + directory + " subdirectory.", None, "WARNING")
-				#report('(this may have been printed by error, check your sc4mp_server_path subdirectory)', None, "WARNING")
-
-
-def load_config():
-	"""TODO Loads the config file from the resources subdirectory or creates it if it does not yet exist.
-
-	Arguments:
-		None
-
-	Returns:
-		None
-	"""
-
-	global SC4MP_HOST
-	global SC4MP_PORT
-	global SC4MP_SERVER_ID
-	global SC4MP_SERVER_NAME
-	global SC4MP_SERVER_DESCRIPTION
-
-	report("Loading config...")
-
-	config_path = os.path.join(sc4mp_server_path, "serverconfig.ini")
-
-	try:
-
-		config = configparser.RawConfigParser()
-		config.read(config_path)
-
-		SC4MP_HOST = config.get('server', "host")
-		SC4MP_PORT = int(config.get('server', 'port'))
-		SC4MP_SERVER_ID = config.get('server', "server_id")
-		SC4MP_SERVER_NAME = config.get('server', "server_name")
-		SC4MP_SERVER_DESCRIPTION = config.get('server', "server_description")
-
-	except:
-
-		config.remove_section('server')
-		config.add_section('server')
-		config.set('server', 'host', default_host)
-		config.set('server', 'port', default_port)
-		config.set('server', 'server_id', default_server_id)
-		config.set('server', 'server_name', default_server_name)
-		config.set('server', 'server_description', default_server_description)
-		
-		with open(config_path, 'wt') as config_file:
-			config.write(config_file)
-
-		SC4MP_HOST = default_host
-		SC4MP_PORT = default_port
-		SC4MP_SERVER_ID = default_server_id
-		SC4MP_SERVER_NAME = default_server_name
-		SC4MP_SERVER_DESCRIPTION = default_server_description
-
-
-def clear_temp():
-	"""TODO"""
-
-	report("Clearing temporary files...")
-
-	purge_directory(os.path.join(sc4mp_server_path, "_Temp"))
-
-
-def prep_profiles():
-	"""TODO"""
-
-	report("Preparing database...")
-
-	# Profiles directory
-	profiles_directory = os.path.join(sc4mp_server_path, "_Profiles")
-
-	# Users database
-	filename = os.path.join(profiles_directory, "users.json")
-	if (not os.path.exists(filename)):
-		create_empty_json(filename)
-
-	# Get region directory names
-	regions = []
-	regions_directory = os.path.join(sc4mp_server_path, "Regions")
-	items = os.listdir(regions_directory)
-	for item in items:
-		path = os.path.join(regions_directory, item)
-		if (not os.path.isfile(path)):
-			regions.append(item)
-
-	# Create databases for each region
-	for region in regions:
-		
-		# Region directory
-		region_directory = os.path.join(regions_directory, region)
-
-		# Create subdirectories in region directory
-		region_subdirectories = ["_Profiles", "_Backups"]
-		for region_subdirectory in region_subdirectories:
-			directory = os.path.join(region_directory, region_subdirectory)
-			if (not os.path.exists(directory)):
-				os.makedirs(directory)
-
-		# Get database
-		filename = os.path.join(region_directory, os.path.join("_Profiles", "region.json"))
-		data = None
-		try:
-			data = load_json(filename)
-		except:
-			data = dict()
-		
-		# Get savegame paths
-		savegame_paths = []
-		items = os.listdir(region_directory)
-		for item in items:
-			path = os.path.join(region_directory, item)
-			if (os.path.isfile(path) and path[-4:] == ".sc4"):
-				savegame_paths.append(path)
-
-		# Open savegames as DBPF objects
-		savegames = []
-		for savegame_path in savegame_paths:
-			savegames.append(DBPF(savegame_path))
-
-		# Get the region subfile of each DBPF object and update the database
-		for savegame in savegames:
-
-			# Get region subfile
-			savegame.get_SC4ReadRegionalCity()
-
-			# Get values from region subfile
-			savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
-			savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
-			savegameSize = savegame.SC4ReadRegionalCity["citySizeX"]
-
-			# Get md5 hashcode of date subfile
-			savegame_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
-
-			# Get dictionary for savegame data
-			coords = str(savegameX) + "_" + str(savegameY)
-			entry = data.get(coords, dict())
-			if (entry == None):
-				entry = dict()
-			data[coords] = entry
-
-			# Create reset savegame file if needed
-			if (not "reset_filename" in entry.keys()):
-				reset_directory = os.path.join(region_directory, os.path.join("_Backups", coords))
-				if (not os.path.exists(reset_directory)):
-					os.makedirs(reset_directory)
-				reset_filename = os.path.join(reset_directory, "reset.sc4")
-				shutil.copy(savegame.filename, reset_filename)
-				entry["reset_filename"] = reset_filename
-
-			# Set entry values
-			set_savegame_data(entry, savegame)
-
-			# Reserve tiles which the savegame occupies
-			for offsetX in range(savegameSize):
-				x = savegameX + offsetX
-				for offsetY in range(savegameSize):
-					y = savegameY + offsetY
-					data.setdefault(str(x) + "_" + str(y), None)
-
-		# Cleanup DBPF objects to avoid errors when attempting to delete save files
-		savegames = None
-
-		update_json(filename, data)
-
-	if (sc4mp_nostart):
-		return
-
-	# Profiles manager
-	global sc4mp_profiles_manager
-	sc4mp_profiles_manager = ProfilesManager()
-	sc4mp_profiles_manager.start()
 
 
 def create_empty_json(filename):
@@ -413,22 +163,6 @@ def package_plugins_and_regions():
 	sc4mp_regions_manager.start()
 
 
-def prep_regions():
-	"""TODO"""
-
-	if (sc4mp_nostart):
-		return
-
-	report("Preparing regions...")
-
-	export("regions")
-
-	# Regions manager
-	global sc4mp_regions_manager
-	sc4mp_regions_manager = RegionsManager()
-	sc4mp_regions_manager.start()
-
-
 def package(type):
 	"""TODO"""
 
@@ -471,19 +205,6 @@ def export(type):
 	
 	# Copy recursively
 	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups', '_Profiles'))	
-
-
-def prep_backups():
-	"""TODO"""
-
-	report("Preparing backups...")
-
-	# Backups manager
-	global sc4mp_backups_manager
-	sc4mp_backups_manager = BackupsManager()
-	sc4mp_backups_manager.backup()
-	if (not sc4mp_nostart):
-		sc4mp_backups_manager.start()
 
 
 def purge_directory(directory):
@@ -616,7 +337,7 @@ def xor(conditionA, conditionB):
 
 def report(message, object=None, type="INFO", ): #TODO do this in the logger to make sure output prints correctly
 	"""TODO"""
-	color = '\033[94m '
+	'''color = '\033[94m '
 	output = datetime.now().strftime("[%H:%M:%S] [SC4MP")
 	object = None
 	for item in inspect.stack():
@@ -634,7 +355,8 @@ def report(message, object=None, type="INFO", ): #TODO do this in the logger to 
 		color = '\033[93m '
 	elif (type == "ERROR" or type == "FATAL"):
 		color = '\033[91m '
-	print(color + output)
+	print(color + output)'''
+	print("[" + type + "] " + message)
 
 
 # Objects
@@ -960,6 +682,274 @@ class DBPF:
 
 
 # Workers
+
+class Server(th.Thread):
+	"""TODO"""
+
+
+	def __init__(self):
+		"""TODO"""
+
+		super().__init__()
+
+		self.create_subdirectories()
+		self.load_config()
+		self.prep_profiles()
+		self.clear_temp()
+		self.prep_regions() 
+		self.prep_backups()
+
+	
+	def run(self):
+		"""TODO"""
+
+		global sc4mp_server_running
+
+		report("Starting server...")
+		sc4mp_server_running = True
+
+		report("- creating socket...")
+		s = socket.socket()
+
+		report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
+		s.bind((SC4MP_HOST, SC4MP_PORT))
+
+		report("- listening for connections...")
+		s.listen(5)
+
+		try:
+
+			while (sc4mp_server_running):
+
+				try:
+
+					c, address = s.accept()
+					report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
+
+					RequestHandler(c).start()	
+
+				except socket.error as e:
+
+					report(str(e), None, "ERROR")
+			
+		except (SystemExit, KeyboardInterrupt) as e:
+
+			pass
+
+		report("Shutting down...")
+		sc4mp_server_running = False
+
+
+	def create_subdirectories(self):
+		"""TODO"""
+
+		report("Creating subdirectories...")
+
+		directories = ["_Backups", "_Profiles", "_Temp", "Plugins", "Regions"]
+
+		for directory in directories:
+			new_directory = os.path.join(sc4mp_server_path, directory)
+			if not os.path.exists(new_directory):
+				try:
+					os.makedirs(new_directory)
+					if (directory == "Plugins" or directory == "Regions"):
+						shutil.unpack_archive(get_sc4mp_path(directory + ".zip"), new_directory)
+				except Exception as e:
+					report(str(e), None, "ERROR")
+					#report("Failed to create " + directory + " subdirectory.", None, "WARNING")
+					#report('(this may have been printed by error, check your sc4mp_server_path subdirectory)', None, "WARNING")
+
+
+	def load_config(self):
+		"""TODO"""
+
+		global SC4MP_HOST
+		global SC4MP_PORT
+		global SC4MP_SERVER_ID
+		global SC4MP_SERVER_NAME
+		global SC4MP_SERVER_DESCRIPTION
+
+		report("Loading config...")
+
+		config_path = os.path.join(sc4mp_server_path, "serverconfig.ini")
+
+		try:
+
+			config = configparser.RawConfigParser()
+			config.read(config_path)
+
+			SC4MP_HOST = config.get('server', "host")
+			SC4MP_PORT = int(config.get('server', 'port'))
+			SC4MP_SERVER_ID = config.get('server', "server_id")
+			SC4MP_SERVER_NAME = config.get('server', "server_name")
+			SC4MP_SERVER_DESCRIPTION = config.get('server', "server_description")
+
+		except:
+
+			config.remove_section('server')
+			config.add_section('server')
+			config.set('server', 'host', default_host)
+			config.set('server', 'port', default_port)
+			config.set('server', 'server_id', default_server_id)
+			config.set('server', 'server_name', default_server_name)
+			config.set('server', 'server_description', default_server_description)
+			
+			with open(config_path, 'wt') as config_file:
+				config.write(config_file)
+
+			SC4MP_HOST = default_host
+			SC4MP_PORT = default_port
+			SC4MP_SERVER_ID = default_server_id
+			SC4MP_SERVER_NAME = default_server_name
+			SC4MP_SERVER_DESCRIPTION = default_server_description
+
+
+	def prep_profiles(self):
+		"""TODO"""
+
+		report("Preparing database...")
+
+		# Profiles directory
+		profiles_directory = os.path.join(sc4mp_server_path, "_Profiles")
+
+		# Users database
+		filename = os.path.join(profiles_directory, "users.json")
+		if (not os.path.exists(filename)):
+			create_empty_json(filename)
+
+		# Get region directory names
+		regions = []
+		regions_directory = os.path.join(sc4mp_server_path, "Regions")
+		items = os.listdir(regions_directory)
+		for item in items:
+			path = os.path.join(regions_directory, item)
+			if (not os.path.isfile(path)):
+				regions.append(item)
+
+		# Create databases for each region
+		for region in regions:
+			
+			# Region directory
+			region_directory = os.path.join(regions_directory, region)
+
+			# Create subdirectories in region directory
+			region_subdirectories = ["_Profiles", "_Backups"]
+			for region_subdirectory in region_subdirectories:
+				directory = os.path.join(region_directory, region_subdirectory)
+				if (not os.path.exists(directory)):
+					os.makedirs(directory)
+
+			# Get database
+			filename = os.path.join(region_directory, os.path.join("_Profiles", "region.json"))
+			data = None
+			try:
+				data = load_json(filename)
+			except:
+				data = dict()
+			
+			# Get savegame paths
+			savegame_paths = []
+			items = os.listdir(region_directory)
+			for item in items:
+				path = os.path.join(region_directory, item)
+				if (os.path.isfile(path) and path[-4:] == ".sc4"):
+					savegame_paths.append(path)
+
+			# Open savegames as DBPF objects
+			savegames = []
+			for savegame_path in savegame_paths:
+				savegames.append(DBPF(savegame_path))
+
+			# Get the region subfile of each DBPF object and update the database
+			for savegame in savegames:
+
+				# Get region subfile
+				savegame.get_SC4ReadRegionalCity()
+
+				# Get values from region subfile
+				savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
+				savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
+				savegameSize = savegame.SC4ReadRegionalCity["citySizeX"]
+
+				# Get md5 hashcode of date subfile
+				savegame_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
+
+				# Get dictionary for savegame data
+				coords = str(savegameX) + "_" + str(savegameY)
+				entry = data.get(coords, dict())
+				if (entry == None):
+					entry = dict()
+				data[coords] = entry
+
+				# Create reset savegame file if needed
+				if (not "reset_filename" in entry.keys()):
+					reset_directory = os.path.join(region_directory, os.path.join("_Backups", coords))
+					if (not os.path.exists(reset_directory)):
+						os.makedirs(reset_directory)
+					reset_filename = os.path.join(reset_directory, "reset.sc4")
+					shutil.copy(savegame.filename, reset_filename)
+					entry["reset_filename"] = reset_filename
+
+				# Set entry values
+				set_savegame_data(entry, savegame)
+
+				# Reserve tiles which the savegame occupies
+				for offsetX in range(savegameSize):
+					x = savegameX + offsetX
+					for offsetY in range(savegameSize):
+						y = savegameY + offsetY
+						data.setdefault(str(x) + "_" + str(y), None)
+
+			# Cleanup DBPF objects to avoid errors when attempting to delete save files
+			savegames = None
+
+			update_json(filename, data)
+
+		if (sc4mp_nostart):
+			return
+
+		# Profiles manager
+		global sc4mp_profiles_manager
+		sc4mp_profiles_manager = ProfilesManager()
+		sc4mp_profiles_manager.start()
+
+
+	def clear_temp(self):
+		"""TODO"""
+
+		report("Clearing temporary files...")
+
+		purge_directory(os.path.join(sc4mp_server_path, "_Temp"))
+
+
+	def prep_regions(self):
+		"""TODO"""
+
+		if (sc4mp_nostart):
+			return
+
+		report("Preparing regions...")
+
+		export("regions")
+
+		# Regions manager
+		global sc4mp_regions_manager
+		sc4mp_regions_manager = RegionsManager()
+		sc4mp_regions_manager.start()
+
+
+	def prep_backups(self):
+		"""TODO"""
+
+		report("Preparing backups...")
+
+		# Backups manager
+		global sc4mp_backups_manager
+		sc4mp_backups_manager = BackupsManager()
+		sc4mp_backups_manager.backup()
+		if (not sc4mp_nostart):
+			sc4mp_backups_manager.start()
+
 
 class BackupsManager(th.Thread):
 	"""TODO"""
@@ -1689,18 +1679,65 @@ class CustomException(Exception):
 class Logger():
 	"""TODO"""
 	
+
 	def __init__(self):
 		"""TODO"""
 		self.terminal = sys.stdout
-		self.log = "sc4mpserver-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
+		self.log = SC4MP_LOG_PATH
+		if (os.path.exists(self.log)):
+			os.remove(self.log)
    
 
 	def write(self, message):
 		"""TODO"""
-		self.terminal.write(message)
+
+		output = message
+
+		if (message != "\n"):
+
+			# Timestamp
+			timestamp = datetime.now().strftime("[%H:%M:%S] ")
+
+			# Label
+			label = "[SC4MP/" + th.current_thread().getName() + "] "
+			for item in inspect.stack()[1:]:
+				try:
+					label += "(" + item[0].f_locals["self"].__class__.__name__ + ") "
+					break
+				except:
+					pass
+			
+
+			# Type and color
+			type = "[INFO] "
+			color = '\033[90m '
+			TYPES_COLORS = [
+				("[INFO] ", '\033[90m '), #'\033[94m '
+				("[PROMPT]", '\033[1m '),
+				("[WARNING] ", '\033[93m '),
+				("[ERROR] ", '\033[91m '),
+				("[FATAL] ", '\033[91m ')
+			]
+			for index in range(len(TYPES_COLORS)):
+				current_type = TYPES_COLORS[index][0]
+				current_color = TYPES_COLORS[index][1]
+				if (message[:len(current_type)] == current_type):
+					message = message[len(current_type):]
+					type = current_type
+					color = current_color
+					break
+			if (th.current_thread().getName() == "Main" and type == "[INFO] "):
+				color = '\033[0m '
+			
+			# Assemble
+			output = color + timestamp + label + type + message
+
+		# Print
+		self.terminal.write(output)
 		with open(self.log, "a") as log:
-			log.write(message)
+			log.write(output)
 			log.close()  
+
 
 	def flush(self):
 		"""TODO"""
@@ -1713,34 +1750,35 @@ def main():
 	"""The main method."""
 
 	sys.stdout = Logger()
+	th.current_thread().name = "Main"
 
 	report(SC4MP_TITLE)
 
+	global sc4mp_nostart
+	sc4mp_nostart = "-prep" in sc4mp_args
+
+	global sc4mp_server_path
 	try:
-		
-		try:
+		ARGUMENT = "--server-path"
+		if (ARGUMENT in sc4mp_args):
+			sc4mp_server_path = sc4mp_args[sc4mp_args.index(ARGUMENT) + 1]
+	except Exception as e:
+		report("Invalid arguments.", None, "FATAL")
+		return
 
-			args = sys.argv
+	try:
 
-			global sc4mp_nostart
-			sc4mp_nostart = "-prep" in args
+		global sc4mp_server
 
-			global sc4mp_server_path
-			ARGUMENT = "--server-path"
-			if (ARGUMENT in args):
-				sc4mp_server_path = args[args.index(ARGUMENT) + 1]
-		
-		except Exception as e:
-			
-			report("Invalid arguments.", None, "FATAL")
-			sys.exit()
+		# Prep
+		sc4mp_server = Server()
 
-		prep()
-		start()
-		shutdown()
+		# Start
+		if (not sc4mp_nostart):
+			sc4mp_server.run()
 
 	except Exception as e:
-		
+
 		report(str(e), None, "FATAL")
 		traceback.print_exc()
 
