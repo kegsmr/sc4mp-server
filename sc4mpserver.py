@@ -387,12 +387,12 @@ def update_config_constants(config):
 	global SC4MP_SERVER_ID
 	global SC4MP_SERVER_NAME
 	global SC4MP_SERVER_DESCRIPTION
-
-	SC4MP_HOST = config.data['NETWORK']['host']
-	SC4MP_PORT = config.data['NETWORK']['port']
-	SC4MP_SERVER_ID = config.data['INFO']['server_id']
-	SC4MP_SERVER_NAME = config.data['INFO']['server_name']
-	SC4MP_SERVER_DESCRIPTION = config.data['INFO']['server_description']
+	
+	SC4MP_HOST = config['NETWORK']['host']
+	SC4MP_PORT = config['NETWORK']['port']
+	SC4MP_SERVER_ID = config['INFO']['server_id']
+	SC4MP_SERVER_NAME = config['INFO']['server_name']
+	SC4MP_SERVER_DESCRIPTION = config['INFO']['server_description']
 
 
 # Objects
@@ -428,7 +428,8 @@ class Config:
 				try:
 					for item_name in section.keys():
 						try:
-							self.data[section_name][item_name] = parser.get(section_name, item_name)
+							t = type(self.data[section_name][item_name])
+							self.data[section_name][item_name] = t(parser.get(section_name, item_name))
 						except:
 							pass
 				except:
@@ -438,6 +439,16 @@ class Config:
 
 		# Update config file
 		self.update()
+
+
+	def __getitem__(self, key):
+		"""TODO"""
+		return self.data[key]
+	
+	
+	def __setitem__(self, key):
+		"""TODO"""
+		return self.data.__setitem__(key)
 
 
 	def update(self):
@@ -748,7 +759,7 @@ class Server(th.Thread):
 		s = socket.socket()
 
 		report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
-		s.bind((SC4MP_HOST, int(SC4MP_PORT)))
+		s.bind((SC4MP_HOST, SC4MP_PORT))
 
 		report("- listening for connections...")
 		s.listen(5)
@@ -1016,7 +1027,7 @@ class BackupsManager(th.Thread):
 			try:
 
 				# Delay
-				time.sleep(3600 * int(sc4mp_config.data["BACKUPS"]["server_backup_interval"]))
+				time.sleep(3600 * sc4mp_config["BACKUPS"]["server_backup_interval"])
 
 				# Create backup
 				self.backup()
@@ -1245,7 +1256,7 @@ class RegionsManager(th.Thread):
 							if ("owner" in entry.keys()):
 								owner = entry["owner"]
 								if (owner != None and owner != user_id):
-									expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + timedelta(days=int(sc4mp_config.data["RULES"]["claim_duration"]))
+									expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + timedelta(days=sc4mp_config["RULES"]["claim_duration"])
 									if (expires > datetime.now()):
 										self.outputs[save_id] = "City already claimed."
 
@@ -1756,7 +1767,7 @@ class Logger():
 			color = '\033[90m '
 			TYPES_COLORS = [
 				("[INFO] ", '\033[90m '), #'\033[94m '
-				("[PROMPT]", '\033[1m '),
+				("[PROMPT]", '\033[01m '),
 				("[WARNING] ", '\033[93m '),
 				("[ERROR] ", '\033[91m '),
 				("[FATAL] ", '\033[91m ')
@@ -1770,7 +1781,7 @@ class Logger():
 					color = current_color
 					break
 			if (th.current_thread().getName() == "Main" and type == "[INFO] "):
-				color = '\033[0m '
+				color = '\033[00m '
 			
 			# Assemble
 			output = color + timestamp + label + type + message
@@ -1824,6 +1835,9 @@ def main():
 
 		report(str(e), None, "FATAL")
 		traceback.print_exc()
+
+		global sc4mp_server_running
+		sc4mp_server_running = False
 
 if __name__ == '__main__':
 	main()
