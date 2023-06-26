@@ -33,7 +33,7 @@ SC4MP_BUFFER_SIZE = 4096
 SC4MP_DELAY = .1
 
 SC4MP_CONFIG_DEFAULTS = [
-	("HOSTING", [
+	("NETWORK", [
 		("host", "0.0.0.0"),
 		("port", 7246)
 	]),
@@ -42,7 +42,25 @@ SC4MP_CONFIG_DEFAULTS = [
 		("server_name", os.getlogin() + " on " + socket.gethostname()),
 		("server_description", "Join and build your city.\n\nRules:\n- Feed the llamas\n- Balance your budget\n- Do uncle Vinny some favors")
 	]),
+	("SECURITY", [
+		("password_enabled", False),
+		("password", "maxis2003"),
+		("max_ip_users", 3)
+	]),
 	("RULES", [
+		("claim_duration", 30),
+		("claim_delay", 1440),
+		("max_region_claims", 1),
+		("max_total_claims", -1),
+		("custom_plugins", False)
+	]),
+	("PERFORMANCE", [
+		("request_limit", 20)
+	]),
+	("BACKUPS", [
+		("server_backup_interval", 24),
+		("max_server_backups", 720),
+		("max_savegame_backups", 10)
 	])
 ]
 
@@ -370,8 +388,8 @@ def update_config_constants(config):
 	global SC4MP_SERVER_NAME
 	global SC4MP_SERVER_DESCRIPTION
 
-	SC4MP_HOST = config.data['HOSTING']['host']
-	SC4MP_PORT = config.data['HOSTING']['port']
+	SC4MP_HOST = config.data['NETWORK']['host']
+	SC4MP_PORT = config.data['NETWORK']['port']
 	SC4MP_SERVER_ID = config.data['INFO']['server_id']
 	SC4MP_SERVER_NAME = config.data['INFO']['server_name']
 	SC4MP_SERVER_DESCRIPTION = config.data['INFO']['server_description']
@@ -998,7 +1016,7 @@ class BackupsManager(th.Thread):
 			try:
 
 				# Delay
-				time.sleep(60 * 60) #TODO make configurable (by minutes)
+				time.sleep(3600 * int(sc4mp_config.data["BACKUPS"]["server_backup_interval"]))
 
 				# Create backup
 				self.backup()
@@ -1227,7 +1245,7 @@ class RegionsManager(th.Thread):
 							if ("owner" in entry.keys()):
 								owner = entry["owner"]
 								if (owner != None and owner != user_id):
-									expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + timedelta(days=30) #TODO make the expiry date configurable
+									expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + timedelta(days=int(sc4mp_config.data["RULES"]["claim_duration"]))
 									if (expires > datetime.now()):
 										self.outputs[save_id] = "City already claimed."
 
