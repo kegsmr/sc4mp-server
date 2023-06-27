@@ -429,8 +429,14 @@ class Config:
 				try:
 					for item_name in section.keys():
 						try:
-							t = type(self.data[section_name][item_name])
-							self.data[section_name][item_name] = t(parser.get(section_name, item_name))
+							from_file = parser.get(section_name, item_name)
+							if (from_file == "True"):
+								self.data[section_name][item_name] = True
+							elif (from_file == "False"):
+								self.data[section_name][item_name] = False
+							else:
+								t = type(self.data[section_name][item_name])
+								self.data[section_name][item_name] = t(from_file)
 						except:
 							pass
 				except:
@@ -444,9 +450,9 @@ class Config:
 
 	def __getitem__(self, key):
 		"""TODO"""
-		return self.data[key]
-	
-	
+		return self.data.__getitem__(key)
+
+
 	def __setitem__(self, key, value):
 		"""TODO"""
 		return self.data.__setitem__(key, value)
@@ -467,6 +473,7 @@ class Config:
 			update_config_constants(self)
 		except:
 			pass
+
 
 
 class DBPF:
