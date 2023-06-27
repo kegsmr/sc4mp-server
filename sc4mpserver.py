@@ -45,6 +45,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	("SECURITY", [
 		("password_enabled", False),
 		("password", "maxis2003"),
+		("discoverable", True),
 		("max_ip_users", 3)
 	]),
 	("RULES", [
@@ -446,9 +447,9 @@ class Config:
 		return self.data[key]
 	
 	
-	def __setitem__(self, key):
+	def __setitem__(self, key, value):
 		"""TODO"""
-		return self.data.__setitem__(key)
+		return self.data.__setitem__(key, value)
 
 
 	def update(self):
@@ -1388,6 +1389,10 @@ class RequestHandler(th.Thread):
 		elif (request == "add_server"):
 			if (True): #TODO discoverable setting on
 				self.add_server(c)
+		elif (request == "password_enabled"):
+			self.password_enabled(c)
+		elif (request == "check_password"):
+			self.check_password(c)
 
 		c.close()
 	
@@ -1484,7 +1489,7 @@ class RequestHandler(th.Thread):
 		send_tree(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
 
 
-	def delete(self, c):
+	'''def delete(self, c):
 		"""TODO"""
 
 		c.send(SC4MP_SEPARATOR)
@@ -1501,7 +1506,7 @@ class RequestHandler(th.Thread):
 
 		filename = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, city)))
 
-		os.remove(filename)
+		os.remove(filename)'''
 
 
 	def save(self, c):
@@ -1709,6 +1714,23 @@ class RequestHandler(th.Thread):
 		
 		# Return the user id
 		return user_id
+
+
+	def password_enabled(self, c):
+		"""TODO"""
+		if (sc4mp_config['SECURITY']['password_enabled']):
+			c.send(b'yes')
+		else:
+			c.send(b'no')
+
+
+	def check_password(self, c):
+		"""TODO"""
+		c.send(SC4MP_SEPARATOR)
+		if (c.recv(SC4MP_BUFFER_SIZE).decode() == sc4mp_config["SECURITY"]["password"]):
+			c.send(b'yes')
+		else:
+			c.send(b'no')
 
 
 # Exceptions
