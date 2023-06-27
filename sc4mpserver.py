@@ -53,7 +53,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		("claim_delay", 1440),
 		("max_region_claims", 1),
 		("max_total_claims", -1),
-		("custom_plugins", False)
+		("user_plugins", False)
 	]),
 	("PERFORMANCE", [
 		("request_limit", 20)
@@ -1400,6 +1400,8 @@ class RequestHandler(th.Thread):
 			self.password_enabled(c)
 		elif (request == "check_password"):
 			self.check_password(c)
+		elif (request == "user_plugins_enabled"):
+			self.user_plugins_enabled(c)
 
 		c.close()
 	
@@ -1735,6 +1737,14 @@ class RequestHandler(th.Thread):
 		"""TODO"""
 		c.send(SC4MP_SEPARATOR)
 		if (c.recv(SC4MP_BUFFER_SIZE).decode() == sc4mp_config["SECURITY"]["password"]):
+			c.send(b'yes')
+		else:
+			c.send(b'no')
+
+
+	def user_plugins_enabled(self, c):
+		"""TODO"""
+		if (sc4mp_config['RULES']['user_plugins']):
 			c.send(b'yes')
 		else:
 			c.send(b'no')
