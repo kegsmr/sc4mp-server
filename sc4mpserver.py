@@ -35,7 +35,7 @@ SC4MP_DELAY = .1
 SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
 		("host", "0.0.0.0"),
-		("port", 7246)
+		("port", 7240)
 	]),
 	("INFO", [
 		("server_id", ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))),
@@ -50,16 +50,19 @@ SC4MP_CONFIG_DEFAULTS = [
 	]),
 	("RULES", [
 		("claim_duration", 30),
-		("claim_delay", 1440),
+		("claim_delay", 60),
 		("max_region_claims", 1),
 		("max_total_claims", -1),
+		("godmode_filter", True),
 		("user_plugins", False)
 	]),
 	("PERFORMANCE", [
-		("request_limit", 20)
+		("request_limit", 20),
+		("max_request_threads", 100)
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 24),
+		("backup_server_on_startup", True),
 		("max_server_backups", 720),
 		("max_savegame_backups", 10)
 	])
@@ -1008,7 +1011,8 @@ class Server(th.Thread):
 		# Backups manager
 		global sc4mp_backups_manager
 		sc4mp_backups_manager = BackupsManager()
-		sc4mp_backups_manager.backup()
+		if (sc4mp_config["BACKUPS"]["backup_server_on_startup"]):
+			sc4mp_backups_manager.backup()
 		if (not sc4mp_nostart):
 			sc4mp_backups_manager.start()
 
@@ -1247,9 +1251,9 @@ class RegionsManager(th.Thread):
 								data[coords] = entry
 
 							# Filter out godmode savegames if required
-							if (True): #TODO check if server is configured to filter out godmode saves
+							if (sc4mp_config["RULES"]["godmode_filter"]):
 								if (savegameModeFlag == 0):
-									self.outputs[save_id] = "No city established yet."
+									self.outputs[save_id] = "Establish your city, then retry."
 							
 							# Filter out cities that don't match the region configuration
 							if (entry == None):
@@ -1663,7 +1667,7 @@ class RequestHandler(th.Thread):
 			else:
 
 				# Report to the client that the save push is invalid
-				c.send(b"Retry with the game unpaused.")
+				c.send(b"Unpause the game, then retry.")
 
 			# Delete savegame arrays to avoid file deletion errors
 			savegames = None
