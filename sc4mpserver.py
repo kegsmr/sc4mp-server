@@ -1663,7 +1663,7 @@ class RequestHandler(th.Thread):
 			else:
 
 				# Report to the client that the save push is invalid
-				c.send(b"Unpause the game and retry.")
+				c.send(b"Retry with the game unpaused.")
 
 			# Delete savegame arrays to avoid file deletion errors
 			savegames = None
