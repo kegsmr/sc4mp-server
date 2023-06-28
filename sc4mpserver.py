@@ -1253,7 +1253,7 @@ class RegionsManager(th.Thread):
 							# Filter out godmode savegames if required
 							if (sc4mp_config["RULES"]["godmode_filter"]):
 								if (savegameModeFlag == 0):
-									self.outputs[save_id] = "Establish your city, then retry."
+									self.outputs[save_id] = "You must establish your city first."
 							
 							# Filter out cities that don't match the region configuration
 							if (entry == None):
