@@ -149,6 +149,7 @@ def set_savegame_data(entry, savegame):
 	entry.setdefault("reset_filename", None)
 
 	# Overwrite
+	entry["hashcode"] = md5(savegame.filename)
 	entry["size"] = savegame.SC4ReadRegionalCity["citySizeX"]
 	entry["date_subfile_hash"] = file_md5(savegame.decompress_subfile("2990c1e5"))
 	entry["gamemode"] = savegame.SC4ReadRegionalCity["modeFlag"]
@@ -197,7 +198,7 @@ def package(type):
 		directory = "Regions"
 
 	target = os.path.join(sc4mp_server_path, directory)
-	destination = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", directory)))
+	destination = os.path.join(sc4mp_server_path, "_Temp", "outbound", directory)
 
 	if (os.path.exists(destination)):
 		os.remove(destination)
@@ -217,7 +218,7 @@ def export(type):
 
 	# Set target and destination directories
 	target = os.path.join(sc4mp_server_path, directory)
-	destination = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", directory)))
+	destination = os.path.join(sc4mp_server_path, "_Temp", "outbound", directory)
 
 	# Delete destination directory if it exists 
 	if (os.path.exists(destination)):
@@ -905,7 +906,7 @@ class Server(th.Thread):
 					os.makedirs(directory)
 
 			# Get database
-			filename = os.path.join(region_directory, os.path.join("_Profiles", "region.json"))
+			filename = os.path.join(region_directory, "_Profiles", "region.json")
 			data = None
 			try:
 				data = load_json(filename)
@@ -948,7 +949,7 @@ class Server(th.Thread):
 
 				# Create reset savegame file if needed
 				if (not "reset_filename" in entry.keys()):
-					reset_directory = os.path.join(region_directory, os.path.join("_Backups", coords))
+					reset_directory = os.path.join(region_directory, "_Backups", coords)
 					if (not os.path.exists(reset_directory)):
 						os.makedirs(reset_directory)
 					reset_filename = os.path.join(reset_directory, "reset.sc4")
@@ -1089,7 +1090,7 @@ class BackupsManager(th.Thread):
 		for fullpath in fullpaths:
 			hashcode = md5(fullpath)
 			filesize = os.path.getsize(fullpath)
-			directory = os.path.join(sc4mp_server_path, os.path.join("_Backups", "data"))
+			directory = os.path.join(sc4mp_server_path, "_Backups", "data")
 			if (not os.path.exists(directory)):
 				os.makedirs(directory)
 			filename = os.path.join(directory, hashcode + "_" + str(filesize))
@@ -1109,7 +1110,7 @@ class BackupsManager(th.Thread):
 		backup_data["files"] = files_entry
 
 		# Update database
-		backup_filename = os.path.join(sc4mp_server_path, os.path.join("_Backups", datetime.now().strftime("%Y%m%d%H%M%S") + ".json"))
+		backup_filename = os.path.join(sc4mp_server_path, "_Backups", datetime.now().strftime("%Y%m%d%H%M%S") + ".json")
 		self.update_json(backup_filename, backup_data)
 
 		# Report done
@@ -1125,7 +1126,7 @@ class ProfilesManager(th.Thread):
 
 		super().__init__()
 	
-		self.filename = os.path.join(sc4mp_server_path, os.path.join("_Profiles", "users.json"))
+		self.filename = os.path.join(sc4mp_server_path, "_Profiles", "users.json")
 		self.data = self.load_json(self.filename)
 
 
@@ -1239,7 +1240,7 @@ class RegionsManager(th.Thread):
 							coords = str(savegameX) + "_" + str(savegameY)
 
 							# Get region database
-							data_filename = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, os.path.join("_Profiles", "region.json"))))
+							data_filename = os.path.join(sc4mp_server_path, "Regions", region, "_Profiles", "region.json")
 							data = self.load_json(data_filename)
 							
 							# Get city entry
@@ -1253,7 +1254,7 @@ class RegionsManager(th.Thread):
 							# Filter out godmode savegames if required
 							if (sc4mp_config["RULES"]["godmode_filter"]):
 								if (savegameModeFlag == 0):
-									self.outputs[save_id] = "You must establish your city first."
+									self.outputs[save_id] = "You must establish a city before claiming a tile."
 							
 							# Filter out cities that don't match the region configuration
 							if (entry == None):
@@ -1277,18 +1278,18 @@ class RegionsManager(th.Thread):
 
 								# Delete previous save file if it exists
 								if ("filename" in entry.keys()):
-									previous_filename = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, entry["filename"])))
+									previous_filename = os.path.join(sc4mp_server_path, "Regions", region, entry["filename"])
 									if (os.path.exists(previous_filename)):
 										os.remove(previous_filename)
 
 								# Copy save file from temporary directory to regions directory
-								destination = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, coords + ".sc4"))) #TODO include city name
+								destination = os.path.join(sc4mp_server_path, "Regions", region, coords + ".sc4") #TODO include city name?
 								if (os.path.exists(destination)):
 									os.remove(destination)
 								shutil.copy(filename, destination)
 
 								# Copy save file from temporary directory to backup directory
-								backup_directory = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, os.path.join("_Backups", coords))))
+								backup_directory = os.path.join(sc4mp_server_path, "Regions", region, "_Backups", coords)
 								if (not os.path.exists(backup_directory)):
 									os.makedirs(backup_directory)
 								destination = os.path.join(backup_directory, datetime.now().strftime("%Y%m%d%H%M%S") + ".sc4")
@@ -1324,7 +1325,7 @@ class RegionsManager(th.Thread):
 
 						# Clean up inbound temporary files and outputs
 						try:
-							path = os.path.join(sc4mp_server_path, os.path.join("_Temp", "inbound"))
+							path = os.path.join(sc4mp_server_path, "_Temp", "inbound")
 							for directory in os.listdir(path):
 								if (directory in self.outputs.keys()):
 									shutil.rmtree(os.path.join(path, directory))
@@ -1398,7 +1399,7 @@ class RequestHandler(th.Thread):
 		elif (request == "push_save"):
 			self.save(c)
 		elif (request == "add_server"):
-			if (True): #TODO discoverable setting on
+			if (sc4mp_config["SECURITY"]["discoverable"]):
 				self.add_server(c)
 		elif (request == "password_enabled"):
 			self.password_enabled(c)
@@ -1406,6 +1407,8 @@ class RequestHandler(th.Thread):
 			self.check_password(c)
 		elif (request == "user_plugins_enabled"):
 			self.user_plugins_enabled(c)
+		elif (request == "refresh"):
+			self.refresh(c)
 
 		c.close()
 	
@@ -1553,7 +1556,7 @@ class RequestHandler(th.Thread):
 			c.send(SC4MP_SEPARATOR)
 
 			# Receive file
-			path = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("inbound", os.path.join(save_id, region))))
+			path = os.path.join(sc4mp_server_path, "_Temp", "inbound", save_id, region)
 			if (not os.path.exists(path)):
 				os.makedirs(path)
 			filename = os.path.join(path, str(count) + ".sc4")
@@ -1564,7 +1567,7 @@ class RequestHandler(th.Thread):
 		c.recv(SC4MP_BUFFER_SIZE)
 
 		# Get path to save directory
-		path = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("inbound", save_id)))
+		path = os.path.join(sc4mp_server_path, "_Temp", "inbound", save_id)
 
 		# Get regions in save directory
 		regions = os.listdir(path)
@@ -1630,7 +1633,7 @@ class RequestHandler(th.Thread):
 					savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
 					savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
 					coords = str(savegameX) + "_" + str(savegameY)
-					data = load_json(os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, os.path.join("_Profiles", "region.json")))))
+					data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Profiles", "region.json"))
 					if (coords in data.keys()):
 						entry = data[coords]
 						date_subfile_hash = entry["date_subfile_hash"]
@@ -1752,6 +1755,35 @@ class RequestHandler(th.Thread):
 			c.send(b'yes')
 		else:
 			c.send(b'no')
+
+
+	def refresh(self, c):
+		"""TODO"""
+
+		# Separator
+		c.send(SC4MP_SEPARATOR)
+
+		# Receive user_id
+		user_id = self.log_user(c)
+
+		# Loop through regions
+		regions_directory = os.path.join(sc4mp_server_path, "Regions")
+		for region in os.listdir(regions_directory):
+			if (os.path.isdir(os.path.join(regions_directory, region))):
+				#print(region)
+				region_data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Profiles", "region.json"))
+				for coords in region_data.keys():
+					#print(coords)
+					city_entry = region_data[coords]
+					if (city_entry != None and city_entry["owner"] != user_id):
+						c.send(city_entry["hashcode"].encode())
+						if (c.recv(SC4MP_BUFFER_SIZE).decode() == "missing"):
+							c.send(region.encode())
+							c.recv(SC4MP_BUFFER_SIZE)
+							send_file(c, os.path.join(sc4mp_server_path, "Regions", region, city_entry["filename"]))
+							c.recv(SC4MP_BUFFER_SIZE)
+		c.send(b'done')
+
 
 
 # Exceptions
