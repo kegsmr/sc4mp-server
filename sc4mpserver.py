@@ -751,6 +751,7 @@ class Server(th.Thread):
 
 		super().__init__()
 
+		self.check_version()
 		self.create_subdirectories()
 		self.load_config()
 		self.prep_profiles()
@@ -797,6 +798,38 @@ class Server(th.Thread):
 
 		report("Shutting down...")
 		sc4mp_server_running = False
+
+
+	def check_version(self): #TODO probably doesnt work
+		"""TODO"""
+
+		report("Checking for updates...")
+
+		version = []
+		for server in SC4MP_OFFICIAL_SERVERS:
+			host = server[0]
+			port = server[1]
+			try:
+				s = socket.socket()
+				s.settimeout(5)
+				s.connect((host, port))
+				s.send(b"server_version")
+				bytes = s.recv(SC4MP_BUFFER_SIZE)
+				if (len(bytes) > 0):
+					split_bytes = bytes.split(SC4MP_SEPARATOR)
+					for bytes in split_bytes:
+						version.append(int(bytes.decode()))
+					break
+			except Exception as e:
+				print("[ERROR] " + str(e))
+
+		new_version_available = False
+		if (len(version) == 3):
+			version = tuple(version)
+			new_version_available = version > SC4MP_VERSION
+
+		if (new_version_available):
+			print("[WARNING] Version v" + '.'.join(version) + " is available!")
 
 
 	def create_subdirectories(self):
@@ -1386,6 +1419,8 @@ class RequestHandler(th.Thread):
 			self.send_server_name(c)
 		elif (request == "server_description"):
 			self.send_server_description(c)
+		elif (request == "server_version"):
+			self.send_server_version(c)
 		elif (request == "user_id"):
 			self.send_user_id(c)
 		elif (request == "token"):
@@ -1435,6 +1470,14 @@ class RequestHandler(th.Thread):
 		c.send(SC4MP_SERVER_DESCRIPTION.encode())
 
 	
+	def send_server_version(self, c):
+		"""TODO"""
+		for index in range(2):
+			if (index > 0):
+				c.send(SC4MP_SEPARATOR)
+			c.send((str(SC4MP_VERSION[index])).encode())
+
+
 	def send_user_id(self, c):
 		"""TODO"""
 		
@@ -1783,7 +1826,6 @@ class RequestHandler(th.Thread):
 							send_file(c, os.path.join(sc4mp_server_path, "Regions", region, city_entry["filename"]))
 							c.recv(SC4MP_BUFFER_SIZE)
 		c.send(b'done')
-
 
 
 # Exceptions
