@@ -1585,7 +1585,7 @@ class RequestHandler(th.Thread):
 		c.send(SC4MP_SEPARATOR)
 
 		# Set save id
-		save_id = datetime.now().strftime("%Y%m%d%H%M%S") + user_id
+		save_id = datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id
 
 		# Receive files
 		for count in range(file_count):
