@@ -1,5 +1,6 @@
 import configparser
 import hashlib
+import inspect
 import io
 import json
 import os
@@ -10,11 +11,9 @@ import string
 import struct
 import sys
 import threading as th
-import traceback
 import time
-from datetime import datetime
-from datetime import timedelta
-import inspect
+import traceback
+from datetime import datetime, timedelta
 
 SC4MP_VERSION = (0,1,0)
 
