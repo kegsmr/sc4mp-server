@@ -17,7 +17,10 @@ from datetime import datetime, timedelta
 
 SC4MP_VERSION = (0,1,0)
 
-SC4MP_OFFICIAL_SERVERS = [("servers.sc4mp.org", 7240)]
+SC4MP_SERVERS = [("servers.sc4mp.org", 7240)]
+
+SC4MP_URL = "https://sc4mp.org/"
+SC4MP_RELEASES_URL = "https://github.com/keggre/sc4mp-client/releases/"
 
 SC4MP_CONFIG_PATH = None
 SC4MP_LOG_PATH = "sc4mpserver-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
@@ -804,7 +807,7 @@ class Server(th.Thread):
 		report("Checking for updates...")
 
 		version = []
-		for server in SC4MP_OFFICIAL_SERVERS:
+		for server in SC4MP_SERVERS:
 			host = server[0]
 			port = server[1]
 			try:
