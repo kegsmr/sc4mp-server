@@ -1422,18 +1422,19 @@ class RequestHandler(th.Thread):
 		elif (request == "user_id"):
 			self.send_user_id(c)
 		elif (request == "token"):
+			self.request_header(c)
 			self.send_token(c)
 		elif (request == "plugins"):
+			self.request_header(c)
 			self.send_plugins(c)
 		elif (request == "regions"):
+			self.request_header(c)
 			self.send_regions(c)
-		elif (request == "push_delete"):
-			self.delete(c)
-		elif (request == "push_save"):
+		elif (request == "save"):
+			self.request_header(c)
 			self.save(c)
 		elif (request == "add_server"):
-			if (sc4mp_config["SECURITY"]["discoverable"]):
-				self.add_server(c)
+			self.add_server(c)
 		elif (request == "password_enabled"):
 			self.password_enabled(c)
 		elif (request == "check_password"):
@@ -1441,13 +1442,33 @@ class RequestHandler(th.Thread):
 		elif (request == "user_plugins_enabled"):
 			self.user_plugins_enabled(c)
 		elif (request == "refresh"):
+			self.request_header(c)
 			self.refresh(c)
 
 		c.close()
 	
 		#report("- connection closed.", self)
 
-	
+
+	def request_header(self, c):
+		"""TODO"""
+
+		c.send(SC4MP_SEPARATOR)
+		version = c.recv(SC4MP_BUFFER_SIZE).decode()
+		if (version != str(SC4MP_VERSION[0]) + "." + str(SC4MP_VERSION[1]) + "." + str(SC4MP_VERSION[2])):
+			c.close()
+			raise CustomException("Invalid version.")
+
+		if (sc4mp_config["SECURITY"]["password_enabled"]):
+			c.send(SC4MP_SEPARATOR)
+			if (c.recv(SC4MP_BUFFER_SIZE).decode() != sc4mp_config["SECURITY"]["password"]):
+				c.close()
+				raise CustomException("Incorrect password.")
+
+		c.send(SC4MP_SEPARATOR)
+		self.user_id = self.log_user(c)
+
+
 	def ping(self, c):
 		"""TODO"""
 		c.send(b"pong")
@@ -1470,10 +1491,7 @@ class RequestHandler(th.Thread):
 	
 	def send_server_version(self, c):
 		"""TODO"""
-		for index in range(2):
-			if (index > 0):
-				c.send(SC4MP_SEPARATOR)
-			c.send((str(SC4MP_VERSION[index])).encode())
+		c.send('.'.join(SC4MP_VERSION).encode())
 
 
 	def send_user_id(self, c):
@@ -1499,10 +1517,8 @@ class RequestHandler(th.Thread):
 
 	def send_token(self, c):
 		"""TODO"""
-
-		c.send(SC4MP_SEPARATOR)
 		
-		user_id = self.log_user(c)
+		user_id = self.user_id
 
 		token = ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))
 
@@ -1569,14 +1585,10 @@ class RequestHandler(th.Thread):
 	def save(self, c):
 		"""TODO"""
 		
+		user_id = self.user_id
+
 		# Separator
 		c.send(SC4MP_SEPARATOR)
-
-		#TODO receive password if required
-
-		# Receive user id
-		user_id = self.log_user(c)
-		c.send(SC4MP_SEPARATOR) #TODO verify real user?
 
 		# Receive file count
 		file_count = int(c.recv(SC4MP_BUFFER_SIZE).decode())
@@ -1727,6 +1739,9 @@ class RequestHandler(th.Thread):
 	def add_server(self, c):
 		"""TODO"""
 
+		if (not sc4mp_config["SECURITY"]["discoverable"]):
+			return
+
 		c.send(SC4MP_SEPARATOR)
 
 		#TODO
@@ -1758,7 +1773,7 @@ class RequestHandler(th.Thread):
 		# Close connection and throw error if the user is banned
 		if (entry["ban"]):
 			c.close()
-			raise Exception() #TODO CustomException("Authentication error.")
+			raise CustomException("Authentication error.")
 		
 		# Log the time
 		entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1801,11 +1816,7 @@ class RequestHandler(th.Thread):
 	def refresh(self, c):
 		"""TODO"""
 
-		# Separator
-		c.send(SC4MP_SEPARATOR)
-
-		# Receive user_id
-		user_id = self.log_user(c)
+		user_id = self.user_id
 
 		# Loop through regions
 		regions_directory = os.path.join(sc4mp_server_path, "Regions")
