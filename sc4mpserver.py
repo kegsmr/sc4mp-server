@@ -60,7 +60,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	]),
 	("PERFORMANCE", [
 		("request_limit", 20),
-		("max_request_threads", 100),
+		("max_request_threads", 200),
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 24),
