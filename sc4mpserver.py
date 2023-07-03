@@ -803,9 +803,11 @@ class Server(th.Thread):
 
 			try:
 
+				request_thread_limit = sc4mp_config["PERFORMANCE"]["max_request_threads"]
+
 				while (sc4mp_server_running):
 
-					if (sc4mp_request_threads < sc4mp_config["PERFORMANCE"]["max_request_threads"]):
+					if (request_thread_limit == None or sc4mp_request_threads < request_thread_limit):
 
 						try:
 
