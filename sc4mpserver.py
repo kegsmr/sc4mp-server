@@ -149,11 +149,14 @@ def set_savegame_data(entry, savegame):
 	entry.setdefault("owner", None)
 	entry.setdefault("modified", None)
 	entry.setdefault("reset_filename", None)
+	entry.setdefault("date_subfile_hashes", [])
+
+	# Append
+	entry["date_subfile_hashes"].append(file_md5(savegame.decompress_subfile("2990c1e5")))
 
 	# Overwrite
 	entry["hashcode"] = md5(savegame.filename)
-	entry["size"] = savegame.SC4ReadRegionalCity["citySizeX"]
-	entry["date_subfile_hash"] = file_md5(savegame.decompress_subfile("2990c1e5"))
+	entry["size"] = savegame.SC4ReadRegionalCity["citySizeX"] 
 	entry["gamemode"] = savegame.SC4ReadRegionalCity["modeFlag"]
 	entry["difficulty"] = savegame.SC4ReadRegionalCity["starCount"]
 	entry["mayor_rating"] = savegame.SC4ReadRegionalCity["mayorRating"]
@@ -986,7 +989,7 @@ class Server(th.Thread):
 				savegameSize = savegame.SC4ReadRegionalCity["citySizeX"]
 
 				# Get md5 hashcode of date subfile
-				savegame_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
+				#savegame_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
 
 				# Get dictionary for savegame data
 				coords = str(savegameX) + "_" + str(savegameY)
@@ -1706,9 +1709,9 @@ class RequestHandler(th.Thread):
 					data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json"))
 					if (coords in data.keys()):
 						entry = data[coords]
-						date_subfile_hash = entry["date_subfile_hash"]
+						date_subfile_hashes = entry["date_subfile_hashes"]
 						new_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
-						if (date_subfile_hash != new_date_subfile_hash):
+						if (not new_date_subfile_hash in date_subfile_hashes):
 							new_savegames.append(savegame)
 							report("YES (" + str(savegameX) + ", " + str(savegameY) + ")", self)
 						else:
