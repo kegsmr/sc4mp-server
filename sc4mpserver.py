@@ -421,6 +421,41 @@ def unformat_version(version):
 	return tuple(ints)
 
 
+def restore(filename):
+	"""TODO"""
+	possible_paths = [
+		os.path.join(sc4mp_server_path, "_Backups", filename),
+		os.path.join(sc4mp_server_path, "_Backups", filename + ".json"),
+		os.path.join(sc4mp_server_path, filename),
+		os.path.join(sc4mp_server_path, filename + ".json"),
+		filename,
+		filename + ".json",
+	]
+	for path in possible_paths:
+		if (not os.path.exists(path)):
+			continue
+		else:
+			print("Restoring backup at \"" + path + "\"")
+			data = load_json(path)
+			directory, filename = os.path.split(os.path.abspath(path))
+			os.chdir(directory)
+			files_entry = data["files"]
+			for original_filename in files_entry.keys():
+				file_entry = files_entry[original_filename]
+				hashcode = file_entry["hashcode"]
+				size = file_entry["size"]
+				data_filename = os.path.join("data", hashcode + "_" + str(size))
+				restore_filename = os.path.join("restores", filename[:-5], original_filename)
+				print("Copying \"" + data_filename + "\" to \"" + restore_filename + "\"")
+				restore_directory = os.path.split(restore_filename)[0]
+				if (not os.path.exists(restore_directory)):
+					os.makedirs(restore_directory)
+				shutil.copy(data_filename, restore_filename)
+			print("Done.")
+			return
+	raise CustomException("File not found.")
+
+
 # Objects
 
 class Config:
@@ -2045,10 +2080,6 @@ def main():
 		# Title
 		report(SC4MP_TITLE)
 
-		# "-prep" argument
-		global sc4mp_nostart
-		sc4mp_nostart = "-prep" in sc4mp_args
-
 		# "--server-path" argument
 		global sc4mp_server_path
 		try:
@@ -2057,6 +2088,21 @@ def main():
 				sc4mp_server_path = sc4mp_args[sc4mp_args.index(ARGUMENT) + 1]
 		except Exception as e:
 			raise CustomException("Invalid arguments.")
+
+		# "--restore" argument
+		global sc4mp_restore
+		try:
+			ARGUMENT = "--restore"
+			if (ARGUMENT in sc4mp_args):
+				sc4mp_restore = sc4mp_args[sc4mp_args.index(ARGUMENT) + 1]
+				restore(sc4mp_restore)
+				return
+		except Exception as e:
+			raise CustomException("Invalid arguments.")
+
+		# "-prep" argument
+		global sc4mp_nostart
+		sc4mp_nostart = "-prep" in sc4mp_args
 
 		# Server
 		global sc4mp_server
