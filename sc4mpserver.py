@@ -76,7 +76,7 @@ SC4MP_SERVER_DESCRIPTION = None
 
 sc4mp_args = sys.argv
 
-sc4mp_server_path = "_Server"
+sc4mp_server_path = "_SC4MP"
 
 sc4mp_server_running = False
 
@@ -229,7 +229,7 @@ def export(type):
 	#	os.makedirs(destination)
 	
 	# Copy recursively
-	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups', '_Profiles'))	
+	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups', '_Database'))	
 
 
 def purge_directory(directory):
@@ -477,7 +477,6 @@ class Config:
 			update_config_constants(self)
 		except:
 			pass
-
 
 
 class DBPF:
@@ -751,10 +750,10 @@ class Server(th.Thread):
 
 		super().__init__()
 
-		self.check_version()
+		#self.check_version() #TODO
 		self.create_subdirectories()
 		self.load_config()
-		self.prep_profiles()
+		self.prep_database()
 		self.clear_temp()
 		self.prep_regions() 
 		self.prep_backups()
@@ -837,7 +836,7 @@ class Server(th.Thread):
 
 		report("Creating subdirectories...")
 
-		directories = ["_Backups", "_Profiles", "_Temp", "Plugins", "Regions"]
+		directories = ["_Backups", "_Database", "_Temp", "Plugins", "Regions"]
 
 		for directory in directories:
 			new_directory = os.path.join(sc4mp_server_path, directory)
@@ -903,16 +902,16 @@ class Server(th.Thread):
 			SC4MP_SERVER_DESCRIPTION = default_server_description'''
 
 
-	def prep_profiles(self):
+	def prep_database(self):
 		"""TODO"""
 
 		report("Preparing database...")
 
-		# Profiles directory
-		profiles_directory = os.path.join(sc4mp_server_path, "_Profiles")
+		# Database directory
+		database_directory = os.path.join(sc4mp_server_path, "_Database")
 
 		# Users database
-		filename = os.path.join(profiles_directory, "users.json")
+		filename = os.path.join(database_directory, "users.json")
 		if (not os.path.exists(filename)):
 			create_empty_json(filename)
 
@@ -932,14 +931,14 @@ class Server(th.Thread):
 			region_directory = os.path.join(regions_directory, region)
 
 			# Create subdirectories in region directory
-			region_subdirectories = ["_Profiles", "_Backups"]
+			region_subdirectories = ["_Database", "_Backups"]
 			for region_subdirectory in region_subdirectories:
 				directory = os.path.join(region_directory, region_subdirectory)
 				if (not os.path.exists(directory)):
 					os.makedirs(directory)
 
 			# Get database
-			filename = os.path.join(region_directory, "_Profiles", "region.json")
+			filename = os.path.join(region_directory, "_Database", "region.json")
 			data = None
 			try:
 				data = load_json(filename)
@@ -1007,10 +1006,10 @@ class Server(th.Thread):
 		if (sc4mp_nostart):
 			return
 
-		# Profiles manager
-		global sc4mp_profiles_manager
-		sc4mp_profiles_manager = ProfilesManager()
-		sc4mp_profiles_manager.start()
+		# Database manager
+		global sc4mp_database_manager
+		sc4mp_database_manager = DatabaseManager()
+		sc4mp_database_manager.start()
 
 
 	def clear_temp(self):
@@ -1150,7 +1149,7 @@ class BackupsManager(th.Thread):
 		report("Done.", self)
 
 
-class ProfilesManager(th.Thread):
+class DatabaseManager(th.Thread):
 	"""TODO"""
 
 	
@@ -1159,7 +1158,7 @@ class ProfilesManager(th.Thread):
 
 		super().__init__()
 	
-		self.filename = os.path.join(sc4mp_server_path, "_Profiles", "users.json")
+		self.filename = os.path.join(sc4mp_server_path, "_Database", "users.json")
 		self.data = self.load_json(self.filename)
 
 
@@ -1273,7 +1272,7 @@ class RegionsManager(th.Thread):
 							coords = str(savegameX) + "_" + str(savegameY)
 
 							# Get region database
-							data_filename = os.path.join(sc4mp_server_path, "Regions", region, "_Profiles", "region.json")
+							data_filename = os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json")
 							data = self.load_json(data_filename)
 							
 							# Get city entry
@@ -1486,7 +1485,7 @@ class RequestHandler(th.Thread):
 		hash = c.recv(SC4MP_BUFFER_SIZE).decode()
 
 		# Get database
-		data = sc4mp_profiles_manager.data
+		data = sc4mp_database_manager.data
 
 		# Send the user_id that matches the hash
 		for user_id in data.keys():
@@ -1509,7 +1508,7 @@ class RequestHandler(th.Thread):
 		token = ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))
 
 		# Get database
-		data = sc4mp_profiles_manager.data
+		data = sc4mp_database_manager.data
 
 		# Get database entry for user
 		key = user_id
@@ -1676,7 +1675,7 @@ class RequestHandler(th.Thread):
 					savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
 					savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
 					coords = str(savegameX) + "_" + str(savegameY)
-					data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Profiles", "region.json"))
+					data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json"))
 					if (coords in data.keys()):
 						entry = data[coords]
 						date_subfile_hash = entry["date_subfile_hash"]
@@ -1741,7 +1740,7 @@ class RequestHandler(th.Thread):
 		user_id = hashlib.sha256(c.recv(SC4MP_BUFFER_SIZE)).hexdigest()[:32]
 		
 		# Get profile database
-		data = sc4mp_profiles_manager.data
+		data = sc4mp_database_manager.data
 		
 		# Get data entry that matches user id
 		entry = None
@@ -1814,7 +1813,7 @@ class RequestHandler(th.Thread):
 		for region in os.listdir(regions_directory):
 			if (os.path.isdir(os.path.join(regions_directory, region))):
 				#print(region)
-				region_data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Profiles", "region.json"))
+				region_data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json"))
 				for coords in region_data.keys():
 					#print(coords)
 					city_entry = region_data[coords]
