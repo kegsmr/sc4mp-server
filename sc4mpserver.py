@@ -38,35 +38,35 @@ SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
 		("host", "0.0.0.0"),
 		("port", 7240),
-		("discoverable", True)
+		#("discoverable", True), #TODO
 	]),
 	("INFO", [
 		("server_id", ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))),
 		("server_name", os.getlogin() + " on " + socket.gethostname()),
-		("server_description", "Join and build your city.\n\nRules:\n- Feed the llamas\n- Balance your budget\n- Do uncle Vinny some favors")
+		("server_description", "Join and build your city.\n\nRules:\n- Feed the llamas\n- Balance your budget\n- Do uncle Vinny some favors"),
 	]),
 	("SECURITY", [
 		("password_enabled", False),
 		("password", "maxis2003"),
-		("max_ip_users", 3)
+		("max_ip_users", 3),
 	]),
 	("RULES", [
 		("claim_duration", 30),
 		("claim_delay", 60),
 		("max_region_claims", 1),
-		("max_total_claims", None),
+		#("max_total_claims", None), #TODO
 		("godmode_filter", True),
-		("user_plugins", False)
+		("user_plugins", False),
 	]),
 	("PERFORMANCE", [
 		("request_limit", 20),
-		("max_request_threads", 100)
+		("max_request_threads", 100),
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 24),
 		("backup_server_on_startup", True),
 		("max_server_backups", 720),
-		("max_savegame_backups", 10)
+		("max_savegame_backups", 10),
 	])
 ]
 
@@ -81,6 +81,8 @@ sc4mp_args = sys.argv
 sc4mp_server_path = "_SC4MP"
 
 sc4mp_server_running = False
+
+sc4mp_request_threads = 0
 
 
 # Methods
@@ -783,41 +785,59 @@ class Server(th.Thread):
 	def run(self):
 		"""TODO"""
 
-		global sc4mp_server_running
-
-		report("Starting server...")
-		sc4mp_server_running = True
-
-		report("- creating socket...")
-		s = socket.socket()
-
-		report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
-		s.bind((SC4MP_HOST, SC4MP_PORT))
-
-		report("- listening for connections...")
-		s.listen(5)
-
 		try:
 
-			while (sc4mp_server_running):
+			global sc4mp_server_running, sc4mp_request_threads
 
-				try:
+			report("Starting server...")
+			sc4mp_server_running = True
 
-					c, address = s.accept()
-					report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
+			report("- creating socket...")
+			s = socket.socket()
 
-					RequestHandler(c).start()	
+			report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
+			s.bind((SC4MP_HOST, SC4MP_PORT))
 
-				except socket.error as e:
+			report("- listening for connections...")
+			s.listen(5)
 
-					report(str(e), None, "ERROR")
-			
-		except (SystemExit, KeyboardInterrupt) as e:
+			try:
 
-			pass
+				while (sc4mp_server_running):
 
-		report("Shutting down...")
-		sc4mp_server_running = False
+					if (sc4mp_request_threads < sc4mp_config["PERFORMANCE"]["max_request_threads"]):
+
+						try:
+
+							c, address = s.accept()
+							report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
+
+							sc4mp_request_threads += 1
+
+							RequestHandler(c).start()	
+
+						except socket.error as e:
+
+							report(str(e), None, "ERROR")
+				
+					else:
+
+						print("[WARNING] Request thread limit reached!")
+
+						time.sleep(SC4MP_DELAY)
+				
+			except (SystemExit, KeyboardInterrupt) as e:
+
+				pass
+
+			report("Shutting down...")
+			sc4mp_server_running = False
+
+		except Exception as e:
+
+			print("[FATAL] " + str(e))
+
+			sc4mp_server_running = False
 
 
 	def check_version(self): #TODO doesnt work
@@ -1084,27 +1104,37 @@ class BackupsManager(th.Thread):
 	def run(self):
 		"""TODO"""
 
-		while(not sc4mp_server_running):
-			
-			time.sleep(SC4MP_DELAY)
+		try:
 
-		while (sc4mp_server_running): #TODO needs to stop at some point
+			global sc4mp_server_running
 
-			try:
+			while(not sc4mp_server_running):
+				
+				time.sleep(SC4MP_DELAY)
 
-				# Delay
-				time.sleep(3600 * sc4mp_config["BACKUPS"]["server_backup_interval"])
+			while (sc4mp_server_running):
 
-				# Create backup
-				self.backup()
+				try:
 
-			except Exception as e:
+					# Delay
+					time.sleep(3600 * sc4mp_config["BACKUPS"]["server_backup_interval"])
 
-				# Report error
-				report(str(e), self, "ERROR")
+					# Create backup
+					self.backup()
 
-				# Delay until retrying backup
-				time.sleep(60)
+				except Exception as e:
+
+					# Report error
+					report(str(e), self, "ERROR")
+
+					# Delay until retrying backup
+					time.sleep(60)
+
+		except Exception as e:
+
+			print("[FATAL] " + str(e))
+
+			sc4mp_server_running = False
 
 
 	def load_json(self, filename):
@@ -1185,26 +1215,36 @@ class DatabaseManager(th.Thread):
 
 	def run(self):
 		"""TODO"""
-		
-		while(not sc4mp_server_running):
-			
-			time.sleep(SC4MP_DELAY)
+	
+		try:
 
-		#report("Monitoring database for changes...", self) #TODO why is the spacing wrong?
-		
-		old_data = str(self.data)
-		
-		while (sc4mp_server_running): #TODO pretty dumb way of checking if a dictionary has been modified. also this thread probably needs to stop at some point
-			try:
+			global sc4mp_server_running
+
+			while(not sc4mp_server_running):
+				
 				time.sleep(SC4MP_DELAY)
-				new_data = str(self.data)
-				if (old_data != new_data):
-					report('Updating "' + self.filename + '"...', self)
-					self.update_json(self.filename, self.data)
-					report("Done.", self)
-				old_data = new_data
-			except Exception as e:
-				report(str(e), self, "ERROR")
+
+			#report("Monitoring database for changes...", self) #TODO why is the spacing wrong?
+			
+			old_data = str(self.data)
+			
+			while (sc4mp_server_running): #TODO pretty dumb way of checking if a dictionary has been modified. also this thread probably needs to stop at some point
+				try:
+					time.sleep(SC4MP_DELAY)
+					new_data = str(self.data)
+					if (old_data != new_data):
+						report('Updating "' + self.filename + '"...', self)
+						self.update_json(self.filename, self.data)
+						report("Done.", self)
+					old_data = new_data
+				except Exception as e:
+					report(str(e), self, "ERROR")
+
+		except Exception as e:
+
+			print("[FATAL] " + str(e))
+
+			sc4mp_server_running = False
 
 
 	def load_json(self, filename):
@@ -1242,161 +1282,180 @@ class RegionsManager(th.Thread):
 	def run(self):
 		"""TODO"""
 
-		while(not sc4mp_server_running):
+		try:
+
+			global sc4mp_server_running
+
+			while(not sc4mp_server_running):
+				
+				time.sleep(SC4MP_DELAY)
 			
-			time.sleep(SC4MP_DELAY)
-		
-		while (sc4mp_server_running):
+			while (sc4mp_server_running):
 
-			try:
+				try:
 
-				# Package regions if requested, otherwise check for new tasks
-				if (self.export_regions):
+					# Package regions if requested, otherwise check for new tasks
+					if (self.export_regions):
 
-					report("Exporting regions as requested...", self)
+						report("Exporting regions as requested...", self)
 
-					export("regions")
-
-					report("Done.", self)
-
-					self.regions_modified = False
-					self.export_regions = False
-
-				else:
-
-					# Check for the next task
-					if (len(self.tasks) > 0):
-
-						# Get the next task
-						task = self.tasks.pop()
-
-						# Read values from tuple
-						save_id = task[0]
-						user_id = task[1]
-						region = task[2]
-						savegame = task[3]
-
-						report('Processing task "' + save_id + '"...', self)
-
-						# Another layer of exception handling so that the request handler isn't waiting around in the event of an error
-						try:
-
-							# Get values from savegame
-							filename = savegame.filename
-							savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
-							savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
-							savegameSizeX = savegame.SC4ReadRegionalCity["citySizeX"]
-							savegameSizeY = savegame.SC4ReadRegionalCity["citySizeY"]
-							savegameModeFlag = savegame.SC4ReadRegionalCity["modeFlag"]
-
-							# Set "coords" variable. Used as a key in the region database and also for the name of the new save file
-							coords = str(savegameX) + "_" + str(savegameY)
-
-							# Get region database
-							data_filename = os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json")
-							data = self.load_json(data_filename)
-							
-							# Get city entry
-							entry = None
-							try:
-								entry = data[coords]
-							except:
-								entry = dict()
-								data[coords] = entry
-
-							# Filter out godmode savegames if required
-							if (sc4mp_config["RULES"]["godmode_filter"]):
-								if (savegameModeFlag == 0):
-									self.outputs[save_id] = "You must establish a city before claiming a tile."
-							
-							# Filter out cities that don't match the region configuration
-							if (entry == None):
-								self.outputs[save_id] = "Invalid city location."
-
-							# Filter out cities of the wrong size
-							if ("size" in entry.keys()):
-								if (savegameSizeX != savegameSizeY or savegameSizeX != entry["size"]):
-									self.outputs[save_id] = "Invalid city size."
-
-							# Filter out claims on tiles with unexpired claims of other users
-							if ("owner" in entry.keys()):
-								owner = entry["owner"]
-								if (owner != None and owner != user_id):
-									expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + timedelta(days=sc4mp_config["RULES"]["claim_duration"])
-									if (expires > datetime.now()):
-										self.outputs[save_id] = "City already claimed."
-
-							# Filter out cliams of users who have exhausted their region claims
-							#TODO
-
-							# Filter out claims of users who have exhausted their total claims
-							#TODO
-
-							# Proceed if save push has not been filtered out
-							if (not save_id in self.outputs.keys()):
-
-								# Delete previous save file if it exists
-								if ("filename" in entry.keys()):
-									previous_filename = os.path.join(sc4mp_server_path, "Regions", region, entry["filename"])
-									if (os.path.exists(previous_filename)):
-										os.remove(previous_filename)
-
-								# Copy save file from temporary directory to regions directory
-								destination = os.path.join(sc4mp_server_path, "Regions", region, coords + ".sc4") #TODO include city name?
-								if (os.path.exists(destination)):
-									os.remove(destination)
-								shutil.copy(filename, destination)
-
-								# Copy save file from temporary directory to backup directory
-								backup_directory = os.path.join(sc4mp_server_path, "Regions", region, "_Backups", coords)
-								if (not os.path.exists(backup_directory)):
-									os.makedirs(backup_directory)
-								destination = os.path.join(backup_directory, datetime.now().strftime("%Y%m%d%H%M%S") + ".sc4")
-								shutil.copy(filename, destination)
-								#TODO delete old backups
-
-								# Set entry values
-								entry["filename"] = coords + ".sc4"
-								entry["owner"] = user_id
-								entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-								set_savegame_data(entry, savegame)
-
-								# Update database
-								self.update_json(data_filename, data)
-
-								# Mark regions as modified
-								self.regions_modified = True
-
-								# Report success
-								self.outputs[save_id] = "ok"
-
-						except Exception as e:
-
-							# Report an error to the request handler
-							self.outputs[save_id] = "Unexpected server-side error."
-
-							# Raise the exception so that it appears in the server's output
-							raise e
+						export("regions")
 
 						report("Done.", self)
 
+						self.regions_modified = False
+						self.export_regions = False
+
 					else:
 
-						# Clean up inbound temporary files and outputs
-						try:
-							path = os.path.join(sc4mp_server_path, "_Temp", "inbound")
-							for directory in os.listdir(path):
-								if (directory in self.outputs.keys()):
-									shutil.rmtree(os.path.join(path, directory))
-									self.outputs.pop(directory)
-						except Exception as e:
-							pass
-						
-						time.sleep(SC4MP_DELAY)
+						# Check for the next task
+						if (len(self.tasks) > 0):
 
-			except Exception as e:
+							# Get the next task
+							task = self.tasks.pop()
 
-				report(str(e), self, "ERROR")
+							# Read values from tuple
+							save_id = task[0]
+							user_id = task[1]
+							region = task[2]
+							savegame = task[3]
+
+							report('Processing task "' + save_id + '"...', self)
+
+							# Another layer of exception handling so that the request handler isn't waiting around in the event of an error
+							try:
+
+								# Get values from savegame
+								filename = savegame.filename
+								savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
+								savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
+								savegameSizeX = savegame.SC4ReadRegionalCity["citySizeX"]
+								savegameSizeY = savegame.SC4ReadRegionalCity["citySizeY"]
+								savegameModeFlag = savegame.SC4ReadRegionalCity["modeFlag"]
+
+								# Set "coords" variable. Used as a key in the region database and also for the name of the new save file
+								coords = str(savegameX) + "_" + str(savegameY)
+
+								# Get region database
+								data_filename = os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json")
+								data = self.load_json(data_filename)
+								
+								# Get city entry
+								entry = None
+								try:
+									entry = data[coords]
+								except:
+									entry = dict()
+									data[coords] = entry
+
+								# Filter out godmode savegames if required
+								if (sc4mp_config["RULES"]["godmode_filter"]):
+									if (savegameModeFlag == 0):
+										self.outputs[save_id] = "You must establish a city before claiming a tile."
+								
+								# Filter out cities that don't match the region configuration
+								if (entry == None):
+									self.outputs[save_id] = "Invalid city location."
+
+								# Filter out cities of the wrong size
+								if ("size" in entry.keys()):
+									if (savegameSizeX != savegameSizeY or savegameSizeX != entry["size"]):
+										self.outputs[save_id] = "Invalid city size."
+
+								# Filter out claims on tiles with unexpired claims of other users
+								if ("owner" in entry.keys()):
+									owner = entry["owner"]
+									if (owner != None and owner != user_id):
+										if (sc4mp_config["RULES"]["claim_duration"] == None):
+											self.outputs[save_id] = "City already claimed."
+										else:
+											expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + timedelta(days=sc4mp_config["RULES"]["claim_duration"])
+											if (expires > datetime.now()):
+												self.outputs[save_id] = "City already claimed."
+
+								# Filter out cliams of users who have exhausted their region claims
+								if (sc4mp_config["RULES"]["max_region_claims"] != None):
+									claims = 0
+									for key in data.keys():
+										if (data[key]["owner"] == user_id):
+											claims += 1
+									if (claims >= sc4mp_config["RULES"]["max_region_claims"]):
+										self.outputs[save_id] = "Claim limit reached in this region."
+
+								# Filter out claims of users who have exhausted their total claims
+								#TODO
+
+								# Proceed if save push has not been filtered out
+								if (not save_id in self.outputs.keys()):
+
+									# Delete previous save file if it exists
+									if ("filename" in entry.keys()):
+										previous_filename = os.path.join(sc4mp_server_path, "Regions", region, entry["filename"])
+										if (os.path.exists(previous_filename)):
+											os.remove(previous_filename)
+
+									# Copy save file from temporary directory to regions directory
+									destination = os.path.join(sc4mp_server_path, "Regions", region, coords + ".sc4") #TODO include city name?
+									if (os.path.exists(destination)):
+										os.remove(destination)
+									shutil.copy(filename, destination)
+
+									# Copy save file from temporary directory to backup directory
+									backup_directory = os.path.join(sc4mp_server_path, "Regions", region, "_Backups", coords)
+									if (not os.path.exists(backup_directory)):
+										os.makedirs(backup_directory)
+									destination = os.path.join(backup_directory, datetime.now().strftime("%Y%m%d%H%M%S") + ".sc4")
+									shutil.copy(filename, destination)
+									#TODO delete old backups
+
+									# Set entry values
+									entry["filename"] = coords + ".sc4"
+									entry["owner"] = user_id
+									entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+									set_savegame_data(entry, savegame)
+
+									# Update database
+									self.update_json(data_filename, data)
+
+									# Mark regions as modified
+									self.regions_modified = True
+
+									# Report success
+									self.outputs[save_id] = "ok"
+
+							except Exception as e:
+
+								# Report an error to the request handler
+								self.outputs[save_id] = "Unexpected server-side error."
+
+								# Raise the exception so that it appears in the server's output
+								raise e
+
+							report("Done.", self)
+
+						else:
+
+							# Clean up inbound temporary files and outputs
+							try:
+								path = os.path.join(sc4mp_server_path, "_Temp", "inbound")
+								for directory in os.listdir(path):
+									if (directory in self.outputs.keys()):
+										shutil.rmtree(os.path.join(path, directory))
+										self.outputs.pop(directory)
+							except Exception as e:
+								pass
+							
+							time.sleep(SC4MP_DELAY)
+
+				except Exception as e:
+
+					report(str(e), self, "ERROR")
+
+		except Exception as e:
+
+			print("[FATAL] " + str(e))
+
+			sc4mp_server_running = False
 
 
 	def load_json(self, filename):
@@ -1431,51 +1490,69 @@ class RequestHandler(th.Thread):
 	def run(self):
 		"""TODO"""
 
-		c = self.c
+		try:
 
-		request = c.recv(SC4MP_BUFFER_SIZE).decode()
+			global sc4mp_server_running, sc4mp_request_threads
 
-		report("Request: " + request, self)
+			try:
 
-		if (request == "ping"):
-			self.ping(c)
-		elif (request == "server_id"):
-			self.send_server_id(c)
-		elif (request == "server_name"):
-			self.send_server_name(c)
-		elif (request == "server_description"):
-			self.send_server_description(c)
-		elif (request == "server_version"):
-			self.send_server_version(c)
-		elif (request == "user_id"):
-			self.send_user_id(c)
-		elif (request == "token"):
-			self.request_header(c)
-			self.send_token(c)
-		elif (request == "plugins"):
-			self.request_header(c)
-			self.send_plugins(c)
-		elif (request == "regions"):
-			self.request_header(c)
-			self.send_regions(c)
-		elif (request == "save"):
-			self.request_header(c)
-			self.save(c)
-		elif (request == "add_server"):
-			self.add_server(c)
-		elif (request == "password_enabled"):
-			self.password_enabled(c)
-		elif (request == "check_password"):
-			self.check_password(c)
-		elif (request == "user_plugins_enabled"):
-			self.user_plugins_enabled(c)
-		elif (request == "refresh"):
-			self.request_header(c)
-			self.refresh(c)
+				c = self.c
 
-		c.close()
-	
-		#report("- connection closed.", self)
+				request = c.recv(SC4MP_BUFFER_SIZE).decode()
+
+				report("Request: " + request, self)
+
+				if (request == "ping"):
+					self.ping(c)
+				elif (request == "server_id"):
+					self.send_server_id(c)
+				elif (request == "server_name"):
+					self.send_server_name(c)
+				elif (request == "server_description"):
+					self.send_server_description(c)
+				elif (request == "server_version"):
+					self.send_server_version(c)
+				elif (request == "user_id"):
+					self.send_user_id(c)
+				elif (request == "token"):
+					self.request_header(c)
+					self.send_token(c)
+				elif (request == "plugins"):
+					self.request_header(c)
+					self.send_plugins(c)
+				elif (request == "regions"):
+					self.request_header(c)
+					self.send_regions(c)
+				elif (request == "save"):
+					self.request_header(c)
+					self.save(c)
+				elif (request == "add_server"):
+					self.add_server(c)
+				elif (request == "password_enabled"):
+					self.password_enabled(c)
+				elif (request == "check_password"):
+					self.check_password(c)
+				elif (request == "user_plugins_enabled"):
+					self.user_plugins_enabled(c)
+				elif (request == "refresh"):
+					self.request_header(c)
+					self.refresh(c)
+
+				c.close()
+			
+				#report("- connection closed.", self)
+
+			except Exception as e:
+
+				print("[ERROR] " + str(e))
+
+			sc4mp_request_threads -= 1
+
+		except Exception as e:
+
+			print("[FATAL] " + str(e))
+
+			sc4mp_server_running = False
 
 
 	def request_header(self, c):
