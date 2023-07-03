@@ -1919,31 +1919,31 @@ class Logger():
 def main():
 	"""The main method."""
 
-	sys.stdout = Logger()
-	th.current_thread().name = "Main"
-
-	report(SC4MP_TITLE)
-
-	global sc4mp_nostart
-	sc4mp_nostart = "-prep" in sc4mp_args
-
-	global sc4mp_server_path
-	try:
-		ARGUMENT = "--server-path"
-		if (ARGUMENT in sc4mp_args):
-			sc4mp_server_path = sc4mp_args[sc4mp_args.index(ARGUMENT) + 1]
-	except Exception as e:
-		report("Invalid arguments.", None, "FATAL")
-		return
-
 	try:
 
+		# Output
+		sys.stdout = Logger()
+		th.current_thread().name = "Main"
+
+		# Title
+		report(SC4MP_TITLE)
+
+		# "-prep" argument
+		global sc4mp_nostart
+		sc4mp_nostart = "-prep" in sc4mp_args
+
+		# "--server-path" argument
+		global sc4mp_server_path
+		try:
+			ARGUMENT = "--server-path"
+			if (ARGUMENT in sc4mp_args):
+				sc4mp_server_path = sc4mp_args[sc4mp_args.index(ARGUMENT) + 1]
+		except Exception as e:
+			raise CustomException("Invalid arguments.")
+
+		# Server
 		global sc4mp_server
-
-		# Prep
 		sc4mp_server = Server()
-
-		# Start
 		if (not sc4mp_nostart):
 			sc4mp_server.run()
 
