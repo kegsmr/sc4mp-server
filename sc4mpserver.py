@@ -440,14 +440,13 @@ def restore(filename):
 			print("Restoring backup at \"" + path + "\"")
 			data = load_json(path)
 			directory, filename = os.path.split(os.path.abspath(path))
-			os.chdir(directory)
 			files_entry = data["files"]
 			for original_filename in files_entry.keys():
 				file_entry = files_entry[original_filename]
 				hashcode = file_entry["hashcode"]
 				size = file_entry["size"]
-				data_filename = os.path.join("data", hashcode + "_" + str(size))
-				restore_filename = os.path.join("restores", filename[:-5], original_filename)
+				data_filename = os.path.join(directory, "data", hashcode + "_" + str(size))
+				restore_filename = os.path.join(directory, "restores", filename[:-5], original_filename)
 				print("Copying \"" + data_filename + "\" to \"" + restore_filename + "\"")
 				restore_directory = os.path.split(restore_filename)[0]
 				if (not os.path.exists(restore_directory)):
@@ -1203,7 +1202,8 @@ class BackupsManager(th.Thread):
 		fullpaths = []
 		for path, directories, files in os.walk(sc4mp_server_path):
 			for file in files:
-				fullpaths.append(os.path.join(path, file))
+				if (not os.path.abspath(os.path.join(sc4mp_server_path, "_Backups")) in os.path.abspath(path)):
+					fullpaths.append(os.path.join(path, file))
 
 		# Create a files entry for the backup dictionary
 		files_entry = dict()
