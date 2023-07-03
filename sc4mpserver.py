@@ -1326,6 +1326,12 @@ class RegionsManager(th.Thread):
 									if (expires > datetime.now()):
 										self.outputs[save_id] = "City already claimed."
 
+							# Filter out cliams of users who have exhausted their region claims
+							#TODO
+
+							# Filter out claims of users who have exhausted their total claims
+							#TODO
+
 							# Proceed if save push has not been filtered out
 							if (not save_id in self.outputs.keys()):
 
