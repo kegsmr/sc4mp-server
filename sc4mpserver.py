@@ -54,7 +54,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		("claim_duration", 30),
 		("claim_delay", 60),
 		("max_region_claims", 1),
-		("max_total_claims", -1),
+		("max_total_claims", None),
 		("godmode_filter", True),
 		("user_plugins", False)
 	]),
@@ -457,6 +457,8 @@ class Config:
 								self.data[section_name][item_name] = True
 							elif (from_file == "False"):
 								self.data[section_name][item_name] = False
+							elif (from_file == "None"):
+								self.data[section_name][item_name] = None
 							else:
 								t = type(self.data[section_name][item_name])
 								self.data[section_name][item_name] = t(from_file)
