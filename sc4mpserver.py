@@ -435,6 +435,8 @@ def restore(filename):
 		if (not os.path.exists(path)):
 			continue
 		else:
+			if (path[-5:] != ".json"):
+				raise CustomException("Backup file must be a \".json\" file.")
 			print("Restoring backup at \"" + path + "\"")
 			data = load_json(path)
 			directory, filename = os.path.split(os.path.abspath(path))
