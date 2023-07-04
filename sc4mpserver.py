@@ -55,21 +55,21 @@ SC4MP_CONFIG_DEFAULTS = [
 	]),
 	("RULES", [
 		("claim_duration", 30),
-		("claim_delay", 60),
+		#("claim_delay", 60), #TODO
 		("max_region_claims", 1),
 		#("max_total_claims", None), #TODO
 		("godmode_filter", True),
 		("user_plugins", False),
 	]),
 	("PERFORMANCE", [
-		("request_limit", 20),
+		("request_limit", 20), #TODO
 		("max_request_threads", 200),
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 24),
 		("backup_server_on_startup", True),
-		("max_server_backups", 720),
-		("max_savegame_backups", 10),
+		("max_server_backups", 720), #TODO
+		("max_savegame_backups", 10), #TODO
 	])
 ]
 
