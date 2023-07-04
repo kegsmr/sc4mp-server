@@ -51,7 +51,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	("SECURITY", [
 		("password_enabled", False),
 		("password", "maxis2003"),
-		("max_ip_users", 3),
+		("max_ip_users", 3), #TODO
 	]),
 	("RULES", [
 		("claim_duration", 30),
@@ -69,7 +69,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		("server_backup_interval", 24),
 		("backup_server_on_startup", True),
 		("max_server_backups", 720), #TODO
-		("max_savegame_backups", 10), #TODO
+		("max_savegame_backups", 100),
 	])
 ]
 
@@ -1448,16 +1448,17 @@ class RegionsManager(th.Thread):
 												self.outputs[save_id] = "City already claimed."
 
 								# Filter out cliams of users who have exhausted their region claims
-								if (sc4mp_config["RULES"]["max_region_claims"] != None):
-									claims = 0
-									for key in data.keys():
-										try:
-											if (data[key]["owner"] == user_id):
-												claims += 1
-										except:
-											pass
-									if (claims >= sc4mp_config["RULES"]["max_region_claims"]):
-										self.outputs[save_id] = "Claim limit reached in this region."
+								if (not "owner" in entry.keys() or entry["owner"] != user_id):
+									if (sc4mp_config["RULES"]["max_region_claims"] != None):
+										claims = 0
+										for key in data.keys():
+											try:
+												if (data[key]["owner"] == user_id):
+													claims += 1
+											except:
+												pass
+										if (claims >= sc4mp_config["RULES"]["max_region_claims"]):
+											self.outputs[save_id] = "Claim limit reached in this region."
 
 								# Filter out claims of users who have exhausted their total claims
 								#TODO
@@ -1481,6 +1482,11 @@ class RegionsManager(th.Thread):
 									backup_directory = os.path.join(sc4mp_server_path, "Regions", region, "_Backups", coords)
 									if (not os.path.exists(backup_directory)):
 										os.makedirs(backup_directory)
+									while (len(os.listdir(backup_directory)) > sc4mp_config["BACKUPS"]["max_savegame_backups"]):
+										delete_filename = random.choice(os.listdir(backup_directory))
+										if (delete_filename == "reset.sc4"):
+											continue
+										os.remove(os.path.join(backup_directory, delete_filename))
 									destination = os.path.join(backup_directory, datetime.now().strftime("%Y%m%d%H%M%S") + ".sc4")
 									shutil.copy(filename, destination)
 									#TODO delete old backups
