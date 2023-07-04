@@ -457,6 +457,44 @@ def restore(filename):
 	raise CustomException("File not found.")
 
 
+def show_error(e, no_ui=False):
+	"""TODO"""
+	message = None
+	if (isinstance(e, str)):
+		message = e
+	else: 
+		message = str(e)
+
+	print("[ERROR] " + message + "\n\n" + traceback.format_exc())
+
+	'''if (not no_ui):
+		if (sc4mp_ui != None):
+			if (sc4mp_ui == True):
+				tk.Tk().withdraw()
+			messagebox.showerror(SC4MP_TITLE, message)'''
+
+
+def fatal_error(e):
+	"""TODO"""
+
+	message = None
+	if (isinstance(e, str)):
+		message = e
+	else: 
+		message = str(e)
+
+	print("[FATAL] " + message + "\n\n" + traceback.format_exc())
+
+	'''if (sc4mp_ui != None):
+		if (sc4mp_ui == True):
+			tk.Tk().withdraw()
+		messagebox.showerror(SC4MP_TITLE, message)'''
+
+	global sc4mp_server_running
+	sc4mp_server_running = False
+	#sys.exit()
+
+
 # Objects
 
 class Config:
@@ -618,7 +656,7 @@ class DBPF:
 			try:
 				cc = self.read_UL1(self.file)
 			except Exception as e:
-				report(str(e), self, "ERROR")
+				show_error(e)
 				break
 			length -= 1
 			#print("Control char is " + str(cc) + ", length remaining is " + str(length) + ".\n")
@@ -669,7 +707,7 @@ class DBPF:
 				try:
 					answer = answer + (answer[fromoffset + index]).to_bytes(1, 'little') #substr(fromoffset + index, 1)
 				except Exception as e:
-					report(str(e), self, "ERROR")
+					show_error(e)
 					return io.BytesIO(answer)
 			answerlen += numplain
 			answerlen += numcopy
@@ -856,7 +894,7 @@ class Server(th.Thread):
 
 						except socket.error as e:
 
-							report(str(e), None, "ERROR")
+							show_error(e)
 				
 					else:
 
@@ -873,9 +911,7 @@ class Server(th.Thread):
 
 		except Exception as e:
 
-			print("[FATAL] " + str(e))
-
-			sc4mp_server_running = False
+			fatal_error(e)
 
 
 	def check_version(self): #TODO doesnt work
@@ -899,7 +935,7 @@ class Server(th.Thread):
 						version.append(int(bytes.decode()))
 					break
 			except Exception as e:
-				print("[ERROR] " + str(e))
+				show_error(e)
 
 		new_version_available = False
 		if (len(version) == 3):
@@ -925,7 +961,7 @@ class Server(th.Thread):
 					if (directory == "Plugins" or directory == "Regions"):
 						shutil.unpack_archive(get_sc4mp_path(directory + ".zip"), new_directory)
 				except Exception as e:
-					report(str(e), None, "ERROR")
+					show_error(e)
 					#report("Failed to create " + directory + " subdirectory.", None, "WARNING")
 					#report('(this may have been printed by error, check your sc4mp_server_path subdirectory)', None, "WARNING")
 
@@ -1163,16 +1199,14 @@ class BackupsManager(th.Thread):
 				except Exception as e:
 
 					# Report error
-					report(str(e), self, "ERROR")
+					show_error(e)
 
 					# Delay until retrying backup
 					time.sleep(60)
 
 		except Exception as e:
 
-			print("[FATAL] " + str(e))
-
-			sc4mp_server_running = False
+			fatal_error(e)
 
 
 	def load_json(self, filename):
@@ -1277,13 +1311,11 @@ class DatabaseManager(th.Thread):
 						report("Done.", self)
 					old_data = new_data
 				except Exception as e:
-					report(str(e), self, "ERROR")
+					show_error(e)
 
 		except Exception as e:
 
-			print("[FATAL] " + str(e))
-
-			sc4mp_server_running = False
+			fatal_error(e)
 
 
 	def load_json(self, filename):
@@ -1416,8 +1448,11 @@ class RegionsManager(th.Thread):
 								if (sc4mp_config["RULES"]["max_region_claims"] != None):
 									claims = 0
 									for key in data.keys():
-										if (data[key]["owner"] == user_id):
-											claims += 1
+										try:
+											if (data[key]["owner"] == user_id):
+												claims += 1
+										except:
+											pass
 									if (claims >= sc4mp_config["RULES"]["max_region_claims"]):
 										self.outputs[save_id] = "Claim limit reached in this region."
 
@@ -1488,13 +1523,11 @@ class RegionsManager(th.Thread):
 
 				except Exception as e:
 
-					report(str(e), self, "ERROR")
+					show_error(e)
 
 		except Exception as e:
 
-			print("[FATAL] " + str(e))
-
-			sc4mp_server_running = False
+			fatal_error(e)
 
 
 	def load_json(self, filename):
@@ -1583,15 +1616,13 @@ class RequestHandler(th.Thread):
 
 			except Exception as e:
 
-				print("[ERROR] " + str(e))
+				show_error(e)
 
 			sc4mp_request_threads -= 1
 
 		except Exception as e:
 
-			print("[FATAL] " + str(e))
-
-			sc4mp_server_running = False
+			fatal_error(e)
 
 
 	def request_header(self, c):
@@ -2114,11 +2145,7 @@ def main():
 
 	except Exception as e:
 
-		report(str(e), None, "FATAL")
-		traceback.print_exc()
-
-		global sc4mp_server_running
-		sc4mp_server_running = False
+		fatal_error(e)
 
 if __name__ == '__main__':
 	main()
