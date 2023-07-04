@@ -26,6 +26,7 @@ SC4MP_RELEASES_URL = "https://github.com/keggre/sc4mp-client/releases/"
 
 SC4MP_CONFIG_PATH = None
 SC4MP_LOG_PATH = "sc4mpserver-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
+SC4MP_README_PATH = "readme.html"
 SC4MP_RESOURCES_PATH = "resources"
 
 SC4MP_TITLE = "SC4MP Server v" + str(SC4MP_VERSION[0]) + "." + str(SC4MP_VERSION[1]) + "." + str(SC4MP_VERSION[2])
