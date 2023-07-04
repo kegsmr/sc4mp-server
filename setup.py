@@ -1,10 +1,12 @@
-from distutils.core import setup
-import py2exe
-import os
-import sys
 import glob
-from datetime import datetime
+import os
+import platform
 import shutil
+import sys
+from datetime import datetime
+from distutils.core import setup
+
+import py2exe
 
 VERSION = (0,1,0)
 
@@ -67,6 +69,6 @@ shutil.copy("README.md", "dist")
 shutil.copy("License.txt", "dist")
 
 target = "dist"
-destination = os.path.join(os.path.join("builds", "sc4mp-server-v" + str(VERSION[0]) + "." + str(VERSION[1]) + "." + str(VERSION[2]) + "." + datetime.now().strftime("%Y%m%d%H%M%S")))
+destination = os.path.join(os.path.join("builds", "sc4mp-server-" + platform.system().lower() + "-v" + str(VERSION[0]) + "." + str(VERSION[1]) + "." + str(VERSION[2]) + "." + datetime.now().strftime("%Y%m%d%H%M%S")))
 print('Creating zip archive of "' + target + '" at "' + destination + '"')
 shutil.make_archive(destination, "zip", target)
