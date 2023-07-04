@@ -37,7 +37,8 @@ SC4MP_DELAY = .1
 SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
 		("host", "0.0.0.0"),
-		("port", 7240)
+		("port", 7240),
+		("discoverable", True)
 	]),
 	("INFO", [
 		("server_id", ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))),
@@ -47,7 +48,6 @@ SC4MP_CONFIG_DEFAULTS = [
 	("SECURITY", [
 		("password_enabled", False),
 		("password", "maxis2003"),
-		("discoverable", True),
 		("max_ip_users", 3)
 	]),
 	("RULES", [
@@ -1756,7 +1756,7 @@ class RequestHandler(th.Thread):
 	def add_server(self, c):
 		"""TODO"""
 
-		if (not sc4mp_config["SECURITY"]["discoverable"]):
+		if (not sc4mp_config["NETWORK"]["discoverable"]):
 			return
 
 		c.send(SC4MP_SEPARATOR)
