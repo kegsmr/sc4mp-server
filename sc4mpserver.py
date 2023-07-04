@@ -402,6 +402,20 @@ def update_config_constants(config):
 	SC4MP_SERVER_DESCRIPTION = config['INFO']['server_description']
 
 
+def format_version(version):
+	"""TODO"""
+	return str(version[0]) + "." + str(version[1]) + "." + str(version[2])
+
+
+def unformat_version(version):
+	"""TODO"""
+	strings = version.split(".")
+	ints = []
+	for string in strings:
+		ints.append(int(string))
+	return tuple(ints)
+
+
 # Objects
 
 class Config:
@@ -801,7 +815,7 @@ class Server(th.Thread):
 		sc4mp_server_running = False
 
 
-	def check_version(self): #TODO probably doesnt work
+	def check_version(self): #TODO doesnt work
 		"""TODO"""
 
 		report("Checking for updates...")
@@ -1457,8 +1471,8 @@ class RequestHandler(th.Thread):
 		"""TODO"""
 
 		c.send(SC4MP_SEPARATOR)
-		version = c.recv(SC4MP_BUFFER_SIZE).decode()
-		if (version != str(SC4MP_VERSION[0]) + "." + str(SC4MP_VERSION[1]) + "." + str(SC4MP_VERSION[2])):
+		version = unformat_version(c.recv(SC4MP_BUFFER_SIZE).decode())
+		if (version < SC4MP_VERSION):
 			c.close()
 			raise CustomException("Invalid version.")
 
@@ -1494,7 +1508,7 @@ class RequestHandler(th.Thread):
 	
 	def send_server_version(self, c):
 		"""TODO"""
-		c.send('.'.join(SC4MP_VERSION).encode())
+		c.send(format_version(SC4MP_VERSION).encode())
 
 
 	def send_user_id(self, c):
