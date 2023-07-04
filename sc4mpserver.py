@@ -707,7 +707,7 @@ class DBPF:
 				try:
 					answer = answer + (answer[fromoffset + index]).to_bytes(1, 'little') #substr(fromoffset + index, 1)
 				except Exception as e:
-					show_error(e)
+					#show_error(e) #TODO
 					return io.BytesIO(answer)
 			answerlen += numplain
 			answerlen += numcopy
