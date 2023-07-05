@@ -68,7 +68,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	("BACKUPS", [
 		("server_backup_interval", 24),
 		("backup_server_on_startup", True),
-		("max_server_backups", 720), #TODO
+		#("max_server_backups", 720), #TODO
 		("max_savegame_backups", 100),
 	])
 ]
@@ -882,13 +882,30 @@ class Server(th.Thread):
 
 				max_request_threads = sc4mp_config["PERFORMANCE"]["max_request_threads"]
 
+				client_requests = dict()
+				client_requests_cleared = datetime.now()
+
 				while (sc4mp_server_running):
 
+					if (datetime.now() >= client_requests_cleared + timedelta(seconds=60)):
+
+						client_requests = dict()
+						client_requests_cleared = datetime.now()
+					
 					if (max_request_threads == None or sc4mp_request_threads < max_request_threads):
 
 						try:
 
 							c, address = s.accept()
+
+							if (address[0] in client_requests and client_requests[address[0]] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
+								report("[WARNING] Connection rejected from " + str(address[0]) + ":" + str(address[1]) + ".")
+								c.close()
+								continue
+							else:
+								client_requests.setdefault(address[0], 0)
+								client_requests[address[0]] = client_requests[address[0]] + 1
+
 							report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
 
 							sc4mp_request_threads += 1
