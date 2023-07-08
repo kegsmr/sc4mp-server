@@ -2019,10 +2019,9 @@ class RequestHandler(th.Thread):
 			users_data[user_id] = user_entry
 
 		# Set default values if missing
-		user_entry.setdefault("IPs", [])
+		user_entry.setdefault("clients", [])
 		user_entry.setdefault("ban", False)
 		user_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-		#entry.setdefault("banIPs", False) #TODO implement
 
 		# Close connection and throw error if the user is banned
 		if (user_entry["ban"] or client_entry["ban"]):
@@ -2033,9 +2032,9 @@ class RequestHandler(th.Thread):
 		user_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 		# Log the IP
-		IPs_entry = user_entry["IPs"]
-		if (not ip in IPs_entry):
-			IPs_entry.append(ip)
+		clients_entry = user_entry["clients"]
+		if (not ip in clients_entry):
+			clients_entry.append(ip)
 		
 		# Return the user id
 		return user_id
