@@ -898,7 +898,7 @@ class Server(th.Thread):
 
 							c, address = s.accept()
 
-							if (address[0] in client_requests and client_requests[address[0]] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
+							if (sc4mp_config["PERFORMANCE"]["request_limit"] != None and address[0] in client_requests and client_requests[address[0]] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
 								report("[WARNING] Connection blocked from " + str(address[0]) + ":" + str(address[1]) + ".")
 								c.close()
 								continue
@@ -907,6 +907,8 @@ class Server(th.Thread):
 								client_requests[address[0]] = client_requests[address[0]] + 1
 
 							report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
+
+							self.log_client(c)
 
 							sc4mp_request_threads += 1
 
@@ -932,6 +934,30 @@ class Server(th.Thread):
 		except Exception as e:
 
 			fatal_error(e)
+
+
+	def log_client(self, c):
+		"""TODO"""
+
+		# Get ip
+		ip = c.getpeername()[0]
+
+		# Get clients database
+		clients_data = sc4mp_clients_database_manager.data
+		
+		# Get data entry that matches ip
+		client_entry = None
+		try:
+			client_entry = clients_data[ip]
+		except:
+			client_entry = dict()
+			clients_data[ip] = client_entry
+
+		# Set values
+		client_entry.setdefault("users", [])
+		client_entry.setdefault("ban", False)
+		client_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+		client_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 	def check_version(self): #TODO doesnt work
@@ -1509,7 +1535,7 @@ class RegionsManager(th.Thread):
 									backup_directory = os.path.join(sc4mp_server_path, "Regions", region, "_Backups", coords)
 									if (not os.path.exists(backup_directory)):
 										os.makedirs(backup_directory)
-									while (len(os.listdir(backup_directory)) > sc4mp_config["BACKUPS"]["max_savegame_backups"]):
+									while (sc4mp_config["BACKUPS"]["max_savegame_backups"] != None and len(os.listdir(backup_directory)) > sc4mp_config["BACKUPS"]["max_savegame_backups"]):
 										delete_filename = random.choice(os.listdir(backup_directory))
 										if (delete_filename == "reset.sc4"):
 											continue
@@ -1971,20 +1997,11 @@ class RequestHandler(th.Thread):
 		clients_data = sc4mp_clients_database_manager.data
 		
 		# Get data entry that matches ip
-		client_entry = None
-		try:
-			client_entry = clients_data[ip]
-		except:
-			client_entry = dict()
-			clients_data[ip] = client_entry
-
-		# Set default values
-		client_entry.setdefault("users", [])
-		client_entry.setdefault("ban", False)
+		client_entry = clients_data[ip]
 
 		# Check if the client has exceeded the user limit
 		if (user_id not in client_entry["users"]):
-			if (len(client_entry["users"]) < sc4mp_config["SECURITY"]["max_ip_users"]):
+			if (sc4mp_config["SECURITY"]["max_ip_users"] == None or len(client_entry["users"]) < sc4mp_config["SECURITY"]["max_ip_users"]):
 				client_entry["users"].append(user_id)
 			else:
 				c.close()
