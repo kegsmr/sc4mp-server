@@ -909,6 +909,7 @@ class Server(th.Thread):
 							report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
 
 							self.log_client(c)
+							#TODO block banned clients?
 
 							sc4mp_request_threads += 1
 
@@ -2024,7 +2025,7 @@ class RequestHandler(th.Thread):
 		user_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 		# Close connection and throw error if the user is banned
-		if (user_entry["ban"] or client_entry["ban"]):
+		if (user_entry["ban"] or client_entry["ban"]): #TODO check for client bans in server loop
 			c.close()
 			raise CustomException("Authentication error.")
 		
