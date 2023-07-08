@@ -51,7 +51,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	("SECURITY", [
 		("password_enabled", False),
 		("password", "maxis2003"),
-		("max_ip_users", 3), #TODO
+		("max_ip_users", 3),
 	]),
 	("RULES", [
 		("claim_duration", 30),
@@ -62,7 +62,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		("user_plugins", False),
 	]),
 	("PERFORMANCE", [
-		("request_limit", 20), #TODO
+		("request_limit", 20),
 		("max_request_threads", 200),
 	]),
 	("BACKUPS", [
@@ -899,7 +899,7 @@ class Server(th.Thread):
 							c, address = s.accept()
 
 							if (address[0] in client_requests and client_requests[address[0]] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
-								report("[WARNING] Connection rejected from " + str(address[0]) + ":" + str(address[1]) + ".")
+								report("[WARNING] Connection blocked from " + str(address[0]) + ":" + str(address[1]) + ".")
 								c.close()
 								continue
 							else:
@@ -1050,6 +1050,11 @@ class Server(th.Thread):
 		if (not os.path.exists(filename)):
 			create_empty_json(filename)
 
+		# Clients database
+		filename = os.path.join(database_directory, "clients.json")
+		if (not os.path.exists(filename)):
+			create_empty_json(filename)
+
 		# Get region directory names
 		regions = []
 		regions_directory = os.path.join(sc4mp_server_path, "Regions")
@@ -1141,10 +1146,15 @@ class Server(th.Thread):
 		if (sc4mp_nostart):
 			return
 
-		# Database manager
-		global sc4mp_database_manager
-		sc4mp_database_manager = DatabaseManager()
-		sc4mp_database_manager.start()
+		# Users database manager
+		global sc4mp_users_database_manager
+		sc4mp_users_database_manager = DatabaseManager(os.path.join(sc4mp_server_path, "_Database", "users.json"))
+		sc4mp_users_database_manager.start()
+
+		# Clients database manager
+		global sc4mp_clients_database_manager
+		sc4mp_clients_database_manager = DatabaseManager(os.path.join(sc4mp_server_path, "_Database", "clients.json"))
+		sc4mp_clients_database_manager.start()
 
 
 	def clear_temp(self):
@@ -1297,12 +1307,12 @@ class DatabaseManager(th.Thread):
 	"""TODO"""
 
 	
-	def __init__(self):
+	def __init__(self, filename):
 		"""TODO"""
 
 		super().__init__()
 	
-		self.filename = os.path.join(sc4mp_server_path, "_Database", "users.json")
+		self.filename = filename #os.path.join(sc4mp_server_path, "_Database", "users.json")
 		self.data = self.load_json(self.filename)
 
 
@@ -1703,7 +1713,7 @@ class RequestHandler(th.Thread):
 		hash = c.recv(SC4MP_BUFFER_SIZE).decode()
 
 		# Get database
-		data = sc4mp_database_manager.data
+		data = sc4mp_users_database_manager.data
 
 		# Send the user_id that matches the hash
 		for user_id in data.keys():
@@ -1724,7 +1734,7 @@ class RequestHandler(th.Thread):
 		token = ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))
 
 		# Get database
-		data = sc4mp_database_manager.data
+		data = sc4mp_users_database_manager.data
 
 		# Get database entry for user
 		key = user_id
@@ -1953,35 +1963,60 @@ class RequestHandler(th.Thread):
 
 		# Use a hashcode of the user id for extra security
 		user_id = hashlib.sha256(c.recv(SC4MP_BUFFER_SIZE)).hexdigest()[:32]
+
+		# Get the ip
+		ip = c.getpeername()[0]
 		
-		# Get profile database
-		data = sc4mp_database_manager.data
+		# Get clients database
+		clients_data = sc4mp_clients_database_manager.data
+		
+		# Get data entry that matches ip
+		client_entry = None
+		try:
+			client_entry = clients_data[ip]
+		except:
+			client_entry = dict()
+			clients_data[ip] = client_entry
+
+		# Set default values
+		client_entry.setdefault("users", [])
+		client_entry.setdefault("ban", False)
+
+		# Check if the client has exceeded the user limit
+		if (user_id not in client_entry["users"]):
+			if (len(client_entry["users"]) < sc4mp_config["SECURITY"]["max_ip_users"]):
+				client_entry["users"].append(user_id)
+			else:
+				c.close()
+				raise CustomException("Authentication error.")
+
+		# Get users database
+		users_data = sc4mp_users_database_manager.data
 		
 		# Get data entry that matches user id
-		entry = None
+		user_entry = None
 		try:
-			entry = data[user_id]
+			user_entry = users_data[user_id]
 		except:
-			entry = dict()
-			data[user_id] = entry
+			user_entry = dict()
+			users_data[user_id] = user_entry
 
 		# Set default values if missing
-		entry.setdefault("IPs", [])
-		entry.setdefault("ban", False)
-		entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+		user_entry.setdefault("IPs", [])
+		user_entry.setdefault("ban", False)
+		user_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 		#entry.setdefault("banIPs", False) #TODO implement
 
 		# Close connection and throw error if the user is banned
-		if (entry["ban"]):
+		if (user_entry["ban"] or client_entry["ban"]):
 			c.close()
 			raise CustomException("Authentication error.")
 		
 		# Log the time
-		entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+		user_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 		# Log the IP
-		ip = c.getpeername()[0]
-		IPs_entry = entry["IPs"]
+		IPs_entry = user_entry["IPs"]
 		if (not ip in IPs_entry):
 			IPs_entry.append(ip)
 		
