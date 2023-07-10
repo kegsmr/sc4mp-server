@@ -15,7 +15,7 @@ import time
 import traceback
 from datetime import datetime, timedelta
 
-SC4MP_VERSION = (0,1,0)
+SC4MP_VERSION = "0.1.0"
 
 SC4MP_SERVERS = [("servers.sc4mp.org", 7240)]
 
@@ -29,7 +29,7 @@ SC4MP_LOG_PATH = "sc4mpserver-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".lo
 SC4MP_README_PATH = "readme.html"
 SC4MP_RESOURCES_PATH = "resources"
 
-SC4MP_TITLE = "SC4MP Server v" + str(SC4MP_VERSION[0]) + "." + str(SC4MP_VERSION[1]) + "." + str(SC4MP_VERSION[2])
+SC4MP_TITLE = "SC4MP Server v" + SC4MP_VERSION
 SC4MP_ICON = os.path.join(SC4MP_RESOURCES_PATH, "icon.ico")
 
 SC4MP_SEPARATOR = b"<SEPARATOR>"
@@ -961,7 +961,7 @@ class Server(th.Thread):
 		client_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-	def check_version(self): #TODO doesnt work
+	'''def check_version(self): #TODO doesnt work
 		"""TODO"""
 
 		report("Checking for updates...")
@@ -987,10 +987,10 @@ class Server(th.Thread):
 		new_version_available = False
 		if (len(version) == 3):
 			version = tuple(version)
-			new_version_available = version > SC4MP_VERSION
+			new_version_available = version > unformat_version(SC4MP__VERSION)
 
 		if (new_version_available):
-			print("[WARNING] Version v" + '.'.join(version) + " is available!")
+			print("[WARNING] Version v" + '.'.join(version) + " is available!")'''
 
 
 	def create_subdirectories(self):
@@ -1693,7 +1693,7 @@ class RequestHandler(th.Thread):
 
 		c.send(SC4MP_SEPARATOR)
 		version = unformat_version(c.recv(SC4MP_BUFFER_SIZE).decode())
-		if (version < SC4MP_VERSION):
+		if (version < unformat_version(SC4MP_VERSION)):
 			c.close()
 			raise CustomException("Invalid version.")
 
@@ -1729,7 +1729,7 @@ class RequestHandler(th.Thread):
 	
 	def send_server_version(self, c):
 		"""TODO"""
-		c.send(format_version(SC4MP_VERSION).encode())
+		c.send(SC4MP_VERSION.encode())
 
 
 	def send_user_id(self, c):
