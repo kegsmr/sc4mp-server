@@ -55,6 +55,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	]),
 	("RULES", [
 		("claim_duration", 30),
+		#("abandoned_reset_delay", None) #TODO for resetting old abandoned saves
 		#("claim_delay", 60), #TODO
 		("max_region_claims", 1),
 		#("max_total_claims", None), #TODO
