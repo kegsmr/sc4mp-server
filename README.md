@@ -3,3 +3,6 @@ A multiplayer gameserver for the PC videogame [SimCity 4](https://en.wikipedia.o
 
 # Installation and Usage
 Download the latest release and follow the instructions included in the Readme.html.
+
+# Compiling
+To compile the source code, run the setup.py script.
