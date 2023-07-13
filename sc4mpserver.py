@@ -226,6 +226,10 @@ def export(type):
 	elif (type == "regions"):
 		directory = "Regions"
 
+	#TODO delete old abandoned savegames and check if savegames are missing so they can be replaced with the reset savegame
+	if (type == "regions"):
+		pass
+
 	# Set target and destination directories
 	target = os.path.join(sc4mp_server_path, directory)
 	destination = os.path.join(sc4mp_server_path, "_Temp", "outbound", directory)
