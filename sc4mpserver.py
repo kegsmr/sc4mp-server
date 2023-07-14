@@ -645,8 +645,8 @@ class DBPF:
 				self.indexData[index]['instanceID2'] = self.read_ID()
 			self.indexData[index]['offset'] = self.read_UL4()
 			self.indexData[index]['filesize'] = self.read_UL4()
-			self.indexData[index]['compressed'] = False
-			self.indexData[index]['truesize'] = 0
+			self.indexData[index]['compressed'] = False #TODO
+			self.indexData[index]['truesize'] = 0 #TODO
 
 
 	def decompress(self, length):
@@ -2231,4 +2231,4 @@ def main():
 		fatal_error(e)
 
 if __name__ == '__main__':
-	main()
+	main() 
