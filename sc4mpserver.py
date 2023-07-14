@@ -15,7 +15,7 @@ import time
 import traceback
 from datetime import datetime, timedelta
 
-SC4MP_VERSION = "0.2.0"
+SC4MP_VERSION = "0.2.1"
 
 SC4MP_SERVERS = [("servers.sc4mp.org", 7240)]
 
