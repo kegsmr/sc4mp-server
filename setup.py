@@ -9,7 +9,9 @@ from distutils.core import setup
 
 import py2exe
 
-VERSION = "0.2.0"
+import sc4mpserver
+
+VERSION = sc4mpserver.SC4MP_VERSION
 
 for item in os.listdir("dist"):
     item = os.path.join("dist", item)
@@ -47,9 +49,6 @@ setup(
 	console=[{
 		"script": "sc4mpserver.py",
 		"icon_resources": [(1, "resources/icon.ico")],
-		"name": "SC4MP Server",
-		"author": "Simcity 4 Multiplayer Project",
-        "description": "Multiplayer server for Simcity 4",
 	}],
     zipfile=None,
 	options={
