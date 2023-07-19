@@ -856,6 +856,7 @@ class Server(th.Thread):
 		super().__init__()
 
 		#self.check_version() #TODO
+		#TODO lock server directory
 		self.create_subdirectories()
 		self.load_config()
 		self.prep_database()
