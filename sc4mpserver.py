@@ -15,11 +15,22 @@ import time
 import traceback
 from datetime import datetime, timedelta
 
-SC4MP_VERSION = "0.2.1"
+SC4MP_VERSION = "0.3.0"
 
-SC4MP_SERVERS = [("servers.sc4mp.org", 7240)]
+SC4MP_SERVERS = [
+	("servers.sc4mp.org", 7240), 
+	("servers.sc4mp.org", 7241), 
+	("servers.sc4mp.org", 7242), 
+	("servers.sc4mp.org", 7243),
+	("servers.sc4mp.org", 7244),
+	("servers.sc4mp.org", 7245),
+	("servers.sc4mp.org", 7246),
+	("servers.sc4mp.org", 7247),
+	("servers.sc4mp.org", 7248),
+	("servers.sc4mp.org", 7249),
+]
 
-SC4MP_URL = "https://sc4mp.org/"
+SC4MP_URL = "http://sc4mp.org/"
 SC4MP_CONTRIBUTORS_URL = "https://github.com/keggre/sc4mp-client/contributors/"
 SC4MP_ISSUES_URL = "https://github.com/keggre/sc4mp-client/issues/"
 SC4MP_RELEASES_URL = "https://github.com/keggre/sc4mp-client/releases/"
@@ -41,12 +52,13 @@ SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
 		("host", "0.0.0.0"),
 		("port", 7240),
-		#("discoverable", True), #TODO
+		("discoverable", True),
 	]),
 	("INFO", [
 		("server_id", ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))),
 		("server_name", os.getlogin() + " on " + socket.gethostname()),
 		("server_description", "Join and build your city.\n\nRules:\n- Feed the llamas\n- Balance your budget\n- Do uncle Vinny some favors"),
+		("server_url", SC4MP_URL),
 	]),
 	("SECURITY", [
 		("password_enabled", False),
@@ -142,9 +154,16 @@ def create_empty_json(filename):
 
 
 def load_json(filename):
-	"""TODO"""
-	with open(filename, 'r') as file:
-		return json.load(file)
+	"""Returns data from a json file as a dictionary."""
+	try:
+		with open(filename, 'r') as file:
+			data = json.load(file)
+			if (data == None):
+				return dict()
+			else:
+				return data
+	except FileNotFoundError:
+		return dict()
 
 
 def set_savegame_data(entry, savegame):
@@ -863,6 +882,7 @@ class Server(th.Thread):
 		self.clear_temp()
 		self.prep_regions() 
 		self.prep_backups()
+		self.prep_server_list()
 
 	
 	def run(self):
@@ -1228,6 +1248,19 @@ class Server(th.Thread):
 			sc4mp_backups_manager.start()
 
 
+	def prep_server_list(self):
+		"""TODO"""
+
+		if (not sc4mp_config["NETWORK"]["discoverable"]):
+			return
+
+		report("Preparing server list...")
+
+		global sc4mp_server_list
+		sc4mp_server_list = ServerList()
+		sc4mp_server_list.start()
+
+
 class BackupsManager(th.Thread):
 	"""TODO"""
 
@@ -1446,7 +1479,7 @@ class RegionsManager(th.Thread):
 						if (len(self.tasks) > 0):
 
 							# Get the next task
-							task = self.tasks.pop()
+							task = self.tasks.pop(0)
 
 							# Read values from tuple
 							save_id = task[0]
@@ -1651,6 +1684,8 @@ class RequestHandler(th.Thread):
 					self.send_server_name(c)
 				elif (request == "server_description"):
 					self.send_server_description(c)
+				elif (request == "server_url"):
+					self.send_server_url(c)
 				elif (request == "server_version"):
 					self.send_server_version(c)
 				elif (request == "user_id"):
@@ -1669,6 +1704,8 @@ class RequestHandler(th.Thread):
 					self.save(c)
 				elif (request == "add_server"):
 					self.add_server(c)
+				elif (request == "server_list"):
+					self.server_list(c)
 				elif (request == "password_enabled"):
 					self.password_enabled(c)
 				elif (request == "check_password"):
@@ -1732,7 +1769,12 @@ class RequestHandler(th.Thread):
 		"""TODO"""
 		c.send(SC4MP_SERVER_DESCRIPTION.encode())
 
-	
+
+	def send_server_url(self, c):
+		"""TODO"""
+		c.send(sc4mp_config["INFO"]["server_url"].encode())
+
+
 	def send_server_version(self, c):
 		"""TODO"""
 		c.send(SC4MP_VERSION.encode())
@@ -1982,13 +2024,29 @@ class RequestHandler(th.Thread):
 
 	def add_server(self, c):
 		"""TODO"""
-
 		if (not sc4mp_config["NETWORK"]["discoverable"]):
 			return
-
+		host = c.getpeername()[0]
 		c.send(SC4MP_SEPARATOR)
+		port = int(c.recv(SC4MP_BUFFER_SIZE).decode())
+		server = (host, port)
+		if (not ((server in sc4mp_server_list.new_server_queue) or (server in sc4mp_server_list.server_queue))):
+			sc4mp_server_list.new_server_queue.append(server)
 
-		#TODO
+
+	def server_list(self, c):
+		"""TODO"""
+		if (not sc4mp_config["NETWORK"]["discoverable"]):
+			return
+		data = sc4mp_server_list.servers.copy()
+		keys = data.keys()
+		c.send(str(len(keys)).encode())
+		c.recv(SC4MP_BUFFER_SIZE)
+		for key in keys:
+			c.send(data[key]["host"].encode())
+			c.recv(SC4MP_BUFFER_SIZE)
+			c.send(str(data[key]["port"]).encode())
+			c.recv(SC4MP_BUFFER_SIZE)
 
 
 	def log_user(self, c):
@@ -2094,6 +2152,154 @@ class RequestHandler(th.Thread):
 							send_file(c, os.path.join(sc4mp_server_path, "Regions", region, city_entry["filename"]))
 							c.recv(SC4MP_BUFFER_SIZE)
 		c.send(b'done')
+
+
+class ServerList(th.Thread):
+
+
+	def __init__(self):
+
+		super().__init__()
+
+		self.servers = load_json(os.path.join(sc4mp_server_path, "_Database", "servers.json"))
+
+		self.server_queue = SC4MP_SERVERS
+		for key in self.servers.keys():
+			server = (self.servers[key]["host"], self.servers[key]["port"])
+			if (server not in self.server_queue):
+				self.server_queue.append(server)
+
+		self.new_server_queue = []
+
+		#print(self.server_queue)
+
+
+	def run(self):
+
+		try:
+
+			while(not sc4mp_server_running):
+					
+				time.sleep(SC4MP_DELAY)
+
+			while (sc4mp_server_running):
+				
+				while (len(self.servers) > 100): #TODO make configurable
+					(k := next(iter(self.servers)), self.servers.pop(k))
+
+				if ((len(self.new_server_queue) > 0) or (len(self.server_queue) > 0)):
+
+					server = None
+					if (len(self.new_server_queue) > 0):
+						server = self.new_server_queue.pop(0)
+					else:
+						server = self.server_queue.pop(0)
+
+					print("Synchronizing server list with " + server[0] + ":" + str(server[1]) + "...")
+
+					try:
+
+						server_id = self.request_server_id(server)
+
+						if (server_id == sc4mp_config["INFO"]["server_id"]):
+							print("- \"" + server_id + "\" is our server_id!")
+							continue
+
+						if server_id in self.servers.keys():
+							print("- \"" + server_id + "\" already found in our server list")
+							old_server = (self.servers[server_id]["host"], self.servers[server_id]["port"])
+							if (server != old_server):
+								print("[WARNING] Resolving server_id conflict...")
+								if (self.ping(old_server) == None):
+									print("[WARNING] - keeping the new server!")
+									self.servers[server_id]["host"] = server[0]
+									self.servers[server_id]["port"] = server[1]
+								else:
+									print("[WARNING] - keeping the old server!")
+						else:
+							print("- adding \"" + server_id + "\" to our server list")
+							self.servers[server_id] = dict()
+							self.servers[server_id]["host"] = server[0]
+							self.servers[server_id]["port"] = server[1]
+
+						print("- requesting to be added to their server list...")
+						self.add_server(server)
+
+						print("- receiving their server list...")
+						self.server_list(server)
+
+						print("- done.")
+
+					except Exception as e:
+
+						#show_error(e)
+						print("[WARNING] Failed!")
+
+					self.server_queue.append(server)
+				
+				update_json(os.path.join(sc4mp_server_path, "_Database", "servers.json"), self.servers)
+
+				time.sleep(15) #TODO make configurable
+
+		except Exception as e:
+			
+			show_error(e)
+
+
+	def create_socket(self, server):
+		"""TODO"""
+		host = server[0]
+		port = server[1]
+		try:
+			s = socket.socket()
+			s.settimeout(10)
+			s.connect((host, port))
+			return s
+		except:
+			return None
+
+	
+	def request_server_id(self, server):
+		"""TODO"""
+		s = self.create_socket(server)
+		s.send(b"server_id")
+		return s.recv(SC4MP_BUFFER_SIZE).decode()
+
+
+	def ping(self, server):
+		"""TODO"""
+		s = self.create_socket(server)
+		try:
+			start = time.time()
+			s.send(b"ping")
+			s.recv(SC4MP_BUFFER_SIZE)
+			end = time.time()
+			s.close()
+			return round(1000 * (end - start))
+		except socket.error as e:
+			return None
+
+
+	def add_server(self, server):
+		"""TODO"""
+		s = self.create_socket(server)
+		s.send(b"add_server")
+		s.recv(SC4MP_BUFFER_SIZE)
+		s.send(str(SC4MP_PORT).encode())
+
+
+	def server_list(self, server):
+		"""TODO"""
+		s = self.create_socket(server)
+		s.send(b"server_list")
+		size = int(s.recv(SC4MP_BUFFER_SIZE).decode())
+		s.send(SC4MP_SEPARATOR)
+		for count in range(size):
+			host = s.recv(SC4MP_BUFFER_SIZE).decode()
+			s.send(SC4MP_SEPARATOR)
+			port = int(s.recv(SC4MP_BUFFER_SIZE).decode())
+			s.send(SC4MP_SEPARATOR)
+			self.server_queue.append((host, port))
 
 
 # Exceptions
