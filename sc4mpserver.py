@@ -2189,6 +2189,8 @@ class ServerList(th.Thread):
 
 				if ((len(self.new_server_queue) > 0) or (len(self.server_queue) > 0)):
 
+					time.sleep(15) #TODO make configurable
+
 					server = None
 					if (len(self.new_server_queue) > 0):
 						server = self.new_server_queue.pop(0)
@@ -2238,8 +2240,6 @@ class ServerList(th.Thread):
 					self.server_queue.append(server)
 				
 				update_json(os.path.join(sc4mp_server_path, "_Database", "servers.json"), self.servers)
-
-				time.sleep(15) #TODO make configurable
 
 		except Exception as e:
 			
