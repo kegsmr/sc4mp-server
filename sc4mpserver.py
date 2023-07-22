@@ -479,7 +479,7 @@ def restore(filename):
 				if (not os.path.exists(restore_directory)):
 					os.makedirs(restore_directory)
 				shutil.copy(data_filename, restore_filename)
-			print("Done.")
+			print("- done.")
 			return
 	raise CustomException("File not found.")
 
@@ -1366,7 +1366,7 @@ class BackupsManager(th.Thread):
 		self.update_json(backup_filename, backup_data)
 
 		# Report done
-		report("Done.", self)
+		report("- done.", self)
 
 
 class DatabaseManager(th.Thread):
@@ -1404,7 +1404,7 @@ class DatabaseManager(th.Thread):
 					if (old_data != new_data):
 						report('Updating "' + self.filename + '"...', self)
 						self.update_json(self.filename, self.data)
-						report("Done.", self)
+						report("- done.", self)
 					old_data = new_data
 				except Exception as e:
 					show_error(e)
@@ -1468,7 +1468,7 @@ class RegionsManager(th.Thread):
 
 						export("regions")
 
-						report("Done.", self)
+						report("- done.", self)
 
 						self.regions_modified = False
 						self.export_regions = False
@@ -1607,7 +1607,7 @@ class RegionsManager(th.Thread):
 								# Raise the exception so that it appears in the server's output
 								raise e
 
-							report("Done.", self)
+							report("- done.", self)
 
 						else:
 
