@@ -20,9 +20,9 @@ SC4MP_VERSION = (0,1,0)
 SC4MP_SERVERS = [("servers.sc4mp.org", 7240)]
 
 SC4MP_URL = "https://sc4mp.org/"
-SC4MP_CONTRIBUTORS_URL = "https://github.com/keggre/sc4mp-client/contributors/"
-SC4MP_ISSUES_URL = "https://github.com/keggre/sc4mp-client/issues/"
-SC4MP_RELEASES_URL = "https://github.com/keggre/sc4mp-client/releases/"
+SC4MP_CONTRIBUTORS_URL = "https://github.com/kegsmr/sc4mp-client/contributors/"
+SC4MP_ISSUES_URL = "https://github.com/kegsmr/sc4mp-client/issues/"
+SC4MP_RELEASES_URL = "https://github.com/kegsmr/sc4mp-client/releases/"
 
 SC4MP_CONFIG_PATH = None
 SC4MP_LOG_PATH = "sc4mpserver-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
