@@ -1,1 +1,80 @@
-TODO
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+		<title>Readme &bull; SC4MP Server v0.3.0</title>
+		<!--<link rel="stylesheet" href="resources/style.css">-->
+		<style>
+			body {
+				font-family: Arial, Helvetica, sans-serif;
+				font-size: 14px;
+				padding: 50px;
+			}
+		</style>
+	</head>
+    <body>
+        <center>
+            <h1>SC4MP Server</h1>
+            <h4>Readme &bull; Version 0.3.0</h4>		
+            <br>
+            <p>Thank you for downloading SC4MP Server! This readme will help you get started setting up your server. It's recommended that you be already familiar with the SC4MP Launcher before proeceeding.</p>
+            <br>
+        </center>
+        <h2>Getting started</h2>
+            <h3>Installation</h3>
+                <p>SC4MP Server can be installed to any directory of your choosing.</p>
+            <h3>Running your server</h3>
+                <p>Run the executable named "sc4mpserver.exe", and the server will start in a console window. A subdirectory named "_SC4MP" will be created in your install directory which contains all the files pertaining to the functioning of your server. The server will begin listening for connections. Close the console window to shutdown the server.</p>
+            <h3>Testing your server</h3>
+                <p>With the server executable running, launch the SC4MP Launcher and open the direct connect window. Enter the host "localhost" and the default port 7240. Once connected to your server, you should see the default regions in-game. Close the game whenever you'd like. In the future you may use the hostname "localhost" and the server's port (7240 by default) whenever you'd like to connect to the server running on your local machine.</p>
+            <h3>Adding plugins and regions</h3>
+                <p>Plugins and regions can simply be dragged-and-dropped into the "Plugins" and "Regions" subdirectories in the "_SC4MP" subdirectory of your installation directory. Changes should only be made to your server's plugins and regions when the server is not running. You may also delete the default plugins and regions if you'd like; however, it's best to keep the default plugins as they improve multiplayer gameplay.</p>
+                <p>Please do <b>NOT</b> use plugins and regions without the expressed permission of their original creators! Many developers do not like their plugins and regions obtained through sources other than their official pages, so please consider the wishes of the original authors when choosing your plugins and regions.</p>
+            <h3>Port forwarding and firewalls</h3>
+                <p>In order for your server to be accessible on the internet, you must port forward your server's port in your router's settings. You must know what IP your machine has been assigned on your network to do so (this is possible using the command "ipconfig" in the Windows command prompt). For more information, <a href="https://www.hellotech.com/guide/for/how-to-port-forward#:~:text=To%20forward%20ports%20on%20your%20router%2C%20log%20into%20your%20router,protocol%20and%20save%20your%20changes.">read about port forwarding</a>.</p>
+                <p>You may also need to configure the firewall on your router and/or firewall on your operating system to accept incoming connections on your server's port. If you've successfully port forwarded, but players are still unable to connect to your server, this is most likely the issue.</p>
+            <h3>Sharing your server</h3>
+                <p>To share your server with players, provide them your <a href="https://whatismyipaddress.com/">public IP address</a> and the port on which your server is running (the default is 7240). If your server is password-protected, you must also provide them the password for them to be able to join.</p>
+        <h2>Configuring your server</h3>
+            <p>A configuration file named "serverconfig.ini" can be found in the "_SC4MP" subdirectory of your installation directory. Edit the settings contained in this file to configure your server.</p>
+            <p>Any setting can be reset to its default value by deleting its entire line from the configuration file. The default value will then be restored the next time starting your server.</p>
+            <h3>Network</h3>
+                <p><b>host:</b> the hostname to bind to the TCP socket. The default value "0.0.0.0" will accept connections from any network adapter, and "127.0.0.1" will only accept connections from the local machine. This value should <b>NOT</b> be the IP address that players will use to connect to the server.</p>
+                <p><b>port:</b> the port to bind to the TCP socket. Players will need to know what port your server is running on in order to connect to your server. Be sure to also port forward using this port on your router.</b></p>
+            <h3>Info</h3>
+                <p><b>server_id:</b> the public id that allows clients to identify your server. If you change this setting, be aware that players will not be able to access their previous claims!</p>
+                <p><b>server_name:</b> the name of your server in the server browser. This can be changed at any time.</p>
+                <p><b>server_description:</b> the description of your server in the server browser. Use this to communicate any useful information about your server to players.</p>
+            <h3>Security</h3>
+                <p><b>password_enabled:</b> when this setting is set to "True", players will have to enter a password before connecting to your server.</p>
+                <p><b>password:</b> specify your server's password here.</p>
+                <p><b>max_ip_users:</b> the maximum amount of user profiles allowed on one IP address. When a client exhausts this limit, new logins will be rejected. Set the value to "None" if you would like there to be no limit.</p>
+            <h3>Rules</h3>
+                <p><b>claim_duration:</b> the number of days after which a claim will expire. Claims are renewed whenever a player sends a save push. Set the value to "None" if you would like claims to never expire.</p>
+                <p><b>max_region_claims:</b> the maximum amount of claims one player can make in a region. Set the value to "None" if you would like there to be no limit.</p>
+                <p><b>godmode_filter:</b> when this setting is set to "True", players will not be able to claim a tile without first establishing a city. Set this to "False" to allow users to claim tiles in godmode.</p> 
+                <p><b>user_plugins:</b> when this setting is set to 'True", players will be able to load their own plugins alongside server plugins. Set the value to "False" to only allow users to run the server's plugins.</p>
+            <h3>Performance</h3>
+                <p><b>request_limit:</b> the maximum amount of requests a client can send in one minute. When the limit is exhausted, future connections from the client will be blocked for the rest of the minute. Set this value to "None" if you would like there to be no request limit.</p>
+                <p><b>max_request_threads:</b> the maximum amount of request threads that can be running at one time. Set the value to "None" if you would like there to be no limit.</p>
+            <h3>Backups</h3>
+                <p><b>server_backup_interval:</b> the interval in hours to run server backups.</p>
+                <p><b>backup_server_on_startup:</b> when this setting is set to "True", the server will always backup when starting up. Set this value to "False" if you would like the server to backup only after the backup interval.</p>
+                <p><b>max_savegame_backups:</b> the maximum amount of backups to keep of one savegame in the region directory backups. Set the value to "None" for no limit.</p>
+        <!--<h2>Managing your server</h2>
+            <h3>Restoring backups</h3>
+            <h3>Server logs</h3>
+                <p>Log files are saved to the installation directory and are named using the time when the server started up.</p>-->
+        <h2>Launch parameters</h2>
+            <p><b>"--server-path [path]" option:</b> used to specify a custom path to store server data in besides "_SC4MP".</p>
+            <p><b>"--restore [path]" option:</b> restores the files from a backup json file found at the specified path.</p>
+            <p><b>"-prep" flag:</b> runs the server executable without starting the server.</p>
+        <h2>Issues</h2>
+            <p>If you encounter a bug or error when using SC4MP Server, create a ticket on <a href="https://github.com/keggre/sc4mp-server/releases">GitHub</a>.</p>
+        <h2>Updates</h2>
+            <p>The latest releases of the SC4MP Server can be found on <a href="https://github.com/keggre/sc4mp-server/releases">GitHub</a>.</p>
+        <h2>Credits</h2>
+            <p>This readme was prepared for the SC4MP Server version 0.3.0.</p>
+            <p>View the full list of collaborators on <a href="https://github.com/keggre/sc4mp-server/collaborators">GitHub</a>.</p>
+            <p>Special thanks to <a href="http://j5.io/">Julian Cizmic</a>, the original creator of PMR, the primary inspiration for SC4MP.</p>
+    </body>
+</html>

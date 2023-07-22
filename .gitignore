@@ -1,3 +1,4 @@
+/__pycache__
 /_SC4MP*
 /_Server*
 /_DMR
@@ -8,6 +9,7 @@
 dbpf.py.old
 testing.py
 test_console.py
+*.cfg
 */__pycache__
 *.bak
 *.log

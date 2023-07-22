@@ -2,13 +2,16 @@ import glob
 import os
 import platform
 import shutil
+import struct
 import sys
 from datetime import datetime
 from distutils.core import setup
 
 import py2exe
 
-VERSION = (0,1,0)
+import sc4mpserver
+
+VERSION = sc4mpserver.SC4MP_VERSION
 
 for item in os.listdir("dist"):
     item = os.path.join("dist", item)
@@ -46,9 +49,6 @@ setup(
 	console=[{
 		"script": "sc4mpserver.py",
 		"icon_resources": [(1, "resources/icon.ico")],
-		"name": "SC4MP Server",
-		"author": "Simcity 4 Multiplayer Project",
-        "description": "Multiplayer server for Simcity 4",
 	}],
     zipfile=None,
 	options={
@@ -65,10 +65,10 @@ setup(
 )
 
 print('Copying extra files to "dist"...')
-#shutil.copy("README.md", "dist")
 shutil.copy("License.txt", "dist")
+shutil.copy("Readme.html", "dist")
 
 target = "dist"
-destination = os.path.join(os.path.join("builds", "sc4mp-server-" + platform.system().lower() + "-v" + str(VERSION[0]) + "." + str(VERSION[1]) + "." + str(VERSION[2]) + "." + datetime.now().strftime("%Y%m%d%H%M%S")))
+destination = os.path.join(os.path.join("builds", "sc4mp-server-" + platform.system().lower() + "-" + str(8 * struct.calcsize("P")) + "-v" + VERSION + "." + datetime.now().strftime("%Y%m%d%H%M%S")))
 print('Creating zip archive of "' + target + '" at "' + destination + '"')
 shutil.make_archive(destination, "zip", target)
