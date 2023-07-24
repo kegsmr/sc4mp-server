@@ -1251,6 +1251,9 @@ class Server(th.Thread):
 	def prep_server_list(self):
 		"""TODO"""
 
+		if (sc4mp_nostart):
+			return
+
 		if (not sc4mp_config["NETWORK"]["discoverable"]):
 			return
 
