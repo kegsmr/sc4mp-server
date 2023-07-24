@@ -30,7 +30,7 @@ SC4MP_SERVERS = [
 	("servers.sc4mp.org", 7249),
 ]
 
-SC4MP_URL = "https://sc4mp.org/"
+SC4MP_URL = "http://sc4mp.org/"
 SC4MP_CONTRIBUTORS_URL = "https://github.com/kegsmr/sc4mp-client/contributors/"
 SC4MP_ISSUES_URL = "https://github.com/kegsmr/sc4mp-client/issues/"
 SC4MP_RELEASES_URL = "https://github.com/kegsmr/sc4mp-client/releases/"
