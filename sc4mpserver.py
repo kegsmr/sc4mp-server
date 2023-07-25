@@ -263,7 +263,7 @@ def export(type):
 	#	os.makedirs(destination)
 	
 	# Copy recursively
-	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups', '_Database'))	
+	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups')) #, '_Database'))	
 
 
 def purge_directory(directory):
@@ -283,7 +283,7 @@ def purge_directory(directory):
 			elif os.path.isdir(file_path):
 				shutil.rmtree(file_path)
 		except PermissionError as e:
-			raise CustomException('Failed to delete "' + file_path + '" because the file is being used by another process.') #\n\n' + str(e)
+			raise ServerException('Failed to delete "' + file_path + '" because the file is being used by another process.') #\n\n' + str(e)
 
 
 def send_tree(c, rootpath):
@@ -463,7 +463,7 @@ def restore(filename):
 			continue
 		else:
 			if (path[-5:] != ".json"):
-				raise CustomException("Backup file must be a \".json\" file.")
+				raise ServerException("Backup file must be a \".json\" file.")
 			print("Restoring backup at \"" + path + "\"")
 			data = load_json(path)
 			directory, filename = os.path.split(os.path.abspath(path))
@@ -481,7 +481,7 @@ def restore(filename):
 				shutil.copy(data_filename, restore_filename)
 			print("- done.")
 			return
-	raise CustomException("File not found.")
+	raise ServerException("File not found.")
 
 
 def show_error(e, no_ui=False):
@@ -1700,7 +1700,7 @@ class RequestHandler(th.Thread):
 					self.request_header(c)
 					self.send_plugins(c)
 				elif (request == "regions"):
-					self.request_header(c)
+					#self.request_header(c)
 					self.send_regions(c)
 				elif (request == "save"):
 					self.request_header(c)
@@ -1715,9 +1715,6 @@ class RequestHandler(th.Thread):
 					self.check_password(c)
 				elif (request == "user_plugins_enabled"):
 					self.user_plugins_enabled(c)
-				elif (request == "refresh"):
-					self.request_header(c)
-					self.refresh(c)
 
 				c.close()
 			
@@ -1741,13 +1738,13 @@ class RequestHandler(th.Thread):
 		version = unformat_version(c.recv(SC4MP_BUFFER_SIZE).decode())
 		if (version < unformat_version(SC4MP_VERSION)):
 			c.close()
-			raise CustomException("Invalid version.")
+			raise ServerException("Invalid version.")
 
 		if (sc4mp_config["SECURITY"]["password_enabled"]):
 			c.send(SC4MP_SEPARATOR)
 			if (c.recv(SC4MP_BUFFER_SIZE).decode() != sc4mp_config["SECURITY"]["password"]):
 				c.close()
-				raise CustomException("Incorrect password.")
+				raise ServerException("Incorrect password.")
 
 		c.send(SC4MP_SEPARATOR)
 		self.user_id = self.log_user(c)
@@ -2073,7 +2070,7 @@ class RequestHandler(th.Thread):
 				client_entry["users"].append(user_id)
 			else:
 				c.close()
-				raise CustomException("Authentication error.")
+				raise ServerException("Authentication error.")
 
 		# Get users database
 		users_data = sc4mp_users_database_manager.data
@@ -2094,7 +2091,7 @@ class RequestHandler(th.Thread):
 		# Close connection and throw error if the user is banned
 		if (user_entry["ban"] or client_entry["ban"]): #TODO check for client bans in server loop
 			c.close()
-			raise CustomException("Authentication error.")
+			raise ServerException("Authentication error.")
 		
 		# Log the time
 		user_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2307,7 +2304,7 @@ class ServerList(th.Thread):
 
 # Exceptions
 
-class CustomException(Exception):
+class ServerException(Exception):
 	"""TODO"""
 
 
@@ -2413,7 +2410,7 @@ def main():
 			if (ARGUMENT in sc4mp_args):
 				sc4mp_server_path = sc4mp_args[sc4mp_args.index(ARGUMENT) + 1]
 		except Exception as e:
-			raise CustomException("Invalid arguments.")
+			raise ServerException("Invalid arguments.")
 
 		# "--restore" argument
 		global sc4mp_restore
@@ -2424,7 +2421,7 @@ def main():
 				restore(sc4mp_restore)
 				return
 		except Exception as e:
-			raise CustomException("Invalid arguments.")
+			raise ServerException("Invalid arguments.")
 
 		# "-prep" argument
 		global sc4mp_nostart
