@@ -1697,7 +1697,7 @@ class RequestHandler(th.Thread):
 					self.request_header(c)
 					self.send_token(c)
 				elif (request == "plugins"):
-					self.request_header(c)
+					#self.request_header(c)
 					self.send_plugins(c)
 				elif (request == "regions"):
 					#self.request_header(c)
