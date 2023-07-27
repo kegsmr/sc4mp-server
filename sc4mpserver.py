@@ -2220,7 +2220,7 @@ class ServerList(th.Thread):
 
 		super().__init__()
 
-		self.SERVER_LIMIT = len(SC4MP_SERVERS) + 100 #TODO make configurable
+		self.SERVER_LIMIT = 1 + len(SC4MP_SERVERS) + 100 #TODO make configurable
 		self.DELAY = 15 #TODO make configurable?
 
 		try:
