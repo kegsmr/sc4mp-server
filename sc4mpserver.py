@@ -103,6 +103,61 @@ sc4mp_request_threads = 0
 
 # Methods
 
+def main():
+	"""The main method."""
+
+	try:
+
+		# Output
+		sys.stdout = Logger()
+		th.current_thread().name = "Main"
+
+		# Title
+		report(SC4MP_TITLE)
+
+		# "--server-path" argument
+		global sc4mp_server_path
+		try:
+			ARGUMENT = "--server-path"
+			if (ARGUMENT in sc4mp_args):
+				sc4mp_server_path = sc4mp_args[sc4mp_args.index(ARGUMENT) + 1]
+		except Exception as e:
+			raise ServerException("Invalid arguments.")
+
+		# "--restore" argument
+		global sc4mp_restore
+		try:
+			ARGUMENT = "--restore"
+			if (ARGUMENT in sc4mp_args):
+				sc4mp_restore = sc4mp_args[sc4mp_args.index(ARGUMENT) + 1]
+				restore(sc4mp_restore)
+				return
+		except Exception as e:
+			raise ServerException("Invalid arguments.")
+
+		# "-prep" argument
+		global sc4mp_nostart
+		sc4mp_nostart = "-prep" in sc4mp_args
+
+		# Server
+		global sc4mp_server
+		sc4mp_server = Server()
+		if (not sc4mp_nostart):
+			sc4mp_server.run()
+
+	except Exception as e:
+
+		fatal_error(e)
+
+
+def prep():
+	return #TODO move server init stuff here
+
+
+def cleanup():
+	return #TODO
+
+
 def get_sc4mp_path(filename):
 	"""TODO Gives the path of a given file in the SC4MP "resources" subdirectory
 
@@ -2389,53 +2444,7 @@ class Logger():
 		self.terminal.flush()
 
 
-# Main Method
-
-def main():
-	"""The main method."""
-
-	try:
-
-		# Output
-		sys.stdout = Logger()
-		th.current_thread().name = "Main"
-
-		# Title
-		report(SC4MP_TITLE)
-
-		# "--server-path" argument
-		global sc4mp_server_path
-		try:
-			ARGUMENT = "--server-path"
-			if (ARGUMENT in sc4mp_args):
-				sc4mp_server_path = sc4mp_args[sc4mp_args.index(ARGUMENT) + 1]
-		except Exception as e:
-			raise ServerException("Invalid arguments.")
-
-		# "--restore" argument
-		global sc4mp_restore
-		try:
-			ARGUMENT = "--restore"
-			if (ARGUMENT in sc4mp_args):
-				sc4mp_restore = sc4mp_args[sc4mp_args.index(ARGUMENT) + 1]
-				restore(sc4mp_restore)
-				return
-		except Exception as e:
-			raise ServerException("Invalid arguments.")
-
-		# "-prep" argument
-		global sc4mp_nostart
-		sc4mp_nostart = "-prep" in sc4mp_args
-
-		# Server
-		global sc4mp_server
-		sc4mp_server = Server()
-		if (not sc4mp_nostart):
-			sc4mp_server.run()
-
-	except Exception as e:
-
-		fatal_error(e)
+# Main
 
 if __name__ == '__main__':
 	main() 
