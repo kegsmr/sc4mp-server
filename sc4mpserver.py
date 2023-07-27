@@ -995,13 +995,12 @@ class Server(th.Thread):
 							report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
 
 							self.log_client(c)
-							#TODO block banned clients?
 
 							sc4mp_request_threads += 1
 
 							RequestHandler(c).start()	
 
-						except socket.error as e:
+						except Exception as e: #socket.error as e:
 
 							show_error(e)
 				
@@ -2090,8 +2089,8 @@ class RequestHandler(th.Thread):
 		c.send(SC4MP_SEPARATOR)
 		port = int(c.recv(SC4MP_BUFFER_SIZE).decode())
 		server = (host, port)
-		if (not ((server in sc4mp_server_list.new_server_queue) or (server in sc4mp_server_list.server_queue))):
-			sc4mp_server_list.new_server_queue.append(server)
+		if (not server in sc4mp_server_list.server_queue) and (not len(sc4mp_server_list.server_queue) > sc4mp_server_list.SERVER_LIMIT):
+			sc4mp_server_list.server_queue.append(server)
 
 
 	def server_list(self, c):
@@ -2221,52 +2220,65 @@ class ServerList(th.Thread):
 
 		super().__init__()
 
-		self.servers = load_json(os.path.join(sc4mp_server_path, "_Database", "servers.json"))
+		self.SERVER_LIMIT = len(SC4MP_SERVERS) + 100 #TODO make configurable
+		self.DELAY = 15 #TODO make configurable?
 
-		self.server_queue = SC4MP_SERVERS
-		for key in self.servers.keys():
-			server = (self.servers[key]["host"], self.servers[key]["port"])
-			if (server not in self.server_queue):
-				self.server_queue.append(server)
+		try:
+			self.servers = load_json(os.path.join(sc4mp_server_path, "_Database", "servers.json"))
+		except:
+			self.servers = dict()
 
-		self.new_server_queue = []
+		self.servers["root"] = dict()
+		self.servers["root"]["host"] = SC4MP_SERVERS[0][0]
+		self.servers["root"]["port"] = SC4MP_SERVERS[0][1]
 
-		#print(self.server_queue)
+		self.server_queue = SC4MP_SERVERS.copy()
 
 
 	def run(self):
 
 		try:
 
+			# Wait until the server starts
 			while(not sc4mp_server_running):
-					
 				time.sleep(SC4MP_DELAY)
 
+			# Run while the server is running
 			while (sc4mp_server_running):
 				
-				while (len(self.servers) > 100): #TODO make configurable
-					(k := next(iter(self.servers)), self.servers.pop(k))
+				# Wait to ping the next server
+				time.sleep(self.DELAY)
 
-				if ((len(self.new_server_queue) > 0) or (len(self.server_queue) > 0)):
+				# Remove servers from the server list if the limit has been reached
+				while (len(self.servers) > self.SERVER_LIMIT):
+					server_id = random.choice(list(self.servers.keys()))
+					if (not (self.servers[server_id]["host"], self.servers[server_id]["port"]) in SC4MP_SERVERS):
+						self.servers.pop(server_id)
+	
+				if (len(self.server_queue) > 0) or (len(self.servers) > 0):
 
-					time.sleep(15) #TODO make configurable
-
+					# Get the next server
 					server = None
-					if (len(self.new_server_queue) > 0):
-						server = self.new_server_queue.pop(0)
-					else:
+					if (len(self.server_queue) > 0):
 						server = self.server_queue.pop(0)
-
+					else:
+						server_id = random.choice(list(self.servers.keys()))
+						server_entry = self.servers.pop(server_id)
+						server = (server_entry["host"], server_entry["port"])
 					print("Synchronizing server list with " + server[0] + ":" + str(server[1]) + "...")
 
+					# Ping the next server
 					try:
 
+						# Get the server's server id
 						server_id = self.request_server_id(server)
 
+						# Skip it if it matches the server id of this server
 						if (server_id == sc4mp_config["INFO"]["server_id"]):
 							print("- \"" + server_id + "\" is our server_id!")
 							continue
 
+						# Resolve server id confilcts
 						if server_id in self.servers.keys():
 							print("- \"" + server_id + "\" already found in our server list")
 							old_server = (self.servers[server_id]["host"], self.servers[server_id]["port"])
@@ -2284,9 +2296,11 @@ class ServerList(th.Thread):
 							self.servers[server_id]["host"] = server[0]
 							self.servers[server_id]["port"] = server[1]
 
+						# Request to be added to the server's server list
 						print("- requesting to be added to their server list...")
 						self.add_server(server)
 
+						# Get the server's server list
 						print("- receiving their server list...")
 						self.server_list(server)
 
@@ -2294,12 +2308,12 @@ class ServerList(th.Thread):
 
 					except Exception as e:
 
-						#show_error(e)
-						print("[WARNING] Failed!")
-
-					self.server_queue.append(server)
+						print("[WARNING] Failed!") # " + str(e))
 				
+				# Update database
+				report('Updating "' + os.path.join(sc4mp_server_path, "_Database", "servers.json") + '"...')
 				update_json(os.path.join(sc4mp_server_path, "_Database", "servers.json"), self.servers)
+				print("- done.")
 
 		except Exception as e:
 			
