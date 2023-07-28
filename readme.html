@@ -40,11 +40,13 @@
             <h3>Network</h3>
                 <p><b>host:</b> the hostname to bind to the TCP socket. The default value "0.0.0.0" will accept connections from any network adapter, and "127.0.0.1" will only accept connections from the local machine. This value should <b>NOT</b> be the IP address that players will use to connect to the server.</p>
                 <p><b>port:</b> the port to bind to the TCP socket. Players will need to know what port your server is running on in order to connect to your server. Be sure to also port forward using this port on your router.</b></p>
+                <p><b>discoverable:</b> when set to "True", the server will synchronize its server list with the official servers, thus allowing your server to be displayed in the server browser. Set this setting to "False" if you would not like your server to be visible in the server browser.</p>
             <h3>Info</h3>
                 <p><b>server_id:</b> the public id that allows clients to identify your server. If you change this setting, be aware that players will not be able to access their previous claims!</p>
                 <p><b>server_name:</b> the name of your server in the server browser. This can be changed at any time.</p>
                 <p><b>server_description:</b> the description of your server in the server browser. Use this to communicate any useful information about your server to players.</p>
             <h3>Security</h3>
+                <p><b>private:</b> when this setting is set to "True", the server will require a user id and (if applicable) a password before downloading the server's plugins and regions. Server statistics will therefore also be unavailable in the server browser. Set this to "False" to make plugins and regions available publicly and allow server statistics to be visible in the server browser.</p>
                 <p><b>password_enabled:</b> when this setting is set to "True", players will have to enter a password before connecting to your server.</p>
                 <p><b>password:</b> specify your server's password here.</p>
                 <p><b>max_ip_users:</b> the maximum amount of user profiles allowed on one IP address. When a client exhausts this limit, new logins will be rejected. Set the value to "None" if you would like there to be no limit.</p>
