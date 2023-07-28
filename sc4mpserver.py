@@ -86,7 +86,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		("max_request_threads", 200),
 	]),
 	("BACKUPS", [
-		("server_backup_interval", 24),
+		("server_backup_interval", 6),
 		("backup_server_on_startup", True),
 		#("max_server_backups", 720), #TODO
 		("max_savegame_backups", 100),
