@@ -68,6 +68,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		("server_url", SC4MP_URL),
 	]),
 	("SECURITY", [
+		("private", False),
 		("password_enabled", False),
 		("password", "maxis2003"),
 		("max_ip_users", 3),
@@ -1756,10 +1757,12 @@ class RequestHandler(th.Thread):
 					self.request_header(c)
 					self.send_token(c)
 				elif (request == "plugins"):
-					#self.request_header(c)
+					if sc4mp_config["SECURITY"]["private"]:
+						self.request_header(c)
 					self.send_plugins(c)
 				elif (request == "regions"):
-					#self.request_header(c)
+					if sc4mp_config["SECURITY"]["private"]:
+						self.request_header(c)
 					self.send_regions(c)
 				elif (request == "save"):
 					self.request_header(c)
@@ -1774,6 +1777,8 @@ class RequestHandler(th.Thread):
 					self.check_password(c)
 				elif (request == "user_plugins_enabled"):
 					self.user_plugins_enabled(c)
+				elif (request == "private"):
+					self.private(c)
 
 				c.close()
 			
@@ -2184,6 +2189,14 @@ class RequestHandler(th.Thread):
 	def user_plugins_enabled(self, c):
 		"""TODO"""
 		if (sc4mp_config['RULES']['user_plugins']):
+			c.send(b'yes')
+		else:
+			c.send(b'no')
+
+
+	def private(self, c):
+		"""TODO"""
+		if (sc4mp_config['SECURITY']['private']):
 			c.send(b'yes')
 		else:
 			c.send(b'no')
