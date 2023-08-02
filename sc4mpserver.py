@@ -2321,7 +2321,7 @@ class ServerList(th.Thread):
 
 					except Exception as e:
 
-						print("[WARNING] Failed!") # " + str(e))
+						print("[WARNING] Failed! " + str(e))
 				
 				# Update database
 				#report('Updating "' + os.path.join(sc4mp_server_path, "_Database", "servers.json") + '"...')
