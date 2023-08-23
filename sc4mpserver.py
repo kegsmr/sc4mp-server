@@ -626,12 +626,12 @@ class Config:
 							else:
 								t = type(self.data[section_name][item_name])
 								self.data[section_name][item_name] = t(from_file)
-						except:
-							pass
-				except:
-					pass
-		except:
-			pass
+						except Exception as e:
+							show_error(e, no_ui=True)
+				except Exception as e:
+					show_error(e, no_ui=True)
+		except Exception as e:
+			show_error(e, no_ui=True)
 
 		# Update config file
 		self.update()
@@ -2321,12 +2321,12 @@ class ServerList(th.Thread):
 
 					except Exception as e:
 
-						print("[WARNING] Failed!") # " + str(e))
+						print("[WARNING] Failed! " + str(e))
 				
 				# Update database
-				report('Updating "' + os.path.join(sc4mp_server_path, "_Database", "servers.json") + '"...')
+				#report('Updating "' + os.path.join(sc4mp_server_path, "_Database", "servers.json") + '"...')
 				update_json(os.path.join(sc4mp_server_path, "_Database", "servers.json"), self.servers)
-				print("- done.")
+				#print("- done.")
 
 		except Exception as e:
 			
