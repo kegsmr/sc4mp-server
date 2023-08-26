@@ -15,7 +15,7 @@ import time
 import traceback
 from datetime import datetime, timedelta
 
-SC4MP_VERSION = "0.3.1"
+SC4MP_VERSION = "0.4.0"
 
 SC4MP_SERVERS = [
 	("servers.sc4mp.org", 7240), 
@@ -1779,6 +1779,8 @@ class RequestHandler(th.Thread):
 					self.user_plugins_enabled(c)
 				elif (request == "private"):
 					self.private(c)
+				elif (request == "time"):
+					c.send(datetime.now().strftime("%Y%m%d%H%M%S").encode())
 
 				c.close()
 			
