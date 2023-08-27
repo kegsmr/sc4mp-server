@@ -238,7 +238,10 @@ def set_savegame_data(entry, savegame):
 	entry.setdefault("date_subfile_hashes", [])
 
 	# Append
-	entry["date_subfile_hashes"].append(file_md5(savegame.decompress_subfile("2990c1e5")))
+	date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
+	date_subfile_hashes = entry["date_subfile_hashes"]
+	if not date_subfile_hash in date_subfile_hashes:
+		date_subfile_hashes.append(date_subfile_hash)
 
 	# Overwrite
 	entry["hashcode"] = md5(savegame.filename)
