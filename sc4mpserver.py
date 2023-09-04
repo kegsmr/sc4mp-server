@@ -2239,7 +2239,6 @@ class ServerList(th.Thread):
 		super().__init__()
 
 		self.SERVER_LIMIT = 1 + len(SC4MP_SERVERS) + 100 #TODO make configurable
-		self.DELAY = 15 #TODO make configurable?
 
 		try:
 			self.servers = load_json(os.path.join(sc4mp_server_path, "_Database", "servers.json"))
@@ -2265,7 +2264,7 @@ class ServerList(th.Thread):
 			while (sc4mp_server_running):
 				
 				# Wait to ping the next server
-				time.sleep(self.DELAY)
+				time.sleep(random.randint(1,60))
 
 				# Remove servers from the server list if the limit has been reached
 				while (len(self.servers) > self.SERVER_LIMIT):
