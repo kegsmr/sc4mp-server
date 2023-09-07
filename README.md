@@ -19,6 +19,7 @@ This section is meant for developers using the server API. Here you can find exa
 
 
 ## Add server
+Adds a given server to the requested server's server list queue.
 
 #### Request
 > add_server \<port>
@@ -27,6 +28,7 @@ This section is meant for developers using the server API. Here you can find exa
 none
 
 ## Check password
+Returns "y" if the password provided is correct, otherwise "n".
 
 #### Request
 > check_password \<password>
@@ -40,6 +42,7 @@ or
 
 
 ## Password enabled
+Returns "y" if the server requires a password, otherwise "n".
 
 #### Request
 > password_enabled
@@ -53,6 +56,7 @@ or
 
 
 ## Ping
+Returns "pong".
 
 #### Request
 > ping
@@ -62,6 +66,7 @@ or
 
 
 ## Plugins
+TODO
 
 #### Request
 > plugins
@@ -71,6 +76,7 @@ TODO
 
 
 ## Private
+Returns "y" if the server's plugins and regions require a request header, otherwise "n".
 
 #### Request
 > private
@@ -84,6 +90,7 @@ or
 
 
 ## Regions
+TODO
 
 #### Request
 > regions
@@ -93,6 +100,7 @@ TODO
 
 
 ## Save
+TODO
 
 #### Request
 > save
@@ -102,6 +110,7 @@ TODO
 
 
 ## Server description
+Returns the server description.
 
 #### Request
 > server_description
@@ -111,6 +120,7 @@ TODO
 
 
 ## Server ID
+Returns the server ID.
 
 #### Request
 > server_id
@@ -120,6 +130,7 @@ TODO
 
 
 ## Server list
+Returns the server list in a 2-column array, delimited by spaces.
 
 #### Request
 > server_list
@@ -129,6 +140,7 @@ TODO
 
 
 ## Server name
+Returns the server name.
 
 #### Request
 > server_name
@@ -138,6 +150,7 @@ TODO
 
 
 ## Server URL
+Returns the server URL.
 
 #### Request
 > server_url
@@ -147,6 +160,7 @@ TODO
 
 
 ## Server version
+Returns the version of the SC4MP Server that the server is running on.
 
 #### Request
 > server_version
@@ -156,15 +170,17 @@ TODO
 
 
 ## Time
+Returns the time in the server's timezone.
 
 #### Request
 > time
 
 #### Response
-> \<time as %Y-%m-%d %H:%M:%S>
+> \<time as "%Y-%m-%d %H:%M:%S">
 
 
 ## Token
+TODO
 
 #### Request
 > token
@@ -174,6 +190,7 @@ TODO
 
 
 ## User ID
+TODO
 
 #### Request
 > user_id
@@ -182,6 +199,7 @@ TODO
 TODO
 
 ## User plugins enabled
+Returns "y" if user plugins are permitted, otherwise "n".
 
 #### Request
 > user_plugins_enabled
