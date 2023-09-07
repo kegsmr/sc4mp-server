@@ -139,36 +139,46 @@ TODO
 
 ## Server URL
 
+#### Request
 > server_url
 
+#### Response
 > \<server_url>
 
 
 ## Server version
 
+#### Request
 > server_version
 
+#### Response
 > \<server_version as major.minor.patch>
 
 
 ## Time
 
+#### Request
 > time
 
+#### Response
 > \<time as %Y-%m-%d %H:%M:%S>
 
 
 ## Token
 
+#### Request
 > token
 
+#### Response
 TODO
 
 
 ## User ID
 
+#### Request
 > user_id
 
+#### Response
 TODO
 
 ## User plugins enabled
