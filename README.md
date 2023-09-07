@@ -20,18 +20,18 @@ This section is meant for developers using the server API. Here you can find exa
 
 ## Add server
 
-### Request
+#### Request
 > add_server \<port>
 
-### Response
+#### Response
 none
 
 ## Check password
 
-### Request
+#### Request
 > check_password \<password>
 
-### Response
+#### Response
 > y
 
 or
