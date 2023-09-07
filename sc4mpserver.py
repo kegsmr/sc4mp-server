@@ -1783,7 +1783,7 @@ class RequestHandler(th.Thread):
 				elif (request == "private"):
 					self.private(c)
 				elif (request == "time"):
-					c.send(datetime.now().strftime("%Y%m%d%H%M%S").encode())
+					c.send(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
 
 				c.close()
 			

@@ -18,28 +18,167 @@ To compile the source code, run the setup.py script.
 This section is meant for developers using the server API. Here you can find examples of requests and responses from the server API, useful for creating a server scanner or client appplication for the SC4MP network.
 
 
+## Add server
+
+### Request
+> add_server \<port>
+
+### Response
+none
+
+## Check password
+
+### Request
+> check_password \<password>
+
+### Response
+> y
+
+or
+
+> n
+
+
+## Password enabled
+
+### Request
+> password_enabled
+
+### Response
+> y
+
+or
+
+> n
+
+
 ## Ping
 
+### Request
 > ping
 
+### Response
 > pong
+
+
+## Plugins
+
+### Request
+> plugins
+
+### Response
+TODO
+
+
+## Private
+
+### Request
+> private
+
+### Response
+> y
+
+or
+
+> n
+
+
+## Regions
+
+### Request
+> regions
+
+### Response
+TODO
+
+
+## Save
+
+### Request
+> save
+
+### Response
+TODO
+
+
+## Server description
+
+### Request
+> server_description
+
+### Response
+> \<server_description>
 
 
 ## Server ID
 
+### Request
 > server_id
 
-> sc4mp_official_1
+### Response
+> \<server_id>
 
 
-## Server Name
+## Server list
 
+### Request
+> server_list
+
+### Response
+> \<server 1 host> \<server 1 port> \<server 2 host> \<server 2 port> ... \<server n host> \<server n port>  
+
+
+## Server name
+
+### Request
 > server_name
 
-> SC4MP Official
+### Response
+> \<server_name>
 
-## Server Description
 
-> server_id
+## Server URL
 
-> Public server with basic plugins.
+> server_url
+
+> \<server_url>
+
+
+## Server version
+
+> server_version
+
+> \<server_version as major.minor.patch>
+
+
+## Time
+
+> time
+
+> \<time as %Y-%m-%d %H:%M:%S>
+
+
+## Token
+
+> token
+
+TODO
+
+
+## User ID
+
+> user_id
+
+TODO
+
+## User plugins enabled
+
+### Request
+> user_plugins_enabled
+
+### Response
+> y
+
+or
+
+> n
