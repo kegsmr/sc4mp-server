@@ -21,7 +21,7 @@ This section is meant for developers using the server API. Here you can find exa
 
 
 ## Add server
-Adds a given server to the requested server's server list queue.
+Adds the requesting server to the requested server's server list queue.
 
 #### Request
 > add_server \<port>
