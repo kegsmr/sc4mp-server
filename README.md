@@ -41,10 +41,10 @@ or
 
 ## Password enabled
 
-### Request
+#### Request
 > password_enabled
 
-### Response
+#### Response
 > y
 
 or
@@ -54,28 +54,28 @@ or
 
 ## Ping
 
-### Request
+#### Request
 > ping
 
-### Response
+#### Response
 > pong
 
 
 ## Plugins
 
-### Request
+#### Request
 > plugins
 
-### Response
+#### Response
 TODO
 
 
 ## Private
 
-### Request
+#### Request
 > private
 
-### Response
+#### Response
 > y
 
 or
@@ -85,55 +85,55 @@ or
 
 ## Regions
 
-### Request
+#### Request
 > regions
 
-### Response
+#### Response
 TODO
 
 
 ## Save
 
-### Request
+#### Request
 > save
 
-### Response
+#### Response
 TODO
 
 
 ## Server description
 
-### Request
+#### Request
 > server_description
 
-### Response
+#### Response
 > \<server_description>
 
 
 ## Server ID
 
-### Request
+#### Request
 > server_id
 
-### Response
+#### Response
 > \<server_id>
 
 
 ## Server list
 
-### Request
+#### Request
 > server_list
 
-### Response
+#### Response
 > \<server 1 host> \<server 1 port> \<server 2 host> \<server 2 port> ... \<server n host> \<server n port>  
 
 
 ## Server name
 
-### Request
+#### Request
 > server_name
 
-### Response
+#### Response
 > \<server_name>
 
 
@@ -173,10 +173,10 @@ TODO
 
 ## User plugins enabled
 
-### Request
+#### Request
 > user_plugins_enabled
 
-### Response
+#### Response
 > y
 
 or
