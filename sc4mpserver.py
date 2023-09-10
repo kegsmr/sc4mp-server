@@ -1759,18 +1759,18 @@ class RequestHandler(th.Thread):
 				elif (request == "user_id"):
 					self.send_user_id(c, args[1])
 				elif (request == "token"):
-					self.request_header(c)
+					self.request_header(c, args[1], args[2], args)
 					self.send_token(c)
 				elif (request == "plugins"):
 					if sc4mp_config["SECURITY"]["private"]:
-						self.request_header(c)
+						self.request_header(c, args)
 					self.send_plugins(c)
 				elif (request == "regions"):
 					if sc4mp_config["SECURITY"]["private"]:
-						self.request_header(c)
+						self.request_header(c, args)
 					self.send_regions(c)
 				elif (request == "save"):
-					self.request_header(c)
+					self.request_header(c, args)
 					self.save(c)
 				elif (request == "add_server"):
 					self.add_server(c, args[1])
@@ -1779,7 +1779,7 @@ class RequestHandler(th.Thread):
 				elif (request == "password_enabled"):
 					self.password_enabled(c)
 				elif (request == "check_password"):
-					self.check_password(c, args[1])
+					self.check_password(c, " ".join(args[1:]))
 				elif (request == "user_plugins_enabled"):
 					self.user_plugins_enabled(c)
 				elif (request == "private"):
@@ -1813,23 +1813,19 @@ class RequestHandler(th.Thread):
 			fatal_error(e)
 
 
-	def request_header(self, c):
+	def request_header(self, c, args):
 		"""TODO"""
 
-		c.send(SC4MP_SEPARATOR)
-		version = unformat_version(c.recv(SC4MP_BUFFER_SIZE).decode())
-		if (version < unformat_version(SC4MP_VERSION)):
+		if (unformat_version(args[1]) < unformat_version(SC4MP_VERSION)):
 			c.close()
 			raise ServerException("Invalid version.")
 
 		if (sc4mp_config["SECURITY"]["password_enabled"]):
-			c.send(SC4MP_SEPARATOR)
-			if (c.recv(SC4MP_BUFFER_SIZE).decode() != sc4mp_config["SECURITY"]["password"]):
+			if (args[3:] != sc4mp_config["SECURITY"]["password"]):
 				c.close()
 				raise ServerException("Incorrect password.")
 
-		c.send(SC4MP_SEPARATOR)
-		self.user_id = self.log_user(c)
+		self.user_id = self.log_user(c, args[2])
 
 
 	def ping(self, c):
@@ -1952,11 +1948,13 @@ class RequestHandler(th.Thread):
 		user_id = self.user_id
 
 		# Separator
-		c.send(SC4MP_SEPARATOR)
+		c.send(b"ok")
 
 		# Receive file count
 		file_count = int(c.recv(SC4MP_BUFFER_SIZE).decode())
-		c.send(SC4MP_SEPARATOR)
+
+		# Separator
+		c.send(b"ok")
 
 		# Set save id
 		save_id = datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id
@@ -1966,11 +1964,11 @@ class RequestHandler(th.Thread):
 
 			# Receive region name
 			region = c.recv(SC4MP_BUFFER_SIZE).decode()
-			c.send(SC4MP_SEPARATOR)
+			c.send(b"ok")
 
 			# Receive city name
 			city = c.recv(SC4MP_BUFFER_SIZE).decode()
-			c.send(SC4MP_SEPARATOR)
+			c.send(b"ok")
 
 			# Receive file
 			path = os.path.join(sc4mp_server_path, "_Temp", "inbound", save_id, region)
@@ -1978,7 +1976,7 @@ class RequestHandler(th.Thread):
 				os.makedirs(path)
 			filename = os.path.join(path, str(count) + ".sc4")
 			receive_file(c, filename)
-			c.send(SC4MP_SEPARATOR)
+			c.send(b"ok")
 
 		# Separator
 		c.recv(SC4MP_BUFFER_SIZE)
@@ -2125,11 +2123,11 @@ class RequestHandler(th.Thread):
 		c.send(json.dumps(servers).encode())
 
 
-	def log_user(self, c):
+	def log_user(self, c, user_id):
 		"""TODO"""
 
 		# Use a hashcode of the user id for extra security
-		user_id = hashlib.sha256(c.recv(SC4MP_BUFFER_SIZE)).hexdigest()[:32]
+		user_id = hashlib.sha256(user_id).hexdigest()[:32]
 
 		# Get the ip
 		ip = c.getpeername()[0]

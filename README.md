@@ -51,13 +51,13 @@ Returns server info in a JSON dictionary.
 
 #### Response
 > {  
-> &ensp; "server_id": \<server_id>  
-> &ensp; "server_name": \<server_name>  
-> &ensp; "server_description": \<server_description>  
-> &ensp; "server_url": \<server_url>  
-> &ensp; "server_version": \<server_version>  
-> &ensp; "private": \<private>  
-> &ensp; "password_enabled": \<password_enabled>  
+> &ensp; "server_id": \<server_id>,  
+> &ensp; "server_name": \<server_name>,  
+> &ensp; "server_description": \<server_description>,  
+> &ensp; "server_url": \<server_url>,  
+> &ensp; "server_version": \<server_version>,  
+> &ensp; "private": \<private>,  
+> &ensp; "password_enabled": \<password_enabled>,  
 > &ensp; "user_plugins_enabled": \<user_plugins_enabled>  
 > }
 
@@ -86,7 +86,7 @@ Returns "pong".
 
 
 ## Plugins
-TODO
+Requests plugins from the server. (TODO: implement)
 
 #### Request
 > plugins
@@ -114,7 +114,7 @@ or
 
 
 ## Regions
-TODO
+Requests regions from the server. (TODO: implement)
 
 #### Request
 > regions
@@ -128,13 +128,66 @@ TODO
 
 
 ## Save
-TODO
+Pushes a save to the server. (TODO: implement)
 
 #### Request
 > save \<version> \<user_id> \<password>
 
 #### Response
-TODO
+> ok
+
+#### Request
+> <file_count>
+
+#### Response
+> ok
+
+#### Request
+> [  
+> &ensp; \<region_name>,  
+> &ensp; \<city_1_name>  
+> ]
+
+#### Response
+> ok
+
+#### Request
+> \<data>
+
+#### Response
+> ok
+
+#### Request
+> [  
+> &ensp; \<region_name>,  
+> &ensp; \<city_2_name>  
+> ]
+
+#### Response
+> ok
+
+#### Request
+> \<data>
+
+#### Response
+> ok
+
+...
+
+#### Request
+> [  
+> &ensp; \<region_name>,  
+> &ensp; \<city_n_name>  
+> ]
+
+#### Response
+> ok
+
+#### Request
+> \<data>
+
+#### Response
+> \<message>
 
 
 ## Server description
@@ -168,7 +221,7 @@ Returns the server list in a 2d JSON array.
 > &ensp; [\<server_1_host>, \<server_1_port>],  
 > &ensp; [\<server_2_host>, \<server_2_port>],  
 > &ensp; ...  
-> &ensp; [\<server_n_host>, \<server_n_port>],  
+> &ensp; [\<server_n_host>, \<server_n_port>]  
 > ]  
 
 
@@ -209,27 +262,27 @@ Returns the time in the server's timezone.
 > time
 
 #### Response
-> \<time as "%Y-%m-%d %H:%M:%S">
+> \<time as Y-m-d H:M:S>
 
 
 ## Token
-TODO
+Returns a radomized token that is used for server verification.
 
 #### Request
 > token \<version> \<user_id> \<password>
 
 #### Response
-TODO
+> \<token>
 
 
 ## User ID
-TODO
+Returns a user_id from an SHA-256 hash of a concatenation of the user_id and client-side token. Used to verify that the server has the user ID on record.
 
 #### Request
 > user_id \<hash>
 
 #### Response
-TODO
+> \<user_id>
 
 ## User plugins enabled
 Returns "y" if user plugins are permitted, otherwise "n".
