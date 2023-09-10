@@ -43,6 +43,24 @@ or
 > n
 
 
+## Info
+Returns server info in a JSON dictionary.
+
+#### Request
+> info
+
+#### Response
+> {  
+> &ensp; "server_id": \<server_id>  
+> &ensp; "server_name": \<server_name>  
+> &ensp; "server_description": \<server_description>  
+> &ensp; "server_url": \<server_url>  
+> &ensp; "server_version": \<server_version>  
+> &ensp; "private": \<private>  
+> &ensp; "password_enabled": \<password_enabled>  
+> &ensp; "user_plugins_enabled": \<user_plugins_enabled>  
+> }
+
 ## Password enabled
 Returns "y" if the server requires a password, otherwise "n".
 
@@ -73,8 +91,12 @@ TODO
 #### Request
 > plugins
 
+or
+
+> plugins \<version> \<user_id> \<password>
+
 #### Response
-> <file_tree>
+TODO
 
 
 ## Private
@@ -97,15 +119,19 @@ TODO
 #### Request
 > regions
 
+or
+
+> regions \<version> \<user_id> \<password>
+
 #### Response
-> \<file_tree>
+TODO
 
 
 ## Save
 TODO
 
 #### Request
-> save
+> save \<version> \<user_id> \<password>
 
 #### Response
 TODO
@@ -132,13 +158,18 @@ Returns the server ID.
 
 
 ## Server list
-Returns the server list in a 2-column array, delimited by spaces.
+Returns the server list in a 2d JSON array.
 
 #### Request
 > server_list
 
 #### Response
-> \<server 1 host> \<server 1 port> \<server 2 host> \<server 2 port> ... \<server n host> \<server n port>  
+> [  
+> &ensp; [\<server_1_host>, \<server_1_port>],  
+> &ensp; [\<server_2_host>, \<server_2_port>],  
+> &ensp; ...  
+> &ensp; [\<server_n_host>, \<server_n_port>],  
+> ]  
 
 
 ## Server name
@@ -185,7 +216,7 @@ Returns the time in the server's timezone.
 TODO
 
 #### Request
-> token
+> token \<version> \<user_id> \<password>
 
 #### Response
 TODO
@@ -195,7 +226,7 @@ TODO
 TODO
 
 #### Request
-> user_id
+> user_id \<hash>
 
 #### Response
 TODO

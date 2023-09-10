@@ -396,7 +396,7 @@ def send_tree(c, rootpath):
 		c.send(relpath.encode())
 
 		# Send the file if not cached
-		if (c.recv(SC4MP_BUFFER_SIZE).decode() != "cached"):
+		if (c.recv(SC4MP_BUFFER_SIZE).decode() != "y"):
 			with open(fullpath, "rb") as file:
 				while True:
 					bytes_read = file.read(SC4MP_BUFFER_SIZE)
@@ -408,7 +408,7 @@ def send_tree(c, rootpath):
 def send_or_cached(c, filename):
 	"""TODO"""
 	c.send(md5(filename).encode())
-	if (c.recv(SC4MP_BUFFER_SIZE).decode() == "not cached"):
+	if (c.recv(SC4MP_BUFFER_SIZE).decode() == "n"):
 		send_file(c, filename)
 	else:
 		c.close()
@@ -1738,7 +1738,9 @@ class RequestHandler(th.Thread):
 
 				c = self.c
 
-				request = c.recv(SC4MP_BUFFER_SIZE).decode()
+				args = c.recv(SC4MP_BUFFER_SIZE).decode().split(" ")
+
+				request = args[0]
 
 				report("Request: " + request, self)
 
@@ -1755,7 +1757,7 @@ class RequestHandler(th.Thread):
 				elif (request == "server_version"):
 					self.send_server_version(c)
 				elif (request == "user_id"):
-					self.send_user_id(c)
+					self.send_user_id(c, args[1])
 				elif (request == "token"):
 					self.request_header(c)
 					self.send_token(c)
@@ -1771,19 +1773,30 @@ class RequestHandler(th.Thread):
 					self.request_header(c)
 					self.save(c)
 				elif (request == "add_server"):
-					self.add_server(c)
+					self.add_server(c, args[1])
 				elif (request == "server_list"):
 					self.server_list(c)
 				elif (request == "password_enabled"):
 					self.password_enabled(c)
 				elif (request == "check_password"):
-					self.check_password(c)
+					self.check_password(c, args[1])
 				elif (request == "user_plugins_enabled"):
 					self.user_plugins_enabled(c)
 				elif (request == "private"):
 					self.private(c)
 				elif (request == "time"):
 					c.send(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
+				elif (request == "info"):
+					c.send((json.dumps({  
+						"server_id": sc4mp_config["INFO"]["server_id"],  
+						"server_name": sc4mp_config["INFO"]["server_name"],
+						"server_description": sc4mp_config["INFO"]["server_description"],
+						"server_url": sc4mp_config["INFO"]["server_url"],
+						"server_version": SC4MP_VERSION,
+						"private": sc4mp_config["SECURITY"]["private"],
+						"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
+						"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
+					}).encode()))
 
 				c.close()
 			
@@ -1849,12 +1862,8 @@ class RequestHandler(th.Thread):
 		c.send(SC4MP_VERSION.encode())
 
 
-	def send_user_id(self, c):
+	def send_user_id(self, c, hash):
 		"""TODO"""
-		
-		c.send(SC4MP_SEPARATOR)
-		
-		hash = c.recv(SC4MP_BUFFER_SIZE).decode()
 
 		# Get database
 		data = sc4mp_users_database_manager.data
@@ -2091,13 +2100,12 @@ class RequestHandler(th.Thread):
 		#	pass
 
 
-	def add_server(self, c):
+	def add_server(self, c, port):
 		"""TODO"""
 		if (not sc4mp_config["NETWORK"]["discoverable"]):
 			return
 		host = c.getpeername()[0]
-		c.send(SC4MP_SEPARATOR)
-		port = int(c.recv(SC4MP_BUFFER_SIZE).decode())
+		port = int(port)
 		server = (host, port)
 		if (not server in sc4mp_server_list.server_queue) and (not len(sc4mp_server_list.server_queue) > sc4mp_server_list.SERVER_LIMIT):
 			sc4mp_server_list.server_queue.append(server)
@@ -2109,13 +2117,12 @@ class RequestHandler(th.Thread):
 			return
 		data = sc4mp_server_list.servers.copy()
 		keys = data.keys()
-		c.send(str(len(keys)).encode())
-		c.recv(SC4MP_BUFFER_SIZE)
+		servers = []
 		for key in keys:
-			c.send(data[key]["host"].encode())
-			c.recv(SC4MP_BUFFER_SIZE)
-			c.send(str(data[key]["port"]).encode())
-			c.recv(SC4MP_BUFFER_SIZE)
+			server = (data[key]["host"], data[key]["port"])
+			if not server in servers:
+				servers.append(server)
+		c.send(json.dumps(servers).encode())
 
 
 	def log_user(self, c):
@@ -2177,34 +2184,33 @@ class RequestHandler(th.Thread):
 	def password_enabled(self, c):
 		"""TODO"""
 		if (sc4mp_config['SECURITY']['password_enabled']):
-			c.send(b'yes')
+			c.send(b"y")
 		else:
-			c.send(b'no')
+			c.send(b"n")
 
 
-	def check_password(self, c):
+	def check_password(self, c, password):
 		"""TODO"""
-		c.send(SC4MP_SEPARATOR)
-		if (c.recv(SC4MP_BUFFER_SIZE).decode() == sc4mp_config["SECURITY"]["password"]):
-			c.send(b'yes')
+		if (password == sc4mp_config["SECURITY"]["password"]):
+			c.send(b'y')
 		else:
-			c.send(b'no')
+			c.send(b'n')
 
 
 	def user_plugins_enabled(self, c):
 		"""TODO"""
 		if (sc4mp_config['RULES']['user_plugins']):
-			c.send(b'yes')
+			c.send(b"y")
 		else:
-			c.send(b'no')
+			c.send(b"n")
 
 
 	def private(self, c):
 		"""TODO"""
 		if (sc4mp_config['SECURITY']['private']):
-			c.send(b'yes')
+			c.send(b"y")
 		else:
-			c.send(b'no')
+			c.send(b"n")
 
 
 	def refresh(self, c):
