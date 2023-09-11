@@ -1816,7 +1816,7 @@ class RequestHandler(th.Thread):
 	def request_header(self, c, args):
 		"""TODO"""
 
-		if (unformat_version(args[1]) < unformat_version(SC4MP_VERSION)):
+		if (unformat_version(args[1])[:2] < unformat_version(SC4MP_VERSION)[:2]):
 			c.close()
 			raise ServerException("Invalid version.")
 
