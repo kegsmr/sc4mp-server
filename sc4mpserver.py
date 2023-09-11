@@ -13,6 +13,7 @@ import sys
 import threading as th
 import time
 import traceback
+import getpass
 from datetime import datetime, timedelta
 
 SC4MP_VERSION = "0.3.0"
@@ -63,7 +64,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	]),
 	("INFO", [
 		("server_id", ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))),
-		("server_name", os.getlogin() + " on " + socket.gethostname()),
+		("server_name", getpass.getuser() + " on " + socket.gethostname()),
 		("server_description", "Join and build your city.\n\nRules:\n- Feed the llamas\n- Balance your budget\n- Do uncle Vinny some favors"),
 		("server_url", SC4MP_URL),
 	]),
