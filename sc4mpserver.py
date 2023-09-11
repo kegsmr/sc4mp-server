@@ -1801,7 +1801,7 @@ class RequestHandler(th.Thread):
 
 		c.send(SC4MP_SEPARATOR)
 		version = unformat_version(c.recv(SC4MP_BUFFER_SIZE).decode())
-		if (version < unformat_version(SC4MP_VERSION)):
+		if (version[:2] < unformat_version(SC4MP_VERSION)[:2]):
 			c.close()
 			raise ServerException("Invalid version.")
 
