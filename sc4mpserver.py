@@ -1681,6 +1681,10 @@ class RegionsManager(th.Thread):
 								for directory in os.listdir(path):
 									if (directory in self.outputs.keys()):
 										shutil.rmtree(os.path.join(path, directory))
+										
+										# sleep to allow RequestHandler.save() time to check for success
+										time.sleep(2 * SC4MP_DELAY)
+										
 										self.outputs.pop(directory)
 							except Exception as e:
 								pass
