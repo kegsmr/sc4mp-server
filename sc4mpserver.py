@@ -55,6 +55,7 @@ SC4MP_SEPARATOR = b"<SEPARATOR>"
 SC4MP_BUFFER_SIZE = 4096
 
 SC4MP_DELAY = .1
+SC4MP_BIND_RETRY_DELAY = 5
 
 SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
@@ -964,7 +965,14 @@ class Server(th.Thread):
 			s = socket.socket()
 
 			report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
-			s.bind((SC4MP_HOST, SC4MP_PORT))
+			bound = False
+			while not bound:
+				try:
+					s.bind((SC4MP_HOST, SC4MP_PORT))
+				except OSError:
+					report(f"- failed to bind socket, retrying in {SC4MP_BIND_RETRY_DELAY}s")
+					time.sleep(SC4MP_BIND_RETRY_DELAY)
+
 
 			report("- listening for connections...")
 			s.listen(5)
