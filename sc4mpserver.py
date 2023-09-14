@@ -16,7 +16,7 @@ import traceback
 import getpass
 from datetime import datetime, timedelta
 
-SC4MP_VERSION = "0.3.1"
+SC4MP_VERSION = "0.3.2"
 
 SC4MP_SERVERS = [
 	("servers.sc4mp.org", 7240), 
