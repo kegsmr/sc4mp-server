@@ -960,22 +960,24 @@ class Server(th.Thread):
 			global sc4mp_server_running, sc4mp_request_threads
 
 			report("Starting server...")
-			sc4mp_server_running = True
 
 			report("- creating socket...")
 			s = socket.socket()
 
 			report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
-			bound = False
-			while not bound:
+			while True:
 				try:
 					s.bind((SC4MP_HOST, SC4MP_PORT))
-				except OSError:
-					report(f"[WARNING] - failed to bind socket, retrying in {self.BIND_RETRY_DELAY} seconds...")
+					break
+				except OSError as e:
+					show_error(e)
+					print(f"[WARNING] - failed to bind socket, retrying in {self.BIND_RETRY_DELAY} seconds...")
 					time.sleep(self.BIND_RETRY_DELAY)
 
 			report("- listening for connections...")
 			s.listen(5)
+			
+			sc4mp_server_running = True
 
 			try:
 
