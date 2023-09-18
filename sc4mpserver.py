@@ -13,6 +13,7 @@ import sys
 import threading as th
 import time
 import traceback
+import getpass
 from datetime import datetime, timedelta
 
 SC4MP_VERSION = "0.4.0"
@@ -52,7 +53,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	]),
 	("INFO", [
 		("server_id", ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))),
-		("server_name", os.getlogin() + " on " + socket.gethostname()),
+		("server_name", getpass.getuser() + " on " + socket.gethostname()),
 		("server_description", "Join and build your city.\n\nRules:\n- Feed the llamas\n- Balance your budget\n- Do uncle Vinny some favors"),
 		("server_url", SC4MP_URL),
 	]),
@@ -927,6 +928,8 @@ class Server(th.Thread):
 
 		super().__init__()
 
+		self.BIND_RETRY_DELAY = 5
+
 		#self.check_version() #TODO
 		#TODO lock server directory
 		self.create_subdirectories()
@@ -946,16 +949,24 @@ class Server(th.Thread):
 			global sc4mp_server_running, sc4mp_request_threads
 
 			report("Starting server...")
-			sc4mp_server_running = True
 
 			report("- creating socket...")
 			s = socket.socket()
 
 			report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
-			s.bind((SC4MP_HOST, SC4MP_PORT))
+			while True:
+				try:
+					s.bind((SC4MP_HOST, SC4MP_PORT))
+					break
+				except OSError as e:
+					show_error(e)
+					print(f"[WARNING] - failed to bind socket, retrying in {self.BIND_RETRY_DELAY} seconds...")
+					time.sleep(self.BIND_RETRY_DELAY)
 
 			report("- listening for connections...")
 			s.listen(5)
+			
+			sc4mp_server_running = True
 
 			try:
 
@@ -1671,8 +1682,14 @@ class RegionsManager(th.Thread):
 								path = os.path.join(sc4mp_server_path, "_Temp", "inbound")
 								for directory in os.listdir(path):
 									if (directory in self.outputs.keys()):
+
 										shutil.rmtree(os.path.join(path, directory))
+
+										# sleep to allow RequestHandler.save() time to check for success #TODO better solution needed, but this works for now
+										time.sleep(2 * SC4MP_DELAY)
+
 										self.outputs.pop(directory)
+
 							except Exception as e:
 								pass
 							
@@ -1805,7 +1822,7 @@ class RequestHandler(th.Thread):
 	def request_header(self, c, args):
 		"""TODO"""
 
-		if (unformat_version(args[1]) < unformat_version(SC4MP_VERSION)):
+		if (unformat_version(args[1])[:2] < unformat_version(SC4MP_VERSION)[:2]):
 			c.close()
 			raise ServerException("Invalid version.")
 
