@@ -24,78 +24,98 @@ This section is meant for developers using the server API. Here you can find exa
 Adds the requesting server to the requested server's server list queue.
 
 #### Request
-> add_server \<port>
+```
+add_server <port>
+```
 
 #### Response
 none
+
 
 ## Check password
 Returns "y" if the password provided is correct, otherwise "n".
 
 #### Request
-> check_password \<password>
+```
+check_password <password>
+```
 
 #### Response
-> y
-
+```
+y
+```
 or
-
-> n
+```
+n
+```
 
 
 ## Info
 Returns server info in a JSON dictionary.
 
 #### Request
-> info
+```
+info
+```
 
 #### Response
 ```
 {  
-&ensp; "server_id": \<server_id>,  
-&ensp; "server_name": \<server_name>,  
-&ensp; "server_description": \<server_description>,  
-&ensp; "server_url": \<server_url>,  
-&ensp; "server_version": \<server_version>,  
-&ensp; "private": \<private>,  
-&ensp; "password_enabled": \<password_enabled>,  
-&ensp; "user_plugins_enabled": \<user_plugins_enabled>  
+    "server_id": <server_id>,  
+    "server_name": <server_name>,  
+    "server_description": <server_description>,  
+    "server_url": <server_url>,  
+    "server_version": <server_version>,  
+    "private": <private>,  
+    "password_enabled": <password_enabled>,  
+    "user_plugins_enabled": <user_plugins_enabled>  
 }
 ```
+
 
 ## Password enabled
 Returns "y" if the server requires a password, otherwise "n".
 
 #### Request
-> password_enabled
+```
+password_enabled
+```
 
 #### Response
-> y
-
+```
+y
+```
 or
-
-> n
+```
+n
+```
 
 
 ## Ping
 Returns "pong".
 
 #### Request
-> ping
+```
+ping
+```
 
 #### Response
-> pong
+```
+pong
+```
 
 
 ## Plugins
 Requests plugins from the server. (TODO: implement)
 
 #### Request
-> plugins
-
+```
+plugins
+```
 or
-
-> plugins \<version> \<user_id> \<password>
+```
+plugins <version> <user_id> <password>
+```
 
 #### Response
 TODO
@@ -105,25 +125,31 @@ TODO
 Returns "y" if the server's plugins and regions require a request header, otherwise "n".
 
 #### Request
-> private
+```
+private
+```
 
 #### Response
-> y
-
+```
+y
+```
 or
-
-> n
+```
+n
+```
 
 
 ## Regions
 Requests regions from the server. (TODO: implement)
 
 #### Request
-> regions
-
+```
+regions
+```
 or
-
-> regions \<version> \<user_id> \<password>
+```
+regions <version> <user_id> <password>
+```
 
 #### Response
 TODO
@@ -133,168 +159,241 @@ TODO
 Pushes a save to the server. (TODO: implement)
 
 #### Request
-> save \<version> \<user_id> \<password>
+```
+save <version> <user_id> <password>
+```
 
 #### Response
-> ok
+```
+ok
+```
 
 #### Request
-> <file_count>
+```
+<file_count>
+```
 
 #### Response
-> ok
+```
+ok
+```
 
 #### Request
-> [  
-> &ensp; \<region_name>,  
-> &ensp; \<city_1_name>  
-> ]
+```
+[  
+    <region_name>,  
+    <city_1_name>  
+]
+```
 
 #### Response
-> ok
+```
+ok
+```
 
 #### Request
-> \<data>
+```
+<data>
+```
 
 #### Response
-> ok
+```
+ok
+```
 
 #### Request
-> [  
-> &ensp; \<region_name>,  
-> &ensp; \<city_2_name>  
-> ]
+```
+[  
+    <region_name>,  
+    <city_2_name>  
+]
+```
 
 #### Response
-> ok
+```
+ok
+```
 
 #### Request
-> \<data>
+```
+<data>
+```
 
 #### Response
-> ok
+```
+ok
+```
 
 ...
 
 #### Request
-> [  
-> &ensp; \<region_name>,  
-> &ensp; \<city_n_name>  
-> ]
+```
+[  
+    <region_name>,  
+    <city_n_name>  
+]
+```
 
 #### Response
-> ok
+```
+ok
+```
 
 #### Request
-> \<data>
+```
+<data>
+```
 
 #### Response
-> \<message>
+```
+<message>
+```
 
 
 ## Server description
 Returns the server description.
 
 #### Request
-> server_description
+```
+server_description
+```
 
 #### Response
-> \<server_description>
+```
+<server_description>
+```
 
 
 ## Server ID
 Returns the server ID.
 
 #### Request
-> server_id
+```
+server_id
+```
 
 #### Response
-> \<server_id>
+```
+<server_id>
+```
 
 
 ## Server list
 Returns the server list in a 2d JSON array.
 
 #### Request
-> server_list
+```
+server_list
+```
 
 #### Response
-> [  
-> &ensp; [\<server_1_host>, \<server_1_port>],  
-> &ensp; [\<server_2_host>, \<server_2_port>],  
-> &ensp; ...  
-> &ensp; [\<server_n_host>, \<server_n_port>]  
-> ]  
+```
+[  
+    [<server_1_host>, <server_1_port>],  
+    [<server_2_host>, <server_2_port>],  
+    ...  
+    [<server_n_host>, <server_n_port>]  
+]  
+```
 
 
 ## Server name
 Returns the server name.
 
 #### Request
-> server_name
+```
+server_name
+```
 
 #### Response
-> \<server_name>
+```
+<server_name>
+```
 
 
 ## Server URL
 Returns the server URL.
 
 #### Request
-> server_url
+```
+server_url
+```
 
 #### Response
-> \<server_url>
+```
+<server_url>
+```
 
 
 ## Server version
 Returns the version of the SC4MP Server that the server is running on.
 
 #### Request
-> server_version
+```
+server_version
+```
 
 #### Response
-> \<server_version as major.minor.patch>
+```
+<server_version as major.minor.patch>
+```
 
 
 ## Time
 Returns the time in the server's timezone.
 
 #### Request
-> time
+```
+time
+```
 
 #### Response
-> \<time as Y-m-d H:M:S>
+```
+<time as Y-m-d H:M:S>
+```
 
 
 ## Token
 Returns a radomized token that is used for server verification.
 
 #### Request
-> token \<version> \<user_id> \<password>
+```
+token <version> <user_id> <password>
+```
 
 #### Response
-> \<token>
+```
+<token>
+```
 
 
 ## User ID
 Returns a user_id from an SHA-256 hash of a concatenation of the user_id and client-side token. Used to verify that the server has the user ID on record.
 
 #### Request
-> user_id \<hash>
+```
+user_id <hash>
+```
 
 #### Response
-> \<user_id>
+```
+<user_id>
+```
+
 
 ## User plugins enabled
 Returns "y" if user plugins are permitted, otherwise "n".
 
 #### Request
-> user_plugins_enabled
+```
+user_plugins_enabled
+```
 
 #### Response
-> y
-
+```
+y
+```
 or
-
-> n
+```
+n
+```
