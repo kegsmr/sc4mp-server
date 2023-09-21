@@ -59,7 +59,7 @@ Returns server info in a JSON dictionary.
 &ensp; "private": \<private>,  
 &ensp; "password_enabled": \<password_enabled>,  
 &ensp; "user_plugins_enabled": \<user_plugins_enabled>  
-}
+}```
 
 ## Password enabled
 Returns "y" if the server requires a password, otherwise "n".
