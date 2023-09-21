@@ -50,7 +50,8 @@ Returns server info in a JSON dictionary.
 > info
 
 #### Response
-```{  
+```
+{  
 &ensp; "server_id": \<server_id>,  
 &ensp; "server_name": \<server_name>,  
 &ensp; "server_description": \<server_description>,  
@@ -59,7 +60,8 @@ Returns server info in a JSON dictionary.
 &ensp; "private": \<private>,  
 &ensp; "password_enabled": \<password_enabled>,  
 &ensp; "user_plugins_enabled": \<user_plugins_enabled>  
-}```
+}
+```
 
 ## Password enabled
 Returns "y" if the server requires a password, otherwise "n".
