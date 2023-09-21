@@ -50,16 +50,16 @@ Returns server info in a JSON dictionary.
 > info
 
 #### Response
-> {  
-> &ensp; "server_id": \<server_id>,  
-> &ensp; "server_name": \<server_name>,  
-> &ensp; "server_description": \<server_description>,  
-> &ensp; "server_url": \<server_url>,  
-> &ensp; "server_version": \<server_version>,  
-> &ensp; "private": \<private>,  
-> &ensp; "password_enabled": \<password_enabled>,  
-> &ensp; "user_plugins_enabled": \<user_plugins_enabled>  
-> }
+```{  
+&ensp; "server_id": \<server_id>,  
+&ensp; "server_name": \<server_name>,  
+&ensp; "server_description": \<server_description>,  
+&ensp; "server_url": \<server_url>,  
+&ensp; "server_version": \<server_version>,  
+&ensp; "private": \<private>,  
+&ensp; "password_enabled": \<password_enabled>,  
+&ensp; "user_plugins_enabled": \<user_plugins_enabled>  
+}
 
 ## Password enabled
 Returns "y" if the server requires a password, otherwise "n".
