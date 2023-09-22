@@ -118,7 +118,35 @@ plugins <version> <user_id> <password>
 ```
 
 #### Response
-TODO
+```
+{
+    "size": <size>
+    "files": [
+        [<file_1_md5>, <file_1_size>, <file_1_relpath>],
+        [<file_2_md5>, <file_2_size>, <file_2_relpath>],
+        ...
+        [<file_n_md5>, <file_n_size>, <file_n_relpath>]
+    ]
+}
+```
+
+#### Request
+```
+[
+    [<file_1_md5>, <file_1_size>, <file_1_relpath>],
+    [<file_2_md5>, <file_2_size>, <file_2_relpath>],
+    ...
+    [<file_n_md5>, <file_n_size>, <file_n_relpath>]
+]
+```
+
+#### Response
+```
+<file_1_data>
+<file_2_data>
+...
+<file_n_data>
+```
 
 
 ## Private
@@ -152,7 +180,35 @@ regions <version> <user_id> <password>
 ```
 
 #### Response
-TODO
+```
+{
+    "size": <size>
+    "files": [
+        [<file_1_md5>, <file_1_size>, <file_1_relpath>],
+        [<file_2_md5>, <file_2_size>, <file_2_relpath>],
+        ...
+        [<file_n_md5>, <file_n_size>, <file_n_relpath>]
+    ]
+}
+```
+
+#### Request
+```
+[
+    [<file_1_md5>, <file_1_size>, <file_1_relpath>],
+    [<file_2_md5>, <file_2_size>, <file_2_relpath>],
+    ...
+    [<file_n_md5>, <file_n_size>, <file_n_relpath>]
+]
+```
+
+#### Response
+```
+<file_1_data>
+<file_2_data>
+...
+<file_n_data>
+```
 
 
 ## Save
