@@ -230,7 +230,7 @@ def set_savegame_data(entry, savegame):
 	# Append
 	date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
 	date_subfile_hashes = entry["date_subfile_hashes"]
-	if not date_subfile_hash in date_subfile_hashes:
+	if date_subfile_hash not in date_subfile_hashes:
 		date_subfile_hashes.append(date_subfile_hash)
 
 	# Overwrite
@@ -1236,7 +1236,7 @@ class Server(th.Thread):
 				data[coords] = entry
 
 				# Create reset savegame file if needed
-				if not "reset_filename" in entry.keys():
+				if "reset_filename" not in entry.keys():
 					reset_directory = os.path.join(region_directory, "_Backups", coords)
 					if not os.path.exists(reset_directory):
 						os.makedirs(reset_directory)
@@ -1623,7 +1623,7 @@ class RegionsManager(th.Thread):
 								#TODO
 
 								# Proceed if save push has not been filtered out
-								if not save_id in self.outputs.keys():
+								if save_id not in self.outputs.keys():
 
 									# Delete previous save file if it exists
 									if "filename" in entry.keys():
@@ -2059,7 +2059,7 @@ class RequestHandler(th.Thread):
 						entry = data[coords]
 						date_subfile_hashes = entry["date_subfile_hashes"]
 						new_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
-						if not new_date_subfile_hash in date_subfile_hashes:
+						if new_date_subfile_hash not in date_subfile_hashes:
 							new_savegames.append(savegame)
 							report("YES (" + str(savegameX) + ", " + str(savegameY) + ")", self)
 						else:
@@ -2124,7 +2124,7 @@ class RequestHandler(th.Thread):
 		servers = []
 		for key in keys:
 			server = (data[key]["host"], data[key]["port"])
-			if not server in servers:
+			if server not in servers:
 				servers.append(server)
 		c.send(json.dumps(servers).encode())
 
@@ -2178,7 +2178,7 @@ class RequestHandler(th.Thread):
 
 		# Log the IP
 		clients_entry = user_entry["clients"]
-		if not ip in clients_entry:
+		if ip not in clients_entry:
 			clients_entry.append(ip)
 		
 		# Return the user id
@@ -2279,7 +2279,7 @@ class ServerList(th.Thread):
 				# Remove servers from the server list if the limit has been reached
 				while len(self.servers) > self.SERVER_LIMIT:
 					server_id = random.choice(list(self.servers.keys()))
-					if not (self.servers[server_id]["host"], self.servers[server_id]["port"]) in SC4MP_SERVERS:
+					if (self.servers[server_id]["host"], self.servers[server_id]["port"]) not in SC4MP_SERVERS:
 						self.servers.pop(server_id)
 	
 				if len(self.server_queue) > 0 or len(self.servers) > 0:
