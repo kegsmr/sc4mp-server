@@ -209,7 +209,7 @@ def load_json(filename):
 	try:
 		with open(filename, 'r') as file:
 			data = json.load(file)
-			if data == None:
+			if data is None:
 				return {}
 			else:
 				return data
@@ -798,28 +798,28 @@ class DBPF:
 
 	def read_UL1(self, file=None):
 		"""TODO"""
-		if file == None:
+		if file is None:
 			file = self.file
 		return struct.unpack('<B', file.read(1))[0]
 
 
 	def read_UL2(self, file=None):
 		"""TODO"""
-		if file == None:
+		if file is None:
 			file = self.file
 		return struct.unpack('<H', file.read(2))[0]
 	
 	
 	def read_UL4(self, file=None):
 		"""TODO"""
-		if file == None:
+		if file is None:
 			file = self.file
 		return struct.unpack('<L', file.read(4))[0]
 
 
 	def read_ID(self, file=None):
 		"""TODO"""
-		if file == None:
+		if file is None:
 			file = self.file
 		return file.read(4)[::-1].hex()
 
@@ -982,13 +982,13 @@ class Server(th.Thread):
 						client_requests = {}
 						client_requests_cleared = datetime.now()
 					
-					if max_request_threads == None or sc4mp_request_threads < max_request_threads:
+					if max_request_threads is None or sc4mp_request_threads < max_request_threads:
 
 						try:
 
 							c, address = s.accept()
 
-							if (sc4mp_config["PERFORMANCE"]["request_limit"] != None and address[0] in client_requests and client_requests[address[0]] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
+							if (sc4mp_config["PERFORMANCE"]["request_limit"] is not None and address[0] in client_requests and client_requests[address[0]] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
 								report("[WARNING] Connection blocked from " + str(address[0]) + ":" + str(address[1]) + ".")
 								c.close()
 								continue
@@ -1231,7 +1231,7 @@ class Server(th.Thread):
 				# Get dictionary for savegame data
 				coords = str(savegameX) + "_" + str(savegameY)
 				entry = data.get(coords, {})
-				if entry == None:
+				if entry is None:
 					entry = {}
 				data[coords] = entry
 
@@ -1587,7 +1587,7 @@ class RegionsManager(th.Thread):
 										self.outputs[save_id] = "You must establish a city before claiming a tile."
 								
 								# Filter out cities that don't match the region configuration
-								if entry == None:
+								if entry is None:
 									self.outputs[save_id] = "Invalid city location."
 
 								# Filter out cities of the wrong size
@@ -1598,8 +1598,8 @@ class RegionsManager(th.Thread):
 								# Filter out claims on tiles with unexpired claims of other users
 								if "owner" in entry.keys():
 									owner = entry["owner"]
-									if (owner != None and owner != user_id):
-										if sc4mp_config["RULES"]["claim_duration"] == None:
+									if (owner is not None and owner != user_id):
+										if sc4mp_config["RULES"]["claim_duration"] is None:
 											self.outputs[save_id] = "City already claimed."
 										else:
 											expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + timedelta(days=sc4mp_config["RULES"]["claim_duration"])
@@ -1608,7 +1608,7 @@ class RegionsManager(th.Thread):
 
 								# Filter out cliams of users who have exhausted their region claims
 								if (not "owner" in entry.keys() or entry["owner"] != user_id):
-									if sc4mp_config["RULES"]["max_region_claims"] != None:
+									if sc4mp_config["RULES"]["max_region_claims"] is not None:
 										claims = 0
 										for key in data.keys():
 											try:
@@ -1641,7 +1641,7 @@ class RegionsManager(th.Thread):
 									backup_directory = os.path.join(sc4mp_server_path, "Regions", region, "_Backups", coords)
 									if not os.path.exists(backup_directory):
 										os.makedirs(backup_directory)
-									while (sc4mp_config["BACKUPS"]["max_savegame_backups"] != None and len(os.listdir(backup_directory)) > sc4mp_config["BACKUPS"]["max_savegame_backups"]):
+									while (sc4mp_config["BACKUPS"]["max_savegame_backups"] is not None and len(os.listdir(backup_directory)) > sc4mp_config["BACKUPS"]["max_savegame_backups"]):
 										delete_filename = random.choice(os.listdir(backup_directory))
 										if delete_filename == "reset.sc4":
 											continue
@@ -1894,7 +1894,7 @@ class RequestHandler(th.Thread):
 		# Get database entry for user
 		key = user_id
 		entry = data.get(key, {})
-		if entry == None:
+		if entry is None:
 			entry = {}
 		data[key] = entry
 
@@ -2146,7 +2146,7 @@ class RequestHandler(th.Thread):
 
 		# Check if the client has exceeded the user limit
 		if user_id not in client_entry["users"]:
-			if (sc4mp_config["SECURITY"]["max_ip_users"] == None or len(client_entry["users"]) < sc4mp_config["SECURITY"]["max_ip_users"]):
+			if (sc4mp_config["SECURITY"]["max_ip_users"] is None or len(client_entry["users"]) < sc4mp_config["SECURITY"]["max_ip_users"]):
 				client_entry["users"].append(user_id)
 			else:
 				c.close()
@@ -2231,7 +2231,7 @@ class RequestHandler(th.Thread):
 				for coords in region_data.keys():
 					#print(coords)
 					city_entry = region_data[coords]
-					if (city_entry != None and city_entry["owner"] != user_id):
+					if (city_entry is not None and city_entry["owner"] != user_id):
 						c.send(city_entry["hashcode"].encode())
 						if c.recv(SC4MP_BUFFER_SIZE).decode() == "missing":
 							c.send(region.encode())
@@ -2311,7 +2311,7 @@ class ServerList(th.Thread):
 							old_server = (self.servers[server_id]["host"], self.servers[server_id]["port"])
 							if server != old_server:
 								print("[WARNING] Resolving server_id conflict...")
-								if self.ping(old_server) == None:
+								if self.ping(old_server) is None:
 									print("[WARNING] - keeping the new server!")
 									self.servers[server_id]["host"] = server[0]
 									self.servers[server_id]["port"] = server[1]
