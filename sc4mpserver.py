@@ -2116,13 +2116,13 @@ class RequestHandler(th.Thread):
 		user_id = hashlib.sha256(user_id).hexdigest()[:32]
 
 		# Get the ip
-		ip = c.getpeername()[0]
+		user_ip = c.getpeername()[0]
 		
 		# Get clients database
 		clients_data = sc4mp_clients_database_manager.data
 		
 		# Get data entry that matches ip
-		client_entry = clients_data[ip]
+		client_entry = clients_data[user_ip]
 
 		# Check if the client has exceeded the user limit
 		if user_id not in client_entry["users"]:
@@ -2135,13 +2135,8 @@ class RequestHandler(th.Thread):
 		# Get users database
 		users_data = sc4mp_users_database_manager.data
 		
-		# Get data entry that matches user id
-		user_entry = None
-		try:
-			user_entry = users_data[user_id]
-		except:
-			user_entry = {}
-			users_data[user_id] = user_entry
+		# Get data entry that matches user id or get & set to {}
+		user_entry = users_data.setdefault(user_id, {})
 
 		# Set default values if missing
 		user_entry.setdefault("clients", [])
@@ -2158,8 +2153,8 @@ class RequestHandler(th.Thread):
 
 		# Log the IP
 		clients_entry = user_entry["clients"]
-		if ip not in clients_entry:
-			clients_entry.append(ip)
+		if user_ip not in clients_entry:
+			clients_entry.append(user_ip)
 		
 		# Return the user id
 		return user_id
