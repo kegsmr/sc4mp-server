@@ -978,17 +978,17 @@ class Server(th.Thread):
 
 						try:
 
-							c, address = s.accept()
+							c, (host, port) = s.accept()
 
-							if (sc4mp_config["PERFORMANCE"]["request_limit"] is not None and address[0] in client_requests and client_requests[address[0]] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
-								report("[WARNING] Connection blocked from " + str(address[0]) + ":" + str(address[1]) + ".")
+							if (sc4mp_config["PERFORMANCE"]["request_limit"] is not None and host in client_requests and client_requests[host] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
+								report("[WARNING] Connection blocked from " + str(host) + ":" + str(port) + ".")
 								c.close()
 								continue
 							else:
-								client_requests.setdefault(address[0], 0)
-								client_requests[address[0]] = client_requests[address[0]] + 1
+								client_requests.setdefault(host, 0)
+								client_requests[host] += 1
 
-							report("Connection accepted with " + str(address[0]) + ":" + str(address[1]) + ".")
+							report("Connection accepted with " + str(host) + ":" + str(port) + ".")
 
 							self.log_client(c)
 
