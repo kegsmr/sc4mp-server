@@ -522,8 +522,7 @@ def restore(filename):
 			data = load_json(path)
 			directory, filename = os.path.split(os.path.abspath(path))
 			files_entry = data["files"]
-			for original_filename in files_entry.keys():
-				file_entry = files_entry[original_filename]
+			for original_filename, file_entry in files_entry.items():
 				hashcode = file_entry["hashcode"]
 				size = file_entry["size"]
 				data_filename = os.path.join(directory, "data", hashcode + "_" + str(size))
@@ -604,10 +603,9 @@ class Config:
 		parser = configparser.RawConfigParser()
 		try:
 			parser.read(self.PATH)
-			for section_name in self.data.keys():
-				section = self.data[section_name]
+			for section_name, section in self.data.items():
 				try:
-					for item_name in section.keys():
+					for item_name in section:
 						try:
 							from_file = parser.get(section_name, item_name)
 							if from_file == "True":
@@ -643,11 +641,9 @@ class Config:
 	def update(self):
 		"""TODO"""
 		parser = configparser.RawConfigParser()
-		for section_name in self.data.keys():
+		for section_name, section in self.data.items():
 			parser.add_section(section_name)
-			section = self.data[section_name]
-			for item_name in section.keys():
-				item_value = section[item_name]
+			for item_name, item_value in section.items():
 				parser.set(section_name, item_name, item_value)
 		with open(self.PATH, 'wt') as file:
 			parser.write(file)
@@ -1236,7 +1232,7 @@ class Server(th.Thread):
 				data[coords] = entry
 
 				# Create reset savegame file if needed
-				if "reset_filename" not in entry.keys():
+				if "reset_filename" not in entry:
 					reset_directory = os.path.join(region_directory, "_Backups", coords)
 					if not os.path.exists(reset_directory):
 						os.makedirs(reset_directory)
@@ -1591,12 +1587,12 @@ class RegionsManager(th.Thread):
 									self.outputs[save_id] = "Invalid city location."
 
 								# Filter out cities of the wrong size
-								if "size" in entry.keys():
+								if "size" in entry:
 									if (savegameSizeX != savegameSizeY or savegameSizeX != entry["size"]):
 										self.outputs[save_id] = "Invalid city size."
 
 								# Filter out claims on tiles with unexpired claims of other users
-								if "owner" in entry.keys():
+								if "owner" in entry:
 									owner = entry["owner"]
 									if (owner is not None and owner != user_id):
 										if sc4mp_config["RULES"]["claim_duration"] is None:
@@ -1607,10 +1603,10 @@ class RegionsManager(th.Thread):
 												self.outputs[save_id] = "City already claimed."
 
 								# Filter out cliams of users who have exhausted their region claims
-								if (not "owner" in entry.keys() or entry["owner"] != user_id):
+								if ("owner" not in entry or entry["owner"] != user_id):
 									if sc4mp_config["RULES"]["max_region_claims"] is not None:
 										claims = 0
-										for key in data.keys():
+										for key in data:
 											try:
 												if data[key]["owner"] == user_id:
 													claims += 1
@@ -1623,10 +1619,10 @@ class RegionsManager(th.Thread):
 								#TODO
 
 								# Proceed if save push has not been filtered out
-								if save_id not in self.outputs.keys():
+								if save_id not in self.outputs:
 
 									# Delete previous save file if it exists
-									if "filename" in entry.keys():
+									if "filename" in entry:
 										previous_filename = os.path.join(sc4mp_server_path, "Regions", region, entry["filename"])
 										if os.path.exists(previous_filename):
 											os.remove(previous_filename)
@@ -1681,7 +1677,7 @@ class RegionsManager(th.Thread):
 							try:
 								path = os.path.join(sc4mp_server_path, "_Temp", "inbound")
 								for directory in os.listdir(path):
-									if directory in self.outputs.keys():
+									if directory in self.outputs:
 
 										shutil.rmtree(os.path.join(path, directory))
 
@@ -1871,7 +1867,7 @@ class RequestHandler(th.Thread):
 		data = sc4mp_users_database_manager.data
 
 		# Send the user_id that matches the hash
-		for user_id in data.keys():
+		for user_id in data:
 			try:
 				token = data[user_id]["token"]
 				if hashlib.sha256((user_id + token).encode()).hexdigest() == in_hash:
@@ -2055,7 +2051,7 @@ class RequestHandler(th.Thread):
 					savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
 					coords = str(savegameX) + "_" + str(savegameY)
 					data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json"))
-					if coords in data.keys():
+					if coords in data:
 						entry = data[coords]
 						date_subfile_hashes = entry["date_subfile_hashes"]
 						new_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
@@ -2082,7 +2078,7 @@ class RequestHandler(th.Thread):
 				sc4mp_regions_manager.tasks.append((save_id, user_id, region, savegame))
 
 				# Wait for the output
-				while not save_id in sc4mp_regions_manager.outputs.keys():
+				while save_id not in sc4mp_regions_manager.outputs:
 					time.sleep(SC4MP_DELAY)
 
 				# Send the output to the client
@@ -2228,9 +2224,7 @@ class RequestHandler(th.Thread):
 			if os.path.isdir(os.path.join(regions_directory, region)):
 				#print(region)
 				region_data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json"))
-				for coords in region_data.keys():
-					#print(coords)
-					city_entry = region_data[coords]
+				for city_entry in region_data.values():
 					if (city_entry is not None and city_entry["owner"] != user_id):
 						c.send(city_entry["hashcode"].encode())
 						if c.recv(SC4MP_BUFFER_SIZE).decode() == "missing":
@@ -2306,7 +2300,7 @@ class ServerList(th.Thread):
 							continue
 
 						# Resolve server id confilcts
-						if server_id in self.servers.keys():
+						if server_id in self.servers:
 							print("- \"" + server_id + "\" already found in our server list")
 							old_server = (self.servers[server_id]["host"], self.servers[server_id]["port"])
 							if server != old_server:
