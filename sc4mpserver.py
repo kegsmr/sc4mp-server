@@ -2115,14 +2115,12 @@ class RequestHandler(th.Thread):
 		"""TODO"""
 		if not sc4mp_config["NETWORK"]["discoverable"]:
 			return
-		data = sc4mp_server_list.servers.copy()
-		keys = data.keys()
-		servers = []
-		for key in keys:
-			server = (data[key]["host"], data[key]["port"])
-			if server not in servers:
-				servers.append(server)
-		c.send(json.dumps(servers).encode())
+		server_dict = sc4mp_server_list.servers.copy()
+		servers = set()
+		for server_info in server_dict.values():
+			servers.add((server_info["host"], server_info["port"]))
+
+		c.send(json.dumps(list(servers)).encode())
 
 
 	def log_user(self, c, user_id):
