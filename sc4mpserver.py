@@ -272,13 +272,13 @@ def package_plugins_and_regions():
 	sc4mp_regions_manager.start()
 
 
-def package(type):
+def package(package_type):
 	"""TODO"""
 
 	directory = None
-	if type == "plugins":
+	if package_type == "plugins":
 		directory = "Plugins"
-	elif type == "regions":
+	elif package_type == "regions":
 		directory = "Regions"
 
 	target = os.path.join(sc4mp_server_path, directory)
@@ -290,18 +290,18 @@ def package(type):
 	shutil.make_archive(destination, "zip", target)
 
 
-def export(type):
+def export(export_type):
 	"""TODO"""
 
 	# Select directory name from input
 	directory = None
-	if type == "plugins":
+	if export_type == "plugins":
 		directory = "Plugins"
-	elif type == "regions":
+	elif export_type == "regions":
 		directory = "Regions"
 
 	#TODO delete old abandoned savegames and check if savegames are missing so they can be replaced with the reset savegame
-	if type == "regions":
+	if export_type == "regions":
 		pass
 
 	# Set target and destination directories
@@ -448,28 +448,28 @@ def xor(conditionA, conditionB):
 	return (conditionA or conditionB) and (not (conditionA and conditionB))
 
 
-def report(message, object=None, type="INFO", ): #TODO do this in the logger to make sure output prints correctly
+def report(message, obj=None, msg_type="INFO", ): #TODO do this in the logger to make sure output prints correctly
 	"""TODO"""
 	'''color = '\033[94m '
 	output = datetime.now().strftime("[%H:%M:%S] [SC4MP")
-	object = None
+	obj = None
 	for item in inspect.stack():
-		if (object != None):
+		if (obj != None):
 			break
 		try:
-			object = item[0].f_locals["self"]
+			obj = item[0].f_locals["self"]
 		except:
 			pass
-	if (object != None):
-		output += "/" + object.__class__.__name__
+	if (obj != None):
+		output += "/" + obj.__class__.__name__
 		color = '\033[0m '
-	output+= "] [" + type + "] " + message
-	if (type=="WARNING"):
+	output+= "] [" + msg_type + "] " + message
+	if (msg_type=="WARNING"):
 		color = '\033[93m '
-	elif (type == "ERROR" or type == "FATAL"):
+	elif (msg_type == "ERROR" or msg_type == "FATAL"):
 		color = '\033[91m '
 	print(color + output)'''
-	print("[" + type + "] " + message)
+	print("[" + msg_type + "] " + message)
 
 
 def update_config_constants(config):
@@ -1864,7 +1864,7 @@ class RequestHandler(th.Thread):
 		c.send(SC4MP_VERSION.encode())
 
 
-	def send_user_id(self, c, hash):
+	def send_user_id(self, c, in_hash):
 		"""TODO"""
 
 		# Get database
@@ -1874,7 +1874,7 @@ class RequestHandler(th.Thread):
 		for user_id in data.keys():
 			try:
 				token = data[user_id]["token"]
-				if hashlib.sha256((user_id + token).encode()).hexdigest() == hash:
+				if hashlib.sha256((user_id + token).encode()).hexdigest() == in_hash:
 					c.send(user_id.encode())
 					break
 			except:
@@ -2455,7 +2455,7 @@ class Logger():
 			
 
 			# Type and color
-			type = "[INFO] "
+			msg_type = "[INFO] "
 			color = '\033[90m '
 			TYPES_COLORS = [
 				("[INFO] ", '\033[90m '), #'\033[94m '
@@ -2469,14 +2469,14 @@ class Logger():
 				current_color = TYPES_COLORS[index][1]
 				if message[:len(current_type)] == current_type:
 					message = message[len(current_type):]
-					type = current_type
+					msg_type = current_type
 					color = current_color
 					break
-			if (th.current_thread().getName() == "Main" and type == "[INFO] "):
+			if (th.current_thread().getName() == "Main" and msg_type == "[INFO] "):
 				color = '\033[00m '
 			
 			# Assemble
-			output = color + timestamp + label + type + message
+			output = color + timestamp + label + msg_type + message
 
 		# Print
 		self.terminal.write(output)
