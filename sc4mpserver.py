@@ -590,13 +590,9 @@ class Config:
 
 		# Create dictionary with default config settings
 		self.data = {}
-		for section in self.DEFAULTS:
-			section_name = section[0]
-			section_items = section[1]
+		for section_name, section_items in self.DEFAULTS:
 			self.data.setdefault(section_name, {})
-			for item in section_items:
-				item_name = item[0]
-				item_value = item[1]
+			for item_name, item_value in section_items:
 				self.data[section_name].setdefault(item_name, item_value)
 		
 		# Try to read settings from the config file and update the dictionary accordingly
