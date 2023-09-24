@@ -1,3 +1,4 @@
+from __future__ import annotations
 import configparser
 import hashlib
 import inspect
@@ -488,18 +489,15 @@ def update_config_constants(config):
 	SC4MP_SERVER_DESCRIPTION = config['INFO']['server_description']
 
 
-def format_version(version):
-	"""TODO"""
-	return str(version[0]) + "." + str(version[1]) + "." + str(version[2])
+def format_version(version: tuple[int, int, int]) -> str:
+	"""Converts a version number from a tuple to a string."""
+	major, minor, patch = version
+	return f'{major}.{minor}.{patch}'
 
 
-def unformat_version(version):
-	"""TODO"""
-	strings = version.split(".")
-	ints = []
-	for string in strings:
-		ints.append(int(string))
-	return tuple(ints)
+def unformat_version(version: str) -> tuple[int, int, int]:
+	"""Converts a version number from a string to a tuple."""
+	return tuple([int(v) for v in version.split('.')])
 
 
 def restore(filename):
