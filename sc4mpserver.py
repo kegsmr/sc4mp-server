@@ -1544,10 +1544,7 @@ class RegionsManager(th.Thread):
 							task = self.tasks.pop(0)
 
 							# Read values from tuple
-							save_id = task[0]
-							user_id = task[1]
-							region = task[2]
-							savegame = task[3]
+							save_id, user_id, region, savegame = task
 
 							report('Processing task "' + save_id + '"...', self)
 
@@ -1563,19 +1560,14 @@ class RegionsManager(th.Thread):
 								savegameModeFlag = savegame.SC4ReadRegionalCity["modeFlag"]
 
 								# Set "coords" variable. Used as a key in the region database and also for the name of the new save file
-								coords = str(savegameX) + "_" + str(savegameY)
+								coords = f'{savegameX}_{savegameY}'
 
 								# Get region database
 								data_filename = os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json")
 								data = self.load_json(data_filename)
 								
-								# Get city entry
-								entry = None
-								try:
-									entry = data[coords]
-								except:
-									entry = {}
-									data[coords] = entry
+								# Get city entry or get & set as empty dict if key does not exist
+								entry = data.setdefault(coords, {})
 
 								# Filter out godmode savegames if required
 								if sc4mp_config["RULES"]["godmode_filter"]:
@@ -1605,13 +1597,7 @@ class RegionsManager(th.Thread):
 								# Filter out cliams of users who have exhausted their region claims
 								if ("owner" not in entry or entry["owner"] != user_id):
 									if sc4mp_config["RULES"]["max_region_claims"] is not None:
-										claims = 0
-										for key in data:
-											try:
-												if data[key]["owner"] == user_id:
-													claims += 1
-											except:
-												pass
+										claims = len(filter(lambda x: x.get("owner") == user_id, data.values()))
 										if claims >= sc4mp_config["RULES"]["max_region_claims"]:
 											self.outputs[save_id] = "Claim limit reached in this region."
 
