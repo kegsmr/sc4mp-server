@@ -202,7 +202,7 @@ def file_md5(file):
 def create_empty_json(filename):
 	"""TODO"""
 	with open(filename, 'w') as file:
-		data = dict()
+		data = {}
 		file.seek(0)
 		json.dump(data, file, indent=4)
 		file.truncate()
@@ -218,7 +218,7 @@ def load_json(filename):
 			else:
 				return data
 	except FileNotFoundError:
-		return dict()
+		return {}
 
 
 def set_savegame_data(entry, savegame):
@@ -594,11 +594,11 @@ class Config:
 		self.DEFAULTS = defaults
 
 		# Create dictionary with default config settings
-		self.data = dict()
+		self.data = {}
 		for section in self.DEFAULTS:
 			section_name = section[0]
 			section_items = section[1]
-			self.data.setdefault(section_name, dict())
+			self.data.setdefault(section_name, {})
 			for item in section_items:
 				item_name = item[0]
 				item_value = item[1]
@@ -714,7 +714,7 @@ class DBPF:
 		# Read index table
 		self.indexData = []
 		for index in range(0, self.indexCount):
-			self.indexData.append(dict())
+			self.indexData.append({})
 			self.indexData[index]['typeID'] = self.read_ID()
 			self.indexData[index]['groupID'] = self.read_ID()
 			self.indexData[index]['instanceID'] = self.read_ID()
@@ -872,7 +872,7 @@ class DBPF:
 		#print(data.read())
 		#data.seek(0)
 
-		self.SC4ReadRegionalCity = dict()
+		self.SC4ReadRegionalCity = {}
 
 		self.SC4ReadRegionalCity['majorVersion'] = self.read_UL2(data)
 		self.SC4ReadRegionalCity['minorVersion'] = self.read_UL2(data)
@@ -916,7 +916,7 @@ class DBPF:
 		print(data.read())
 		data.seek(0)
 
-		self.cSC4Simulator = dict()
+		self.cSC4Simulator = {}
 
 		#TODO
 
@@ -976,14 +976,14 @@ class Server(th.Thread):
 
 				max_request_threads = sc4mp_config["PERFORMANCE"]["max_request_threads"]
 
-				client_requests = dict()
+				client_requests = {}
 				client_requests_cleared = datetime.now()
 
 				while sc4mp_server_running:
 
 					if datetime.now() >= client_requests_cleared + timedelta(seconds=60):
 
-						client_requests = dict()
+						client_requests = {}
 						client_requests_cleared = datetime.now()
 					
 					if max_request_threads == None or sc4mp_request_threads < max_request_threads:
@@ -1044,7 +1044,7 @@ class Server(th.Thread):
 		try:
 			client_entry = clients_data[ip]
 		except:
-			client_entry = dict()
+			client_entry = {}
 			clients_data[ip] = client_entry
 
 		# Set values
@@ -1203,7 +1203,7 @@ class Server(th.Thread):
 			try:
 				data = load_json(filename)
 			except:
-				data = dict()
+				data = {}
 			
 			# Get savegame paths
 			savegame_paths = []
@@ -1381,7 +1381,7 @@ class BackupsManager(th.Thread):
 			with open(filename, 'r') as file:
 				return json.load(file)
 		except:
-			return dict()
+			return {}
 
 	
 	def update_json(self, filename, data):
@@ -1406,7 +1406,7 @@ class BackupsManager(th.Thread):
 					fullpaths.append(os.path.join(path, file))
 
 		# Create a files entry for the backup dictionary
-		files_entry = dict()
+		files_entry = {}
 
 		# Loop through fullpaths and backup the files and add them to the files entry
 		for fullpath in fullpaths:
@@ -1421,14 +1421,14 @@ class BackupsManager(th.Thread):
 				if os.path.exists(filename):
 					os.remove(filename)
 				shutil.copy(fullpath, filename)
-			fullpath_entry = dict()
+			fullpath_entry = {}
 			fullpath_entry["hashcode"] = hashcode
 			fullpath_entry["size"] = filesize
 			#fullpath_entry["backup_filename"] = filename
 			files_entry[fullpath] = fullpath_entry
 
 		# Create dictionary for backup and add the files entry
-		backup_data = dict()
+		backup_data = {}
 		backup_data["files"] = files_entry
 
 		# Update database
@@ -1490,7 +1490,7 @@ class DatabaseManager(th.Thread):
 			with open(filename, 'r') as file:
 				return json.load(file)
 		except:
-			return dict()
+			return {}
 
 	
 	def update_json(self, filename, data):
@@ -1513,7 +1513,7 @@ class RegionsManager(th.Thread):
 		self.regions_modified = False
 		self.export_regions = False
 		self.tasks = []
-		self.outputs = dict()
+		self.outputs = {}
 	
 
 	def run(self):
@@ -1582,7 +1582,7 @@ class RegionsManager(th.Thread):
 								try:
 									entry = data[coords]
 								except:
-									entry = dict()
+									entry = {}
 									data[coords] = entry
 
 								# Filter out godmode savegames if required
@@ -1714,7 +1714,7 @@ class RegionsManager(th.Thread):
 			with open(filename, 'r') as file:
 				return json.load(file)
 		except:
-			return dict()
+			return {}
 
 	
 	def update_json(self, filename, data):
@@ -2164,7 +2164,7 @@ class RequestHandler(th.Thread):
 		try:
 			user_entry = users_data[user_id]
 		except:
-			user_entry = dict()
+			user_entry = {}
 			users_data[user_id] = user_entry
 
 		# Set default values if missing
@@ -2257,9 +2257,9 @@ class ServerList(th.Thread):
 		try:
 			self.servers = load_json(os.path.join(sc4mp_server_path, "_Database", "servers.json"))
 		except:
-			self.servers = dict()
+			self.servers = {}
 
-		self.servers["root"] = dict()
+		self.servers["root"] = {}
 		self.servers["root"]["host"] = SC4MP_SERVERS[0][0]
 		self.servers["root"]["port"] = SC4MP_SERVERS[0][1]
 
@@ -2323,7 +2323,7 @@ class ServerList(th.Thread):
 									print("[WARNING] - keeping the old server!")
 						else:
 							print("- adding \"" + server_id + "\" to our server list")
-							self.servers[server_id] = dict()
+							self.servers[server_id] = {}
 							self.servers[server_id]["host"] = server[0]
 							self.servers[server_id]["port"] = server[1]
 
