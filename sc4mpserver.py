@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 import configparser
+import getpass
 import hashlib
 import inspect
 import io
@@ -14,8 +16,9 @@ import sys
 import threading as th
 import time
 import traceback
-import getpass
 from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Optional
 
 SC4MP_VERSION = "0.4.0"
 
