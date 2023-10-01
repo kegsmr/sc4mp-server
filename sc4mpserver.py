@@ -344,6 +344,57 @@ def purge_directory(directory):
 			raise ServerException('Failed to delete "' + file_path + '" because the file is being used by another process.') #\n\n' + str(e)
 
 
+def send_filestream(c, rootpath):
+	"""TODO"""
+
+	# Loop through all files in path and append them to a list
+	fullpaths = []
+	for path, directories, files in os.walk(rootpath):
+		for file in files:
+			fullpaths.append(os.path.join(path, file))
+
+	# Get fullpaths to files in rootpath
+	#fullpaths = rootpath.rglob("*")
+
+	# Generate the file table
+	filetable = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
+
+	# Send the file table to the client
+	send_json(c, filetable)
+
+	# Receive the modified filetable from the client and verify it
+	ft = [tuple(item) for item in recv_json(c)]
+	for item in ft:
+		if not item in filetable:
+			c.close()
+	filetable = ft
+
+	# Loop through the filetable and send the respective data
+	for checksum, size, relpath in filetable:
+		with open(rootpath / relpath, "rb") as file:
+			while True:
+				data = file.read(SC4MP_BUFFER_SIZE)
+				if not data:
+					break
+				c.send(data)
+
+
+def send_json(s, data):
+	"""TODO"""
+	s.sendall(json.dumps(data).encode())
+
+
+def recv_json(s):
+	"""TODO"""
+	data = ""
+	while True:
+		data += s.recv(SC4MP_BUFFER_SIZE).decode()
+		try:
+			return json.loads(data)
+		except json.decoder.JSONDecodeError:
+			pass
+
+
 def send_tree(c, rootpath):
 	"""TODO"""
 
@@ -1890,7 +1941,8 @@ class RequestHandler(th.Thread):
 		#filename = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", "Plugins.zip")))
 		#send_or_cached(c, filename)
 
-		send_tree(c, os.path.join(sc4mp_server_path, "Plugins"))
+		send_filestream(c, Path(sc4mp_server_path) / "Plugins")
+		#send_tree(c, os.path.join(sc4mp_server_path, "Plugins"))
 
 
 	def send_regions(self, c):
@@ -1904,7 +1956,8 @@ class RequestHandler(th.Thread):
 		#filename = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", "Regions.zip")))
 		#send_or_cached(c, filename)
 
-		send_tree(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
+		send_filestream(c, Path(sc4mp_server_path) / "_Temp" / "outbound" / "Regions")
+		#send_tree(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
 
 
 	'''def delete(self, c):
@@ -2463,4 +2516,4 @@ class Logger():
 # Main
 
 if __name__ == '__main__':
-	main() 
+	main()
