@@ -1744,7 +1744,7 @@ class RequestHandler(th.Thread):
 				elif request == "user_id":
 					self.send_user_id(c, args[1])
 				elif request == "token":
-					self.request_header(c, args[1], args[2], args)
+					self.request_header(c, args)
 					self.send_token(c)
 				elif request == "plugins":
 					if sc4mp_config["SECURITY"]["private"]:
@@ -1806,7 +1806,7 @@ class RequestHandler(th.Thread):
 			raise ServerException("Invalid version.")
 
 		if sc4mp_config["SECURITY"]["password_enabled"]:
-			if args[3:] != sc4mp_config["SECURITY"]["password"]:
+			if " ".join(args[3:]) != sc4mp_config["SECURITY"]["password"]:
 				c.close()
 				raise ServerException("Incorrect password.")
 
@@ -2110,7 +2110,7 @@ class RequestHandler(th.Thread):
 		"""TODO"""
 
 		# Use a hashcode of the user id for extra security
-		user_id = hashlib.sha256(user_id).hexdigest()[:32]
+		user_id = hashlib.sha256(user_id.encode()).hexdigest()[:32]
 
 		# Get the ip
 		user_ip = c.getpeername()[0]
