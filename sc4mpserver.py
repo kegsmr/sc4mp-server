@@ -2311,9 +2311,7 @@ class ServerList(th.Thread):
 		except:
 			self.servers = {}
 
-		self.servers["root"] = {}
-		self.servers["root"]["host"] = SC4MP_SERVERS[0][0]
-		self.servers["root"]["port"] = SC4MP_SERVERS[0][1]
+		self.servers["root"] = {"host": SC4MP_SERVERS[0][0], "port": SC4MP_SERVERS[0][1]}
 
 		self.server_queue = ServerQueue(SC4MP_SERVERS.copy())
 
@@ -2369,15 +2367,12 @@ class ServerList(th.Thread):
 								print("[WARNING] Resolving server_id conflict...")
 								if self.ping(old_server) is None:
 									print("[WARNING] - keeping the new server!")
-									self.servers[server_id]["host"] = server[0]
-									self.servers[server_id]["port"] = server[1]
+									self.servers[server_id] = {"host": server[0], "port": server[1]}
 								else:
 									print("[WARNING] - keeping the old server!")
 						else:
 							print("- adding \"" + server_id + "\" to our server list")
-							self.servers[server_id] = {}
-							self.servers[server_id]["host"] = server[0]
-							self.servers[server_id]["port"] = server[1]
+							self.servers[server_id] = {"host": server[0], "port": server[1]}
 
 						# Request to be added to the server's server list
 						print("- requesting to be added to their server list...")
