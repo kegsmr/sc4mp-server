@@ -2444,13 +2444,8 @@ class ServerList(th.Thread):
 		"""TODO"""
 		s = self.create_socket(server)
 		s.send(b"server_list")
-		size = int(s.recv(SC4MP_BUFFER_SIZE).decode())
-		s.send(SC4MP_SEPARATOR)
-		for _ in range(size):
-			host = s.recv(SC4MP_BUFFER_SIZE).decode()
-			s.send(SC4MP_SEPARATOR)
-			port = int(s.recv(SC4MP_BUFFER_SIZE).decode())
-			s.send(SC4MP_SEPARATOR)
+		servers = recv_json(s)
+		for host, port in servers:
 			self.server_queue.enqueue((host, port))
 
 
