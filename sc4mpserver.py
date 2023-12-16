@@ -16,6 +16,7 @@ import sys
 import threading as th
 import time
 import traceback
+from argparse import ArgumentParser, Namespace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -92,8 +93,6 @@ SC4MP_SERVER_ID = None
 SC4MP_SERVER_NAME = None
 SC4MP_SERVER_DESCRIPTION = None
 
-sc4mp_args = sys.argv
-
 sc4mp_server_path = "_SC4MP"
 
 sc4mp_server_running = False
@@ -108,6 +107,9 @@ def main():
 
 	try:
 
+		# Parse arguments
+		args = parse_args()
+
 		# Output
 		sys.stdout = Logger()
 		th.current_thread().name = "Main"
@@ -115,29 +117,24 @@ def main():
 		# Title
 		report(SC4MP_TITLE)
 
-		# "--server-path" argument
+		# -s / --server-path argument
 		global sc4mp_server_path
-		try:
-			ARGUMENT = "--server-path"
-			if ARGUMENT in sc4mp_args:
-				sc4mp_server_path = sc4mp_args[sc4mp_args.index(ARGUMENT) + 1]
-		except Exception as e:
-			raise ServerException("Invalid arguments.")
+		if args.server_path:
+			sc4mp_server_path = args.server_path
 
-		# "--restore" argument
-		global sc4mp_restore
-		try:
-			ARGUMENT = "--restore"
-			if ARGUMENT in sc4mp_args:
-				sc4mp_restore = sc4mp_args[sc4mp_args.index(ARGUMENT) + 1]
-				restore(sc4mp_restore)
-				return
-		except Exception as e:
-			raise ServerException("Invalid arguments.")
+		# -r / --restore argument
+		if args.restore:
+			restore(args.restore)
 
-		# "-prep" argument
+		# -p / --prep argument
 		global sc4mp_nostart
-		sc4mp_nostart = "-prep" in sc4mp_args
+		if args.prep is True:
+			sc4mp_nostart = True
+
+		# -v / --verbose argument
+		if args.verbose:
+			# TODO: use this flag to set logger level to debug once the logger PR is merged
+			pass
 
 		# Server
 		global sc4mp_server
@@ -148,6 +145,30 @@ def main():
 	except Exception as e:
 
 		fatal_error(e)
+
+
+def parse_args() -> Namespace:
+	"""Parse command line arguments"""
+
+	parser = ArgumentParser(prog="SC4MP Server",
+						 description="SimCity 4 Multiplayer Server")
+
+	parser.add_argument("-s", "--server-path", help="specify server directory relative path")
+
+	parser.add_argument("-r", "--restore", help="restore the server to the specified backup")
+
+	parser.add_argument("-v", "--verbose",
+					 help="increase stdout/log verbosity",
+					 action="store_true")
+
+	parser.add_argument("-p", "--prep",
+					 help="prep the server, but do not start",
+					 action="store_true")
+
+	parser.add_argument("--version", action="version",
+                    version=f"{parser.prog} {SC4MP_VERSION}")
+
+	return parser.parse_args()
 
 
 def prep():
