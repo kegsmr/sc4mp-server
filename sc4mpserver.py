@@ -18,7 +18,6 @@ import time
 import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 SC4MP_VERSION = "0.4.0"
 
@@ -85,6 +84,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		("backup_server_on_startup", True),
 		#("max_server_backups", 720), #TODO
 		("max_savegame_backups", 100),
+		("backup_retention_days", 30)
 	])
 ]
 
@@ -1374,12 +1374,13 @@ class Server(th.Thread):
 class BackupsManager(th.Thread):
 	"""TODO"""
 
-	
+
 	def __init__(self):
 		"""TODO"""
 
+		self.backup_dir = Path(sc4mp_server_path) / "_Backups"
 		super().__init__()
-	
+
 
 	def run(self):
 		"""TODO"""
@@ -1398,6 +1399,9 @@ class BackupsManager(th.Thread):
 
 					# Delay
 					time.sleep(3600 * sc4mp_config["BACKUPS"]["server_backup_interval"])
+
+					# Prune backups
+					self.prune()
 
 					# Create backup
 					self.backup()
@@ -1423,7 +1427,7 @@ class BackupsManager(th.Thread):
 		except:
 			return {}
 
-	
+
 	def update_json(self, filename, data):
 		"""TODO"""
 		with open(filename, 'w') as file:
@@ -1437,7 +1441,7 @@ class BackupsManager(th.Thread):
 
 		# Report creating backups
 		report("Creating backup...", self)
-				
+
 		# Loop through all files in server directory and append them to a list
 		fullpaths = []
 		for path, directories, files in os.walk(sc4mp_server_path):
@@ -1456,7 +1460,7 @@ class BackupsManager(th.Thread):
 			if not os.path.exists(directory):
 				os.makedirs(directory)
 			filename = os.path.join(directory, hashcode + "_" + str(filesize))
-			if not os.path.exists(filename) or not hashcode == md5(filename) or not filesize == os.path.getsize(filename):
+			if not os.path.exists(filename) or hashcode != md5(filename) or filesize != os.path.getsize(filename):
 				report('- copying "' + fullpath + '"...', self)
 				if os.path.exists(filename):
 					os.remove(filename)
@@ -1477,6 +1481,68 @@ class BackupsManager(th.Thread):
 
 		# Report done
 		report("- done.", self)
+
+
+	def prune(self) -> None:
+		"""
+		Prunes the backup data by first removing any json backup records
+		that are older than the retention period, then comparing the backup
+		files to the entries in the remaining json files.
+		"""
+		report('Pruning backups...', self)
+		backup_retention_days = sc4mp_config["BACKUPS"]["backup_retention_days"]
+
+		self.prune_backup_records(backup_retention_days)
+
+		self.prune_backup_data()
+
+
+	def prune_backup_records(self, days: int) -> None:
+		"""Delete expired backup records"""
+
+		cutoff = datetime.now() - timedelta(days=days)
+
+		for backup in self.backup_dir.glob('*.json'):
+			backup_date = datetime.strptime(backup.stem, "%Y%m%d%H%M%S")
+			if backup_date < cutoff:
+				backup.unlink()
+
+
+	def prune_backup_data(self) -> None:
+		"""Delete unreferenced backup data"""
+
+		# collect all backup references from json records
+		referenced_files = self.get_referenced_files()
+
+		# remove unreferenced backup files
+		backup_file_dir = self.backup_dir / 'data'
+		for file in [f for f in backup_file_dir.iterdir() if f.is_file()]:
+			# parse hash and filesize from file name
+			hashcode, size_str = file.stem.split('_')
+			size = int(size_str)
+
+			if (hashcode, size) not in referenced_files:
+				file.unlink()
+
+
+	def get_referenced_files(self) -> set[tuple[str, int]]:
+		"""Return all referenced backup files as a set of tuples of (hashcode, size)"""
+		# # types
+		# FileDetail = TypedDict('FileDetail', {'hashcode': str, 'size': int})
+		# BackupJSON = TypedDict('BackupJSON', {'files': "dict[str, FileDetail]"})
+
+		referenced_files: set[tuple[str, int]] = set()
+
+		for json_path in self.backup_dir.glob('*.json'):
+
+			backup_json = load_json(json_path)
+
+			for file_detail in backup_json['files'].values():
+				hashcode = file_detail['hashcode']
+				size = file_detail['size']
+				referenced_files.add((hashcode, size))
+
+		return referenced_files
 
 
 class DatabaseManager(th.Thread):
