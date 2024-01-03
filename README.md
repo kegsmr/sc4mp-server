@@ -119,15 +119,12 @@ plugins <version> <user_id> <password>
 
 #### Response
 ```
-{
-    "size": <size>
-    "files": [
-        [<file_1_md5>, <file_1_size>, <file_1_relpath>],
-        [<file_2_md5>, <file_2_size>, <file_2_relpath>],
-        ...
-        [<file_n_md5>, <file_n_size>, <file_n_relpath>]
-    ]
-}
+[
+	[<file_1_md5>, <file_1_size>, <file_1_relpath>],
+	[<file_2_md5>, <file_2_size>, <file_2_relpath>],
+	...
+	[<file_n_md5>, <file_n_size>, <file_n_relpath>]
+]
 ```
 
 #### Request
