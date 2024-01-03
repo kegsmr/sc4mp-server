@@ -16,8 +16,11 @@ import sys
 import threading as th
 import time
 import traceback
+from argparse import ArgumentParser, Namespace
+from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Iterable
 
 SC4MP_VERSION = "0.4.0"
 
@@ -92,8 +95,6 @@ SC4MP_SERVER_ID = None
 SC4MP_SERVER_NAME = None
 SC4MP_SERVER_DESCRIPTION = None
 
-sc4mp_args = sys.argv
-
 sc4mp_server_path = "_SC4MP"
 
 sc4mp_server_running = False
@@ -108,6 +109,9 @@ def main():
 
 	try:
 
+		# Parse arguments
+		args = parse_args()
+
 		# Output
 		sys.stdout = Logger()
 		th.current_thread().name = "Main"
@@ -115,29 +119,24 @@ def main():
 		# Title
 		report(SC4MP_TITLE)
 
-		# "--server-path" argument
+		# -s / --server-path argument
 		global sc4mp_server_path
-		try:
-			ARGUMENT = "--server-path"
-			if ARGUMENT in sc4mp_args:
-				sc4mp_server_path = sc4mp_args[sc4mp_args.index(ARGUMENT) + 1]
-		except Exception as e:
-			raise ServerException("Invalid arguments.")
+		if args.server_path:
+			sc4mp_server_path = args.server_path
 
-		# "--restore" argument
-		global sc4mp_restore
-		try:
-			ARGUMENT = "--restore"
-			if ARGUMENT in sc4mp_args:
-				sc4mp_restore = sc4mp_args[sc4mp_args.index(ARGUMENT) + 1]
-				restore(sc4mp_restore)
-				return
-		except Exception as e:
-			raise ServerException("Invalid arguments.")
+		# -r / --restore argument
+		if args.restore:
+			restore(args.restore)
 
-		# "-prep" argument
+		# -p / --prep argument
 		global sc4mp_nostart
-		sc4mp_nostart = "-prep" in sc4mp_args
+		if args.prep is True:
+			sc4mp_nostart = True
+
+		# -v / --verbose argument
+		if args.verbose:
+			# TODO: use this flag to set logger level to debug once the logger PR is merged
+			pass
 
 		# Server
 		global sc4mp_server
@@ -148,6 +147,30 @@ def main():
 	except Exception as e:
 
 		fatal_error(e)
+
+
+def parse_args() -> Namespace:
+	"""Parse command line arguments"""
+
+	parser = ArgumentParser(prog="SC4MP Server",
+						 description="SimCity 4 Multiplayer Server")
+
+	parser.add_argument("-s", "--server-path", help="specify server directory relative path")
+
+	parser.add_argument("-r", "--restore", help="restore the server to the specified backup")
+
+	parser.add_argument("-v", "--verbose",
+					 help="increase stdout/log verbosity",
+					 action="store_true")
+
+	parser.add_argument("-p", "--prep",
+					 help="prep the server, but do not start",
+					 action="store_true")
+
+	parser.add_argument("--version", action="version",
+                    version=f"{parser.prog} {SC4MP_VERSION}")
+
+	return parser.parse_args()
 
 
 def prep():
@@ -2209,8 +2232,8 @@ class RequestHandler(th.Thread):
 		host = c.getpeername()[0]
 		port = int(port)
 		server = (host, port)
-		if (not server in sc4mp_server_list.server_queue) and (not len(sc4mp_server_list.server_queue) > sc4mp_server_list.SERVER_LIMIT):
-			sc4mp_server_list.server_queue.append(server)
+		if len(sc4mp_server_list.server_queue) < sc4mp_server_list.SERVER_LIMIT:
+			sc4mp_server_list.server_queue.enqueue(server, left=True) # skip to the front of the queue
 
 
 	def server_list(self, c):
@@ -2330,6 +2353,37 @@ class RequestHandler(th.Thread):
 		c.send(b'done')
 
 
+class ServerQueue:
+	"""
+	Queue for server scanning that implements membership check before enqueuing.
+	Can optionally enqueue to the front (left) of the queue.
+	The queue contains (host, port) tuples.
+	"""
+
+	def __init__(self, servers: Iterable[tuple[str,int]]) -> None:
+		self._queue = deque(servers)
+
+	def __len__(self):
+		return len(self._queue)
+
+	def enqueue(self, server: tuple[str,int], left=False) -> None:
+		"""
+		Adds a server to the queue, defaulting to the tail end (right).
+		left=True adds the server to the front of the queue.
+		Servers are only enqueued if they are not already in queue.
+		"""
+		if server in self._queue:
+			return
+		if left:
+			self._queue.appendleft(server)
+			return
+		self._queue.append(server)
+
+	def dequeue(self) -> tuple[str,int]:
+		"""Gets the server at the front of the queue"""
+		return self._queue.popleft()
+
+
 class ServerList(th.Thread):
 
 
@@ -2344,11 +2398,9 @@ class ServerList(th.Thread):
 		except:
 			self.servers = {}
 
-		self.servers["root"] = {}
-		self.servers["root"]["host"] = SC4MP_SERVERS[0][0]
-		self.servers["root"]["port"] = SC4MP_SERVERS[0][1]
+		self.servers["root"] = {"host": SC4MP_SERVERS[0][0], "port": SC4MP_SERVERS[0][1]}
 
-		self.server_queue = SC4MP_SERVERS.copy()
+		self.server_queue = ServerQueue(SC4MP_SERVERS.copy())
 
 
 	def run(self):
@@ -2370,13 +2422,13 @@ class ServerList(th.Thread):
 					server_id = random.choice(list(self.servers.keys()))
 					if (self.servers[server_id]["host"], self.servers[server_id]["port"]) not in SC4MP_SERVERS:
 						self.servers.pop(server_id)
-	
+
 				if len(self.server_queue) > 0 or len(self.servers) > 0:
 
 					# Get the next server
 					server = None
 					if len(self.server_queue) > 0:
-						server = self.server_queue.pop(0)
+						server = self.server_queue.dequeue()
 					else:
 						server_id = random.choice(list(self.servers.keys()))
 						server_entry = self.servers.pop(server_id)
@@ -2402,15 +2454,12 @@ class ServerList(th.Thread):
 								print("[WARNING] Resolving server_id conflict...")
 								if self.ping(old_server) is None:
 									print("[WARNING] - keeping the new server!")
-									self.servers[server_id]["host"] = server[0]
-									self.servers[server_id]["port"] = server[1]
+									self.servers[server_id] = {"host": server[0], "port": server[1]}
 								else:
 									print("[WARNING] - keeping the old server!")
 						else:
 							print("- adding \"" + server_id + "\" to our server list")
-							self.servers[server_id] = {}
-							self.servers[server_id]["host"] = server[0]
-							self.servers[server_id]["port"] = server[1]
+							self.servers[server_id] = {"host": server[0], "port": server[1]}
 
 						# Request to be added to the server's server list
 						print("- requesting to be added to their server list...")
@@ -2482,14 +2531,9 @@ class ServerList(th.Thread):
 		"""TODO"""
 		s = self.create_socket(server)
 		s.send(b"server_list")
-		size = int(s.recv(SC4MP_BUFFER_SIZE).decode())
-		s.send(SC4MP_SEPARATOR)
-		for count in range(size):
-			host = s.recv(SC4MP_BUFFER_SIZE).decode()
-			s.send(SC4MP_SEPARATOR)
-			port = int(s.recv(SC4MP_BUFFER_SIZE).decode())
-			s.send(SC4MP_SEPARATOR)
-			self.server_queue.append((host, port))
+		servers = recv_json(s)
+		for host, port in servers:
+			self.server_queue.enqueue((host, port))
 
 
 # Exceptions
