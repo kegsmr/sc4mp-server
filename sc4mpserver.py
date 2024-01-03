@@ -115,6 +115,9 @@ def main():
 		# Parse arguments
 		args = parse_args()
 
+		# Create logger
+		logger = build_logger(verbose=args.verbose)
+
 		# Output
 		sys.stdout = Logger()
 		th.current_thread().name = "Main"
@@ -138,10 +141,6 @@ def main():
 		else:
 			sc4mp_nostart = False
 
-		# -v / --verbose argument
-		if args.verbose:
-			# TODO: use this flag to set logger level to debug once the logger PR is merged
-			pass
 
 		# Server
 		global sc4mp_server
@@ -2659,5 +2658,4 @@ class Logger():
 # Main
 
 if __name__ == '__main__':
-	logger = build_logger(verbose=True)
 	main()
