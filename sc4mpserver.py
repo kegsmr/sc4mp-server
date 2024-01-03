@@ -1515,7 +1515,8 @@ class BackupsManager(th.Thread):
 		report('Pruning backups...', self)
 		backup_retention_days = sc4mp_config["BACKUPS"]["backup_retention_days"]
 
-		self.prune_backup_records(backup_retention_days)
+		if backup_retention_days is not None:
+			self.prune_backup_records(backup_retention_days)
 
 		self.prune_backup_data()
 
