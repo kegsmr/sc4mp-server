@@ -132,6 +132,8 @@ def main():
 		global sc4mp_nostart
 		if args.prep is True:
 			sc4mp_nostart = True
+		else:
+			sc4mp_nostart = False
 
 		# -v / --verbose argument
 		if args.verbose:
