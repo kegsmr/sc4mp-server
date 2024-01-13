@@ -106,7 +106,7 @@ pong
 
 
 ## Plugins
-Requests plugins from the server. (TODO: implement)
+Requests plugins from the server.
 
 #### Request
 ```
@@ -165,7 +165,7 @@ n
 
 
 ## Regions
-Requests regions from the server. (TODO: implement)
+Requests regions from the server.
 
 #### Request
 ```
@@ -209,7 +209,7 @@ regions <version> <user_id> <password>
 
 
 ## Save
-Pushes a save to the server. (TODO: implement)
+Pushes a save to the server.
 
 #### Request
 ```
@@ -223,67 +223,14 @@ ok
 
 #### Request
 ```
-<file_count>
-```
-
-#### Response
-```
-ok
-```
-
-#### Request
-```
-[  
-    <region_name>,  
-    <city_1_name>  
-]
-```
-
-#### Response
-```
-ok
-```
-
-#### Request
-```
-<data>
-```
-
-#### Response
-```
-ok
-```
-
-#### Request
-```
-[  
-    <region_name>,  
-    <city_2_name>  
-]
-```
-
-#### Response
-```
-ok
-```
-
-#### Request
-```
-<data>
-```
-
-#### Response
-```
-ok
-```
-
-...
-
-#### Request
-```
-[  
-    <region_name>,  
-    <city_n_name>  
+[
+	<region_name>,
+	[
+		<file_1_size>,
+		<file_2_size>,
+		...
+		<file_n_size>
+	]
 ]
 ```
 

@@ -500,12 +500,14 @@ def send_file(c, filename):
 			c.sendall(bytes_read)
 
 
-def receive_file(c, filename):
+def receive_file(c, filename, filesize=None):
 	"""TODO"""
 
-	filesize = int(c.recv(SC4MP_BUFFER_SIZE).decode())
+	if (filesize is None):
+	
+		filesize = int(c.recv(SC4MP_BUFFER_SIZE).decode())
 
-	c.send(SC4MP_SEPARATOR)
+		c.send(SC4MP_SEPARATOR)
 
 	report("Receiving " + str(filesize) + " bytes...")
 	report("writing to " + filename)
@@ -516,7 +518,9 @@ def receive_file(c, filename):
 	filesize_read = 0
 	with open(filename, "wb") as f:
 		while filesize_read < filesize:
-			bytes_read = c.recv(SC4MP_BUFFER_SIZE)
+			filesize_remaining = filesize - filesize_read
+			buffersize = SC4MP_BUFFER_SIZE if filesize_remaining > SC4MP_BUFFER_SIZE else filesize_remaining
+			bytes_read = c.recv(buffersize)
 			if not bytes_read:    
 				break
 			f.write(bytes_read)
@@ -2080,8 +2084,9 @@ class RequestHandler(th.Thread):
 		# Separator
 		c.send(b"ok")
 
-		# Receive file count
-		file_count = int(c.recv(SC4MP_BUFFER_SIZE).decode())
+		# Receive region name, file sizes
+		region, file_sizes = recv_json(c)
+		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Separator
 		c.send(b"ok")
@@ -2090,26 +2095,31 @@ class RequestHandler(th.Thread):
 		save_id = datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id
 
 		# Receive files
-		for count in range(file_count):
+		count = 0
+		for file_size in file_sizes:
 
 			# Receive region name
-			region = c.recv(SC4MP_BUFFER_SIZE).decode()
-			c.send(b"ok")
+			#region = c.recv(SC4MP_BUFFER_SIZE).decode()
+			#.send(b"ok")
 
 			# Receive city name
-			city = c.recv(SC4MP_BUFFER_SIZE).decode()
-			c.send(b"ok")
+			#city = c.recv(SC4MP_BUFFER_SIZE).decode()
+			#c.send(b"ok")
 
 			# Receive file
 			path = os.path.join(sc4mp_server_path, "_Temp", "inbound", save_id, region)
 			if not os.path.exists(path):
 				os.makedirs(path)
 			filename = os.path.join(path, str(count) + ".sc4")
-			receive_file(c, filename)
-			c.send(b"ok")
+			receive_file(c, filename, filesize=file_size)
+
+			count += 1
+
+			#c.send(b"ok")
 
 		# Separator
-		c.recv(SC4MP_BUFFER_SIZE)
+		c.send(b"ok")
+		#c.recv(SC4MP_BUFFER_SIZE)
 
 		# Get path to save directory
 		path = os.path.join(sc4mp_server_path, "_Temp", "inbound", save_id)
@@ -2241,9 +2251,12 @@ class RequestHandler(th.Thread):
 
 	def server_list(self, c):
 		"""TODO"""
+
 		if not sc4mp_config["NETWORK"]["discoverable"]:
 			return
+		
 		server_dict = sc4mp_server_list.servers.copy()
+		
 		servers = set()
 		for server_info in server_dict.values():
 			servers.add((server_info["host"], server_info["port"]))
@@ -2527,9 +2540,7 @@ class ServerList(th.Thread):
 	def add_server(self, server):
 		"""TODO"""
 		s = self.create_socket(server)
-		s.send(b"add_server")
-		s.recv(SC4MP_BUFFER_SIZE)
-		s.send(str(SC4MP_PORT).encode())
+		s.send(b"add_server " + str(SC4MP_PORT).encode())
 
 
 	def server_list(self, server):
