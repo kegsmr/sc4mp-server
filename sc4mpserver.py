@@ -373,16 +373,24 @@ def send_filestream(c, rootpath):
 	"""TODO"""
 
 	# Loop through all files in path and append them to a list
-	fullpaths = []
-	for path, directories, files in os.walk(rootpath):
-		for file in files:
-			fullpaths.append(os.path.join(path, file))
+	#fullpaths = []
+	#for path, directories, files in os.walk(rootpath):
+	#	for file in files:
+	#		fullpaths.append(os.path.join(path, file))
 
 	# Get fullpaths to files in rootpath
 	#fullpaths = rootpath.rglob("*")
 
-	# Generate the file table
-	filetable = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
+	# Get file table
+	while sc4mp_server_running:
+		try:
+			filetable = sc4mp_filetables_manager.file_tables[rootpath]
+			break
+		except Exception as e:
+			show_error(e)
+			time.sleep(SC4MP_DELAY)
+
+	#filetable = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
 
 	# Send the file table to the client
 	send_json(c, filetable)
@@ -1011,6 +1019,7 @@ class Server(th.Thread):
 		self.clear_temp()
 		self.prep_regions() 
 		self.prep_backups()
+		self.prep_filetables()
 		self.prep_server_list()
 
 	
@@ -1384,6 +1393,18 @@ class Server(th.Thread):
 			sc4mp_backups_manager.start()
 
 
+	def prep_filetables(self):
+
+		if not sc4mp_nostart:
+
+			report("Preparing file tables...")
+
+			global sc4mp_filetables_manager
+			sc4mp_filetables_manager = FileTablesManager()
+
+			sc4mp_filetables_manager.start()
+
+
 	def prep_server_list(self):
 		"""TODO"""
 
@@ -1650,7 +1671,8 @@ class RegionsManager(th.Thread):
 		self.export_regions = False
 		self.tasks = []
 		self.outputs = {}
-	
+		self.lastmtime = self.get_mtime()
+
 
 	def run(self):
 		"""TODO"""
@@ -1667,7 +1689,13 @@ class RegionsManager(th.Thread):
 
 				try:
 
-					# Package regions if requested, otherwise check for new tasks
+					# Mark regions as modified if modification time changes
+					mtime = self.get_mtime()
+					if mtime != self.lastmtime:
+						self.lastmtime = mtime
+						self.regions_modified = True
+
+					# Export regions if requested, otherwise check for new tasks
 					if self.export_regions:
 
 						report("Exporting regions as requested...", self)
@@ -1845,6 +1873,77 @@ class RegionsManager(th.Thread):
 			file.seek(0)
 			json.dump(data, file, indent=4)
 			file.truncate()
+
+
+	def get_mtime(self):
+
+		os.path.getmtime(Path(sc4mp_server_path) / "Regions")
+
+
+class FileTablesManager(th.Thread):
+
+
+	def __init__(self):
+
+		super().__init__()
+
+		self.PATHS = [
+			Path(sc4mp_server_path) / "Plugins",
+			Path(sc4mp_server_path) / "_Temp" / "outbound" / "Regions"
+		]
+
+		self.file_tables = {}
+
+		self.modification_times = {}
+
+		self.update()
+
+
+	def run(self):
+
+		try:
+
+			while (not sc4mp_server_running):
+
+				time.sleep(SC4MP_DELAY)
+
+			while (sc4mp_server_running):
+
+				try:
+
+					time.sleep(SC4MP_DELAY)
+					self.update()
+
+				except Exception as e:
+
+					show_error(e)
+
+		except Exception as e:
+	
+			fatal_error(e)	
+	
+
+	def update(self):
+
+		#print(self.PATHS)
+		#print(self.file_tables.keys())
+
+		for rootpath in self.PATHS:
+
+			mtime = os.path.getmtime(rootpath)
+
+			if mtime != self.modification_times.get(rootpath, None):
+
+				self.modification_times[rootpath] = mtime
+
+				if rootpath in self.file_tables.keys():
+					self.file_tables.pop(rootpath)
+
+				fullpaths = []
+				for path, directories, files in os.walk(rootpath):
+					for file in files:
+						fullpaths.append(os.path.join(path, file))
+				self.file_tables[rootpath] = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
 
 
 class RequestHandler(th.Thread):
@@ -2048,6 +2147,7 @@ class RequestHandler(th.Thread):
 			sc4mp_regions_manager.export_regions = True
 			while sc4mp_regions_manager.export_regions:
 				time.sleep(SC4MP_DELAY)
+			time.sleep(SC4MP_DELAY * 2)
 
 		#filename = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", "Regions.zip")))
 		#send_or_cached(c, filename)
