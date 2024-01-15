@@ -1769,7 +1769,7 @@ class RegionsManager(th.Thread):
 								# Filter out cliams of users who have exhausted their region claims
 								if ("owner" not in entry or entry["owner"] != user_id):
 									if sc4mp_config["RULES"]["max_region_claims"] is not None:
-										claims = len(filter(lambda x: x.get("owner") == user_id, data.values()))
+										claims = len(list(filter(lambda x: x.get("owner") == user_id, data.values())))
 										if claims >= sc4mp_config["RULES"]["max_region_claims"]:
 											self.outputs[save_id] = "Claim limit reached in this region."
 
