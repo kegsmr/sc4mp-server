@@ -2218,7 +2218,7 @@ class RequestHandler(th.Thread):
 			#c.send(b"ok")
 
 		# Separator
-		c.send(b"ok")
+		#c.send(b"ok")
 		#c.recv(SC4MP_BUFFER_SIZE)
 
 		# Get path to save directory
@@ -2264,12 +2264,12 @@ class RequestHandler(th.Thread):
 					neighborY = neighbor.SC4ReadRegionalCity["tileYLocation"]
 					neighborSizeX = neighbor.SC4ReadRegionalCity["citySizeX"]
 					neighborSizeY = neighbor.SC4ReadRegionalCity["citySizeY"]
-					conditionX1 = neighborX == savegameX - neighborSizeX
-					conditionX2 = neighborX == savegameX + savegameSizeX
-					conditionY1 = neighborY == savegameY - neighborSizeY
-					conditionY2 = neighborY == savegameY + savegameSizeY
-					conditionX = xor(conditionX1, conditionX2) and (neighborY + neighborSizeY > savegameY) or (neighborY < savegameY + savegameSizeY)
-					conditionY = xor(conditionY1, conditionY2) and (neighborX + neighborSizeX > savegameX) or (neighborX < savegameX + savegameSizeX)
+					conditionX1 = (neighborX == savegameX - neighborSizeX)
+					conditionX2 = (neighborX == savegameX + savegameSizeX)
+					conditionY1 = (neighborY == savegameY - neighborSizeY)
+					conditionY2 = (neighborY == savegameY + savegameSizeY)
+					conditionX = xor(conditionX1, conditionX2) and ((neighborY + neighborSizeY > savegameY) or (neighborY < savegameY + savegameSizeY))
+					conditionY = xor(conditionY1, conditionY2) and ((neighborX + neighborSizeX > savegameX) or (neighborX < savegameX + savegameSizeX))
 					condition = xor(conditionX, conditionY)
 					if not condition:
 						add = False
