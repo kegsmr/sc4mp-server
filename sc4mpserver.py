@@ -46,7 +46,6 @@ SC4MP_ICON = os.path.join(SC4MP_RESOURCES_PATH, "icon.ico")
 SC4MP_HOST = None
 SC4MP_PORT = None
 
-#SC4MP_SEPARATOR = b"<SEPARATOR>" #TODO
 SC4MP_BUFFER_SIZE = 4096
 
 SC4MP_DELAY = .1
@@ -85,9 +84,9 @@ SC4MP_CONFIG_DEFAULTS = [
 	("BACKUPS", [
 		("server_backup_interval", 6),
 		("backup_server_on_startup", True),
-		#("max_server_backups", 720), #TODO
+		("max_server_backup_days", 30),
+		#("max_server_backups", 720),
 		("max_savegame_backups", 100),
-		("backup_retention_days", 30)
 	])
 ]
 
@@ -1540,10 +1539,10 @@ class BackupsManager(th.Thread):
 		files to the entries in the remaining json files.
 		"""
 		report('Pruning backups...', self)
-		backup_retention_days = sc4mp_config["BACKUPS"]["backup_retention_days"]
+		max_server_backup_days = sc4mp_config["BACKUPS"]["max_server_backup_days"]
 
-		if backup_retention_days is not None:
-			self.prune_backup_records(backup_retention_days)
+		if max_server_backup_days is not None:
+			self.prune_backup_records(max_server_backup_days)
 
 		self.prune_backup_data()
 
