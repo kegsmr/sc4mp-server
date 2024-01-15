@@ -46,7 +46,7 @@ SC4MP_ICON = os.path.join(SC4MP_RESOURCES_PATH, "icon.ico")
 SC4MP_HOST = None
 SC4MP_PORT = None
 
-SC4MP_SEPARATOR = b"<SEPARATOR>"
+#SC4MP_SEPARATOR = b"<SEPARATOR>" #TODO
 SC4MP_BUFFER_SIZE = 4096
 
 SC4MP_DELAY = .1
@@ -508,14 +508,14 @@ def send_file(c, filename):
 			c.sendall(bytes_read)
 
 
-def receive_file(c, filename, filesize=None):
+def receive_file(c, filename, filesize):
 	"""TODO"""
 
-	if (filesize is None):
-	
-		filesize = int(c.recv(SC4MP_BUFFER_SIZE).decode())
-
-		c.send(SC4MP_SEPARATOR)
+	#if (filesize is None):
+	#
+	#	filesize = int(c.recv(SC4MP_BUFFER_SIZE).decode())
+	#
+	#	c.send(SC4MP_SEPARATOR)
 
 	report("Receiving " + str(filesize) + " bytes...")
 	report("writing to " + filename)
@@ -2211,7 +2211,7 @@ class RequestHandler(th.Thread):
 			if not os.path.exists(path):
 				os.makedirs(path)
 			filename = os.path.join(path, str(count) + ".sc4")
-			receive_file(c, filename, filesize=file_size)
+			receive_file(c, filename, file_size)
 
 			count += 1
 
