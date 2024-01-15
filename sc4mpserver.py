@@ -1769,7 +1769,7 @@ class RegionsManager(th.Thread):
 								# Filter out cliams of users who have exhausted their region claims
 								if ("owner" not in entry or entry["owner"] != user_id):
 									if sc4mp_config["RULES"]["max_region_claims"] is not None:
-										claims = len(list(filter(lambda x: x.get("owner") == user_id, data.values())))
+										claims = len(list(filter(lambda x: x is not None and x.get("owner") == user_id, data.values())))
 										if claims >= sc4mp_config["RULES"]["max_region_claims"]:
 											self.outputs[save_id] = "Claim limit reached in this region."
 
@@ -1934,6 +1934,8 @@ class FileTablesManager(th.Thread):
 
 			if mtime != self.modification_times.get(rootpath, None):
 
+				print(f"Updating file table for {str(rootpath)}")
+
 				self.modification_times[rootpath] = mtime
 
 				if rootpath in self.file_tables.keys():
@@ -1945,6 +1947,7 @@ class FileTablesManager(th.Thread):
 						fullpaths.append(os.path.join(path, file))
 				self.file_tables[rootpath] = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
 
+				print("- done.")
 
 class RequestHandler(th.Thread):
 	"""TODO"""
