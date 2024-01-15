@@ -1934,7 +1934,7 @@ class FileTablesManager(th.Thread):
 
 			if mtime != self.modification_times.get(rootpath, None):
 
-				print(f"Updating file table for {str(rootpath)}")
+				print(f"Updating file table for \"{str(rootpath)}\"")
 
 				self.modification_times[rootpath] = mtime
 
