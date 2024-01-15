@@ -2006,7 +2006,10 @@ class RequestHandler(th.Thread):
 					self.request_header(c, args)
 					self.save(c)
 				elif request == "add_server":
-					self.add_server(c, args[1])
+					try:
+						self.add_server(c, args[1])
+					except IndexError as e:
+						print("[WARNING] Unable to add outdated server to server list")
 				elif request == "server_list":
 					self.server_list(c)
 				elif request == "password_enabled":
@@ -2591,9 +2594,9 @@ class ServerList(th.Thread):
 
 					except Exception as e:
 						
-						show_error(e)
+						#show_error(e)
 
-						#print("[WARNING] Failed! " + str(e))
+						print("[WARNING] Failed! " + str(e))
 				
 				# Update database
 				#report('Updating "' + os.path.join(sc4mp_server_path, "_Database", "servers.json") + '"...')
@@ -2615,7 +2618,7 @@ class ServerList(th.Thread):
 			s.connect((host, port))
 			return s
 		except:
-			return None
+			raise ServerException("Server not found")
 
 	
 	def request_server_id(self, server):
@@ -2650,8 +2653,11 @@ class ServerList(th.Thread):
 		s = self.create_socket(server)
 		s.send(b"server_list")
 		servers = recv_json(s)
-		for host, port in servers:
-			self.server_queue.enqueue((host, port))
+		try:
+			for host, port in servers:
+				self.server_queue.enqueue((host, port))
+		except TypeError as e:
+			raise ServerException("Unable to receive server list from outdated server")
 
 
 # Exceptions
