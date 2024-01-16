@@ -252,6 +252,7 @@ def set_savegame_data(entry, savegame):
 	entry.setdefault("filename", os.path.basename(os.path.normpath(savegame.filename)))
 	entry.setdefault("owner", None)
 	entry.setdefault("modified", None)
+	entry.setdefault("locked", False)
 	entry.setdefault("reset_filename", None)
 	entry.setdefault("date_subfile_hashes", [])
 
@@ -1739,6 +1740,10 @@ class RegionsManager(th.Thread):
 								
 								# Get city entry or get & set as empty dict if key does not exist
 								entry = data.setdefault(coords, {})
+
+								# Filter out claims on locked tiles
+								if entry.get("locked", False):
+									self.outputs[save_id] = "Tile is locked."
 
 								# Filter out godmode savegames if required
 								if sc4mp_config["RULES"]["godmode_filter"]:
