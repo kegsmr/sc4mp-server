@@ -385,9 +385,9 @@ def send_filestream(c, rootpath):
 		try:
 			filetable = sc4mp_filetables_manager.file_tables[rootpath]
 			break
-		except Exception as e:
-			show_error(e)
-			time.sleep(SC4MP_DELAY)
+		except KeyError:
+			print("[WARNING] Waiting for file table to generate...")
+			time.sleep(SC4MP_DELAY * 10)
 
 	#filetable = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
 
