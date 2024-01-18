@@ -348,6 +348,7 @@ def export(export_type):
 								filename = entry.get("filename", None)
 								reset_filename = entry.get("reset_filename", None)
 								if filename is not None and reset_filename is not None:
+									filename = target / region / filename
 									if (not os.path.exists(filename)) and os.path.exists(reset_filename):
 										shutil.copy(reset_filename, filename)
 	except Exception as e:
