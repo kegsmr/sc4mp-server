@@ -365,8 +365,10 @@ def export(export_type):
 	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups')) #, '_Database'))	
 
 	# Force file table to regenerate
-	sc4mp_filetables_manager.modification_times.pop(destination)
-
+	try:
+		sc4mp_filetables_manager.modification_times.pop(destination)
+	except:
+		pass
 
 def purge_directory(directory):
 	"""TODO
