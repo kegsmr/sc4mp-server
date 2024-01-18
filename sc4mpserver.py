@@ -408,10 +408,14 @@ def send_filestream(c, rootpath):
 	# Loop through the filetable and send the respective data
 	for checksum, size, relpath in filetable:
 		with open(rootpath / relpath, "rb") as file:
+			size_read = 0
 			while True:
-				data = file.read(SC4MP_BUFFER_SIZE)
+				size_remaining = size - size_read
+				buffer_size = SC4MP_BUFFER_SIZE if size_remaining > SC4MP_BUFFER_SIZE else size_remaining
+				data = file.read(buffer_size)
 				if not data:
 					break
+				size_read += len(data)
 				c.send(data)
 
 
