@@ -334,8 +334,8 @@ def export(export_type):
 		pass
 
 	# Set target and destination directories
-	target = os.path.join(sc4mp_server_path, directory)
-	destination = os.path.join(sc4mp_server_path, "_Temp", "outbound", directory)
+	target = Path(sc4mp_server_path) / directory
+	destination = Path(sc4mp_server_path) / "_Temp" / "outbound" / directory
 
 	# Delete destination directory if it exists 
 	if os.path.exists(destination):
@@ -347,6 +347,9 @@ def export(export_type):
 	
 	# Copy recursively
 	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups')) #, '_Database'))	
+
+	# Force file table to regenerate
+	sc4mp_filetables_manager.modification_times.pop(destination)
 
 
 def purge_directory(directory):
@@ -1952,6 +1955,7 @@ class FileTablesManager(th.Thread):
 				self.file_tables[rootpath] = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
 
 				print("- done.")
+
 
 class RequestHandler(th.Thread):
 	"""TODO"""
