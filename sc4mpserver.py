@@ -329,13 +329,29 @@ def export(export_type):
 	elif export_type == "regions":
 		directory = "Regions"
 
-	#TODO delete old abandoned savegames and check if savegames are missing so they can be replaced with the reset savegame
-	if export_type == "regions":
-		pass
-
 	# Set target and destination directories
 	target = Path(sc4mp_server_path) / directory
 	destination = Path(sc4mp_server_path) / "_Temp" / "outbound" / directory
+
+	#TODO delete old abandoned savegames
+
+	# Replace missing savegame files with the reset savegame file
+	try:
+		if export_type == "regions":
+			for region in os.listdir(target):
+					if os.path.isdir(target / region):
+						data_filename = target / region / "_Database" / "region.json"
+						data = load_json(data_filename)
+						for coords in data.keys():
+							entry = data.get(coords, None)
+							if entry is not None:
+								filename = entry.get("filename", None)
+								reset_filename = entry.get("reset_filename", None)
+								if filename is not None and reset_filename is not None:
+									if (not os.path.exists(filename)) and os.path.exists(reset_filename):
+										shutil.copy(reset_filename, filename)
+	except Exception as e:
+		show_error(e)
 
 	# Delete destination directory if it exists 
 	if os.path.exists(destination):
