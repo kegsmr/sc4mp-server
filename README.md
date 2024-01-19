@@ -17,9 +17,6 @@ To compile the source code, run the setup.py script.
 
 This section is meant for developers using the server API. Here you can find examples of requests and responses from the server API, useful for creating a server scanner or client appplication for the SC4MP network.
 
-**NOTE:** this documentation will apply to version 0.4.1 and later
-
-
 ## Add server
 Adds the requesting server to the requested server's server list queue.
 
