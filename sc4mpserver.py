@@ -408,7 +408,7 @@ def send_filestream(c, rootpath):
 	# Get file table
 	while sc4mp_server_running:
 		try:
-			filetable = sc4mp_filetables_manager.file_tables[rootpath]
+			filetable = sc4mp_filetables_manager.filetables[rootpath]
 			break
 		except KeyError:
 			print("[WARNING] Waiting for file table to generate...")
@@ -428,7 +428,7 @@ def send_filestream(c, rootpath):
 
 	# Loop through the filetable and send the respective data
 	for checksum, size, relpath in filetable:
-		with open(rootpath / relpath, "rb") as file:
+		with open(os.path.join(rootpath, relpath), "rb") as file:
 			size_read = 0
 			while True:
 				size_remaining = size - size_read
