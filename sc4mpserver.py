@@ -1720,10 +1720,10 @@ class RegionsManager(th.Thread):
 				try:
 
 					# Mark regions as modified if modification time changes
-					mtime = self.get_mtime()
-					if mtime != self.lastmtime:
-						self.lastmtime = mtime
-						self.regions_modified = True
+					#mtime = self.get_mtime()
+					#if mtime != self.lastmtime:
+					#	self.lastmtime = mtime
+					#	self.regions_modified = True
 
 					# Export regions if requested, otherwise check for new tasks
 					if self.export_regions:
