@@ -330,8 +330,12 @@ def export(export_type):
 		directory = "Regions"
 
 	# Set target and destination directories
-	target = Path(sc4mp_server_path) / directory
-	destination = Path(sc4mp_server_path) / "_Temp" / "outbound" / directory
+	target = os.path.join(sc4mp_server_path, directory)
+	destination = os.path.join(sc4mp_server_path, "_Temp", "outbound", directory)
+
+	# Erase file table if exists
+	if destination in sc4mp_filetables_manager.filetables.keys():
+		sc4mp_filetables_manager.erase(destination)
 
 	#TODO delete old abandoned savegames
 
@@ -339,8 +343,8 @@ def export(export_type):
 	try:
 		if export_type == "regions":
 			for region in os.listdir(target):
-					if os.path.isdir(target / region):
-						data_filename = target / region / "_Database" / "region.json"
+					if os.path.isdir(os.path.join(target, region)):
+						data_filename = os.path.join(target, region, "_Database", "region.json")
 						data = load_json(data_filename)
 						for coords in data.keys():
 							entry = data.get(coords, None)
@@ -348,7 +352,7 @@ def export(export_type):
 								filename = entry.get("filename", None)
 								reset_filename = entry.get("reset_filename", None)
 								if filename is not None and reset_filename is not None:
-									filename = target / region / filename
+									filename = os.path.join(target, region, filename)
 									if (not os.path.exists(filename)) and os.path.exists(reset_filename):
 										shutil.copy(reset_filename, filename)
 	except Exception as e:
@@ -365,11 +369,9 @@ def export(export_type):
 	# Copy recursively
 	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups')) #, '_Database'))	
 
-	# Force file table to regenerate
-	try:
-		sc4mp_filetables_manager.modification_times.pop(destination)
-	except:
-		pass
+	# Generate filetable
+	sc4mp_filetables_manager.generate(destination)
+
 
 def purge_directory(directory):
 	"""TODO
@@ -1043,9 +1045,9 @@ class Server(th.Thread):
 		self.load_config()
 		self.prep_database()
 		self.clear_temp()
+		self.prep_filetables()
 		self.prep_regions() 
 		self.prep_backups()
-		self.prep_filetables()
 		self.prep_server_list()
 
 	
@@ -1428,6 +1430,8 @@ class Server(th.Thread):
 			global sc4mp_filetables_manager
 			sc4mp_filetables_manager = FileTablesManager()
 
+			sc4mp_filetables_manager.generate(os.path.join(sc4mp_server_path, "Plugins"))
+
 			sc4mp_filetables_manager.start()
 
 
@@ -1454,7 +1458,7 @@ class BackupsManager(th.Thread):
 	def __init__(self):
 		"""TODO"""
 
-		self.backup_dir = Path(sc4mp_server_path) / "_Backups"
+		self.backup_dir = os.path.join(sc4mp_server_path, "_Backups")
 		super().__init__()
 
 
@@ -1907,7 +1911,7 @@ class RegionsManager(th.Thread):
 
 	def get_mtime(self):
 
-		os.path.getmtime(Path(sc4mp_server_path) / "Regions")
+		os.path.getmtime(os.path.join(sc4mp_server_path, "Regions"))
 
 
 class FileTablesManager(th.Thread):
@@ -1917,16 +1921,7 @@ class FileTablesManager(th.Thread):
 
 		super().__init__()
 
-		self.PATHS = [
-			Path(sc4mp_server_path) / "Plugins",
-			Path(sc4mp_server_path) / "_Temp" / "outbound" / "Regions"
-		]
-
-		self.file_tables = {}
-
-		self.modification_times = {}
-
-		self.update()
+		self.filetables = {}
 
 
 	def run(self):
@@ -1955,29 +1950,58 @@ class FileTablesManager(th.Thread):
 
 	def update(self):
 
-		#print(self.PATHS)
-		#print(self.file_tables.keys())
+		# Loop through all file tables
+		for rootpath, filetable in self.filetables.items():
+			
+			# Loop through file table and check for missing files and files which have changed size
+			for entry in filetable:
+				checksum, size, relpath = entry
+				fullpath = os.path.join(rootpath, relpath)
+				if not os.path.exists(fullpath):
+					filetable.remove(entry)
+					print(f"Removed deleted file \"{fullpath}\" from file table.")
+				elif os.path.getsize(fullpath) != size:
+					filetable.remove(entry)
+					print(f"Removed old file \"{fullpath}\" from file table.")
 
-		for rootpath in self.PATHS:
+			# Get all files in rootpath
+			fullpaths = []
+			for path, directories, files in os.walk(rootpath):
+				for file in files:
+					fullpaths.append(os.path.join(path, file))
 
-			mtime = os.path.getmtime(rootpath)
+			# Add new files to the file table
+			relpaths = [entry[2] for entry in filetable]
+			for fullpath in fullpaths:
+				relpath = os.path.relpath(fullpath, rootpath)
+				if not relpath in relpaths:
+					filetable.append((md5(fullpath), os.path.getsize(fullpath), relpath))
+					print(f"Added new file \"{fullpath}\" to file table.")
+				
 
-			if mtime != self.modification_times.get(rootpath, None):
+	def generate(self, rootpath):
 
-				print(f"Updating file table for \"{str(rootpath)}\"")
+		print(f"Generating file table for \"{rootpath}\"...")
 
-				self.modification_times[rootpath] = mtime
+		fullpaths = []
+		for path, directories, files in os.walk(rootpath):
+			for file in files:
+				fullpaths.append(os.path.join(path, file))
 
-				if rootpath in self.file_tables.keys():
-					self.file_tables.pop(rootpath)
+		self.filetables[rootpath] = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
 
-				fullpaths = []
-				for path, directories, files in os.walk(rootpath):
-					for file in files:
-						fullpaths.append(os.path.join(path, file))
-				self.file_tables[rootpath] = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
+		#print(self.filetables[path])
 
-				print("- done.")
+		print(f"- done.")
+
+
+	def erase(self, rootpath):
+
+		print(f"Erasing file table for \"{rootpath}\"...")
+
+		self.filetables.pop(rootpath)
+
+		print(f"- done.")
 
 
 class RequestHandler(th.Thread):
@@ -2173,7 +2197,7 @@ class RequestHandler(th.Thread):
 		#filename = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", "Plugins.zip")))
 		#send_or_cached(c, filename)
 
-		send_filestream(c, Path(sc4mp_server_path) / "Plugins")
+		send_filestream(c, os.path.join(sc4mp_server_path, "Plugins"))
 		#send_tree(c, os.path.join(sc4mp_server_path, "Plugins"))
 
 
@@ -2189,7 +2213,7 @@ class RequestHandler(th.Thread):
 		#filename = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", "Regions.zip")))
 		#send_or_cached(c, filename)
 
-		send_filestream(c, Path(sc4mp_server_path) / "_Temp" / "outbound" / "Regions")
+		send_filestream(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
 		#send_tree(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
 
 
