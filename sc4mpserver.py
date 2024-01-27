@@ -1388,7 +1388,10 @@ class Server(th.Thread):
 
 		report("Clearing temporary files...")
 
-		purge_directory(os.path.join(sc4mp_server_path, "_Temp"))
+		try:
+			purge_directory(os.path.join(sc4mp_server_path, "_Temp"))
+		except Exception as e:
+			show_error(e)
 
 
 	def prep_regions(self):
