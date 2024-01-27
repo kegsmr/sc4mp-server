@@ -68,6 +68,7 @@ print('Copying extra files to "dist"...')
 shutil.copy("License.txt", "dist")
 shutil.copy("Readme.html", "dist")
 
+input("Press <Enter> to create a zip archive of the distribution...")
 target = "dist"
 destination = os.path.join(os.path.join("builds", "sc4mp-server-" + platform.system().lower() + "-" + str(8 * struct.calcsize("P")) + "-v" + VERSION + "." + datetime.now().strftime("%Y%m%d%H%M%S")))
 print('Creating zip archive of "' + target + '" at "' + destination + '"')
