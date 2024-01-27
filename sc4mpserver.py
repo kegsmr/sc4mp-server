@@ -1936,7 +1936,7 @@ class FileTablesManager(th.Thread):
 
 				try:
 
-					time.sleep(SC4MP_DELAY)
+					time.sleep(60)
 					self.update()
 
 				except Exception as e:
