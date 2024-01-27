@@ -7,7 +7,7 @@ A multiplayer gameserver for the PC videogame [SimCity 4](https://en.wikipedia.o
 
 Download the latest release and follow the instructions included in the Readme.html.
 
-Alternatively, use the [SC4MP Server Dockerizer](https://github.com/andreRBarata/sc4mp-server-docker) by [andreRBarata](https://github.com/andreRBarata) and deploy your server as a Docker container.
+Alternatively, use the [SC4MP Server Dockerizer](https://github.com/andreRBarata/sc4mp-server-docker) by [andreRBarata](https://github.com/andreRBarata) and deploy your server as a [Docker](https://www.docker.com/) container.
 
 
 # Compiling
