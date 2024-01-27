@@ -80,6 +80,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	("PERFORMANCE", [
 		("request_limit", 60),
 		("max_request_threads", 200),
+		("filetable_update_interval", 60)
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 6),
@@ -1939,7 +1940,7 @@ class FileTablesManager(th.Thread):
 
 				try:
 
-					time.sleep(60)
+					time.sleep(sc4mp_config["PERFORMANCE"]["filetable_update_interval"])
 					self.update()
 
 				except Exception as e:

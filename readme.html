@@ -62,7 +62,8 @@
             <h3>Performance</h3>
                 <p><b>request_limit:</b> the maximum amount of requests a client can send in one minute. When the limit is exhausted, future connections from the client will be blocked for the rest of the minute. Set this value to "None" if you would like there to be no request limit.</p>
                 <p><b>max_request_threads:</b> the maximum amount of request threads that can be running at one time. Set the value to "None" if you would like there to be no limit.</p>
-            <h3>Backups</h3>
+				<p><b>filetable_update_interval:</b> the interval in seconds between filetable updates. A higher interval minimizes CPU and disk usage.</p>
+			<h3>Backups</h3>
                 <p><b>server_backup_interval:</b> the interval in hours to run server backups.</p>
                 <p><b>backup_server_on_startup:</b> when this setting is set to "True", the server will always backup when starting up. Set this value to "False" if you would like the server to backup only after the backup interval.</p>
                 <p><b>max_server_backup_days:</b> the maximum amount of days to keep server backups.</p>
