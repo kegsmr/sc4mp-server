@@ -2057,7 +2057,7 @@ class RequestHandler(th.Thread):
 
 			global sc4mp_server_running, sc4mp_request_threads
 
-			set_thread_name("RqThread")
+			set_thread_name("ReqThread")
 
 			try:
 
@@ -2624,7 +2624,7 @@ class ServerList(th.Thread):
 			while not sc4mp_server_running:
 				time.sleep(SC4MP_DELAY)
 
-			set_thread_name("SlThread", enumerate=False)
+			set_thread_name("SLThread", enumerate=False)
 
 			# Run while the server is running
 			while sc4mp_server_running:
