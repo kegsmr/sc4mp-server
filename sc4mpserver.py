@@ -449,7 +449,7 @@ def send_json(s, data):
 def recv_json(s):
 	"""TODO"""
 	data = ""
-	while True:
+	while sc4mp_server_running:
 		new_data = s.recv(SC4MP_BUFFER_SIZE).decode()
 		if len(new_data) > 0:
 			data += new_data
