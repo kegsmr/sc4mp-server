@@ -114,7 +114,7 @@ def main():
 
 		# Output
 		sys.stdout = Logger()
-		th.current_thread().name = "Main"
+		set_thread_name("Main", enumerate=False)
 
 		# Title
 		report(SC4MP_TITLE)
@@ -693,6 +693,26 @@ def fatal_error(e):
 	#sys.exit()
 
 
+def set_thread_name(name, enumerate=True):
+
+	if enumerate:
+
+		thread_names = [thread.name for thread in th.enumerate()]
+
+		count = 1
+		while (sc4mp_server_running):
+			thread_name = f"{name}-{count}"
+			if not thread_name in thread_names:
+				th.current_thread().name = thread_name
+				return thread_name
+			count += 1
+
+	else:
+
+		th.current_thread().name = name
+		return name
+
+
 # Objects
 
 class Config:
@@ -1099,6 +1119,8 @@ class Server(th.Thread):
 
 							c, (host, port) = s.accept()
 
+							#c.settimeout(10)
+
 							if (sc4mp_config["PERFORMANCE"]["request_limit"] is not None and host in client_requests and client_requests[host] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
 								report("[WARNING] Connection blocked from " + str(host) + ":" + str(port) + ".")
 								c.close()
@@ -1473,6 +1495,8 @@ class BackupsManager(th.Thread):
 
 			global sc4mp_server_running
 
+			set_thread_name("BakThread", enumerate=False)
+
 			while not sc4mp_server_running:
 				
 				time.sleep(SC4MP_DELAY)
@@ -1654,6 +1678,8 @@ class DatabaseManager(th.Thread):
 				
 				time.sleep(SC4MP_DELAY)
 
+			set_thread_name("DbThread")
+
 			#report("Monitoring database for changes...", self) #TODO why is the spacing wrong?
 			
 			old_data = str(self.data)
@@ -1718,6 +1744,8 @@ class RegionsManager(th.Thread):
 			while not sc4mp_server_running:
 				
 				time.sleep(SC4MP_DELAY)
+
+			set_thread_name("RgnThread", enumerate=False)
 			
 			while sc4mp_server_running:
 
@@ -1936,6 +1964,8 @@ class FileTablesManager(th.Thread):
 
 				time.sleep(SC4MP_DELAY)
 
+			set_thread_name("FtThread")
+
 			while (sc4mp_server_running):
 
 				try:
@@ -2026,6 +2056,8 @@ class RequestHandler(th.Thread):
 		try:
 
 			global sc4mp_server_running, sc4mp_request_threads
+
+			set_thread_name("RqThread")
 
 			try:
 
@@ -2591,6 +2623,8 @@ class ServerList(th.Thread):
 			# Wait until the server starts
 			while not sc4mp_server_running:
 				time.sleep(SC4MP_DELAY)
+
+			set_thread_name("SlThread", enumerate=False)
 
 			# Run while the server is running
 			while sc4mp_server_running:
