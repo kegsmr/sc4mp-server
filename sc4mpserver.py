@@ -80,6 +80,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	("PERFORMANCE", [
 		("request_limit", 60),
 		("max_request_threads", 200),
+		("connection_timeout", 600),
 		("filetable_update_interval", 60)
 	]),
 	("BACKUPS", [
@@ -745,15 +746,18 @@ class Config:
 					for item_name in section:
 						try:
 							from_file = parser.get(section_name, item_name)
-							if from_file == "True":
-								self.data[section_name][item_name] = True
-							elif from_file == "False":
-								self.data[section_name][item_name] = False
-							elif from_file == "None":
-								self.data[section_name][item_name] = None
+							if from_file is str:
+								if from_file.lower() == "true":
+									self.data[section_name][item_name] = True
+								elif from_file.lower() == "false":
+									self.data[section_name][item_name] = False
+								elif from_file.lower() == "None":
+									self.data[section_name][item_name] = None
 							else:
 								t = type(self.data[section_name][item_name])
 								self.data[section_name][item_name] = t(from_file)
+						except (configparser.NoSectionError, configparser.NoOptionError):
+							print(f"[WARNING] Option \"{item_name}\" missing from section \"{section_name}\" of the config file at \"{self.PATH}\". Using default value.")
 						except Exception as e:
 							show_error(e, no_ui=True)
 				except Exception as e:
@@ -1122,7 +1126,7 @@ class Server(th.Thread):
 
 							c, (host, port) = s.accept()
 
-							#c.settimeout(10)
+							c.settimeout(sc4mp_config["PERFORMANCE"]["connection_timeout"])
 
 							if (sc4mp_config["PERFORMANCE"]["request_limit"] is not None and host in client_requests and client_requests[host] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
 								report("[WARNING] Connection blocked from " + str(host) + ":" + str(port) + ".")
