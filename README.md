@@ -5,14 +5,14 @@ A multiplayer gameserver for the PC videogame [SimCity 4](https://en.wikipedia.o
 
 # Installation and Usage
 
-Download the latest release and follow the instructions included in the Readme.html.
+Download the latest release and follow the instructions included in the `Readme.html`.
 
 Alternatively, use the [SC4MP Server Dockerizer](https://github.com/andreRBarata/sc4mp-server-docker) by [andreRBarata](https://github.com/andreRBarata) and deploy your server as a [Docker](https://www.docker.com/) container.
 
 
 # Compiling
 
-To compile the source code, run the setup.py script.
+To compile the source code, run the `setup.py` script.
 
 
 # API
