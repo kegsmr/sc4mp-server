@@ -1489,7 +1489,7 @@ class BackupsManager(th.Thread):
 	def __init__(self):
 		"""TODO"""
 
-		self.backup_dir = os.path.join(sc4mp_server_path, "_Backups")
+		self.backup_dir = Path(sc4mp_server_path) / "_Backups"
 		super().__init__()
 
 
@@ -1508,24 +1508,26 @@ class BackupsManager(th.Thread):
 
 			while sc4mp_server_running:
 
-				try:
+				# Delay
+				time.sleep(3600 * sc4mp_config["BACKUPS"]["server_backup_interval"])
 
-					# Delay
-					time.sleep(3600 * sc4mp_config["BACKUPS"]["server_backup_interval"])
+				while sc4mp_server_running:
 
-					# Prune backups
-					self.prune()
+					try:
 
-					# Create backup
-					self.backup()
+						# Create backup	
+						self.backup()
 
-				except Exception as e:
+						# Break the loop if the backup was successful
+						break
 
-					# Report error
-					show_error(e)
+					except Exception as e:
 
-					# Delay until retrying backup
-					time.sleep(60)
+						# Report error
+						show_error(e)
+
+						# Wait before retrying backup
+						time.sleep(60)
 
 		except Exception as e:
 
@@ -1551,6 +1553,12 @@ class BackupsManager(th.Thread):
 
 	def backup(self): #TODO stop backing up the backups subdirectory
 		"""TODO"""
+
+		# Prune backups
+		try:
+			self.prune()
+		except Exception as e:
+			show_error("An error occured while pruning backups.")
 
 		# Report creating backups
 		report("Creating backup...", self)
