@@ -11,6 +11,7 @@ dbpf.py.old
 testing.py
 test_console.py
 spawn_test_servers.py
+*.bat
 *.cfg
 */__pycache__
 *.bak
