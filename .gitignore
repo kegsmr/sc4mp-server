@@ -4,7 +4,8 @@
 /_DMR
 /builds
 /dbpf
-/dist
+/dist32
+/dist64
 /logs
 dbpf.py.old
 testing.py
