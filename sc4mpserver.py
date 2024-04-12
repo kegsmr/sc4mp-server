@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
-SC4MP_VERSION = "0.4.3"
+SC4MP_VERSION = "0.4.4"
 
 SC4MP_SERVERS = [("servers.sc4mp.org", port) for port in range(7240, 7250)]
 
