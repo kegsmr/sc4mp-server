@@ -15,9 +15,9 @@ Alternatively, use the [SC4MP Server Dockerizer](https://github.com/andreRBarata
 To compile the source code, run the `setup.py` script.
 
 
-# API
+# Protocol
 
-This section is meant for developers using the server API. Here you can find examples of requests and responses from the server API, useful for creating a server scanner or client appplication for the SC4MP network.
+This section is meant for developers using the SC4MP protocol. Here you can find examples of requests and responses from the server, useful for creating a server scanner or client appplication for the SC4MP network.
 
 ## Add server
 Adds the requesting server to the requested server's server list queue.
