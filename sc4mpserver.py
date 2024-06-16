@@ -1328,6 +1328,7 @@ class Server(th.Thread):
 			# Create `region.ini` file if not present
 			region_ini_path = os.path.join(region_directory, "region.ini")
 			if not os.path.exists(region_ini_path):
+				print(f"[WARNING] Region \"{region}\" is missing a configuration file. Generating one automatically...")
 				with open(region_ini_path, "w") as file:
 					file.write(f"[Regional Settings]\nName = {region}\nTerrain type = 0\nWater Min = 60\nWater Max = 100\n")
 
