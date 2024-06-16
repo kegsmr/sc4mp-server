@@ -31,7 +31,7 @@ SC4MP_CONTRIBUTORS_URL = "https://github.com/kegsmr/sc4mp-client/contributors/"
 SC4MP_ISSUES_URL = "https://github.com/kegsmr/sc4mp-client/issues/"
 SC4MP_RELEASES_URL = "https://github.com/kegsmr/sc4mp-client/releases/"
 
-SC4MP_AUTHOR_NAME = "Simcity 4 Multiplayer Project"
+SC4MP_AUTHOR_NAME = "SimCity 4 Multiplayer Project"
 SC4MP_WEBSITE_NAME = "www.sc4mp.org"
 SC4MP_LICENSE_NAME = "MIT-0"
 
