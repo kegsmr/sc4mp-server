@@ -38,7 +38,7 @@ SC4MP_LICENSE_NAME = "MIT-0"
 SC4MP_CONFIG_PATH = None
 SC4MP_LOG_PATH = "sc4mpserver-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
 SC4MP_README_PATH = "readme.html"
-SC4MP_RESOURCES_PATH = "res"
+SC4MP_RESOURCES_PATH = "resources"
 
 SC4MP_TITLE = "SC4MP Server v" + SC4MP_VERSION + (" (x86)" if 8 * struct.calcsize('P') == 32 else "")
 SC4MP_ICON = os.path.join(SC4MP_RESOURCES_PATH, "icon.ico")
