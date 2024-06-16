@@ -3,7 +3,7 @@
 
 #define MyAppName "SC4MP Server"
 #define MyAppVersion "X.X.X"
-#define MyAppPublisher "Simcity 4 Multiplayer Project"
+#define MyAppPublisher "SimCity 4 Multiplayer Project"
 #define MyAppExeName "sc4mpserver.exe"
 #define TimeStamp GetDateTimeString('yyyymmddhhnnss', '', '')
 
@@ -43,7 +43,7 @@ Source: "Readme.html"; DestDir: "{app}"; Flags: isreadme
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autoprograms}\{#MyAppPublisher}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
