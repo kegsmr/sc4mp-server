@@ -22,6 +22,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
+from core.config import *
 from core.dbpf import *
 from core.util import *
 
@@ -723,82 +724,6 @@ def set_thread_name(name, enumerate=True):
 		return name
 
 
-# Objects
-
-class Config:
-	"""TODO"""
-
-
-	def __init__(self, path, defaults):
-		"""TODO"""
-
-		# Parameters
-		self.PATH = path
-		self.DEFAULTS = defaults
-
-		# Create dictionary with default config settings
-		self.data = {}
-		for section_name, section_items in self.DEFAULTS:
-			self.data.setdefault(section_name, {})
-			for item_name, item_value in section_items:
-				self.data[section_name].setdefault(item_name, item_value)
-		
-		# Try to read settings from the config file and update the dictionary accordingly
-		parser = configparser.RawConfigParser()
-		try:
-			parser.read(self.PATH)
-			for section_name, section in self.data.items():
-				try:
-					for item_name in section:
-						try:
-							from_file = parser.get(section_name, item_name)
-							if from_file in ("true", "True", "TRUE"):
-								self.data[section_name][item_name] = True
-							elif from_file in ("false", "False", "FALSE"):
-								self.data[section_name][item_name] = False
-							elif from_file in ("none", "None", "NONE"):
-								self.data[section_name][item_name] = None
-							else:
-								t = type(self.data[section_name][item_name])
-								self.data[section_name][item_name] = t(from_file)
-						except (configparser.NoSectionError, configparser.NoOptionError):
-							print(f"[WARNING] Option \"{item_name}\" missing from section \"{section_name}\" of the config file at \"{self.PATH}\". Using default value.")
-						except Exception as e:
-							show_error(e, no_ui=True)
-				except Exception as e:
-					show_error(e, no_ui=True)
-		except Exception as e:
-			show_error(e, no_ui=True)
-
-		# Update config file
-		self.update()
-
-
-	def __getitem__(self, key):
-		"""TODO"""
-		return self.data.__getitem__(key)
-
-
-	def __setitem__(self, key, value):
-		"""TODO"""
-		return self.data.__setitem__(key, value)
-
-
-	def update(self):
-		"""TODO"""
-		parser = configparser.RawConfigParser()
-		for section_name, section in self.data.items():
-			parser.add_section(section_name)
-			for item_name, item_value in section.items():
-				parser.set(section_name, item_name, item_value)
-		with open(self.PATH, 'wt') as file:
-			parser.write(file)
-		try:
-			update_config_constants(self)
-		except:
-			pass
-
-
 # Workers
 
 class Server(th.Thread):
@@ -995,7 +920,7 @@ class Server(th.Thread):
 
 		report("Loading config...")
 		
-		sc4mp_config = Config(SC4MP_CONFIG_PATH, SC4MP_CONFIG_DEFAULTS)
+		sc4mp_config = Config(SC4MP_CONFIG_PATH, SC4MP_CONFIG_DEFAULTS, error_callback=show_error, update_constants_callback=update_config_constants)
 
 		'''global SC4MP_HOST
 		global SC4MP_PORT
@@ -1104,7 +1029,7 @@ class Server(th.Thread):
 			# Open savegames as DBPF objects
 			savegames = []
 			for savegame_path in savegame_paths:
-				savegames.append(DBPF(savegame_path))
+				savegames.append(DBPF(savegame_path, error_callback=show_error))
 
 			# Get the region subfile of each DBPF object and update the database
 			for savegame in savegames:
@@ -2106,7 +2031,7 @@ class RequestHandler(th.Thread):
 			savegames = []
 			for filename in os.listdir(region_path):
 				filename = os.path.join(region_path, filename)
-				savegames.append(DBPF(filename))
+				savegames.append(DBPF(filename, error_callback=show_error))
 
 			# Extract the region subfile from each DBPF
 			for savegame in savegames:
