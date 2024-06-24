@@ -3,6 +3,7 @@
 /_Server*
 /_DMR
 /builds
+/core/dummy
 /dbpf
 /dist32
 /dist64
