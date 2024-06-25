@@ -446,7 +446,7 @@ def send_filestream(c, rootpath):
 				if not data:
 					break
 				size_read += len(data)
-				c.send(data)
+				c.sendall(data)
 
 
 def send_json(s, data):
@@ -478,7 +478,7 @@ def send_tree(c, rootpath):
 			fullpaths.append(os.path.join(path, file))
 
 	# Send file count
-	c.send(str(len(fullpaths)).encode())
+	c.sendall(str(len(fullpaths)).encode())
 
 	# Separator
 	c.recv(SC4MP_BUFFER_SIZE)
@@ -487,7 +487,7 @@ def send_tree(c, rootpath):
 	size = 0
 	for fullpath in fullpaths:
 		size += os.path.getsize(fullpath)
-	c.send(str(size).encode())
+	c.sendall(str(size).encode())
 
 	# Loop through the file list and send each one to the client
 	for fullpath in fullpaths:
@@ -499,19 +499,19 @@ def send_tree(c, rootpath):
 		relpath = os.path.relpath(fullpath, rootpath)
 
 		# Send hashcode
-		c.send(md5(fullpath).encode())
+		c.sendall(md5(fullpath).encode())
 
 		# Separator
 		c.recv(SC4MP_BUFFER_SIZE)
 
 		# Send filesize
-		c.send(str(os.path.getsize(fullpath)).encode())
+		c.sendall(str(os.path.getsize(fullpath)).encode())
 
 		# Separator
 		c.recv(SC4MP_BUFFER_SIZE)
 
 		# Send relative path
-		c.send(relpath.encode())
+		c.sendall(relpath.encode())
 
 		# Send the file if not cached
 		if c.recv(SC4MP_BUFFER_SIZE).decode() != "y":
@@ -525,7 +525,7 @@ def send_tree(c, rootpath):
 
 def send_or_cached(c, filename):
 	"""TODO"""
-	c.send(md5(filename).encode())
+	c.sendall(md5(filename).encode())
 	if c.recv(SC4MP_BUFFER_SIZE).decode() == "n":
 		send_file(c, filename)
 	else:
@@ -538,7 +538,7 @@ def send_file(c, filename):
 	report("Sending file " + filename + "...")
 
 	filesize = os.path.getsize(filename)
-	c.send(str(filesize).encode())
+	c.sendall(str(filesize).encode())
 
 	with open(filename, "rb") as f:
 		while True:
@@ -555,7 +555,7 @@ def receive_file(c, filename, filesize):
 	#
 	#	filesize = int(c.recv(SC4MP_BUFFER_SIZE).decode())
 	#
-	#	c.send(SC4MP_SEPARATOR)
+	#	c.sendall(SC4MP_SEPARATOR)
 
 	report("Receiving " + str(filesize) + " bytes...")
 	report("writing to " + filename)
@@ -873,7 +873,7 @@ class Server(th.Thread):
 				s = socket.socket()
 				s.settimeout(5)
 				s.connect((host, port))
-				s.send(b"server_version")
+				s.sendall(b"server_version")
 				bytes = s.recv(SC4MP_BUFFER_SIZE)
 				if (len(bytes) > 0):
 					split_bytes = bytes.split(SC4MP_SEPARATOR)
@@ -1805,9 +1805,9 @@ class RequestHandler(th.Thread):
 				elif request == "private":
 					self.private(c)
 				elif request == "time":
-					c.send(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
+					c.sendall(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
 				elif request == "info":
-					c.send((json.dumps({  
+					c.sendall((json.dumps({  
 						"server_id": sc4mp_config["INFO"]["server_id"],  
 						"server_name": sc4mp_config["INFO"]["server_name"],
 						"server_description": sc4mp_config["INFO"]["server_description"],
@@ -1850,32 +1850,32 @@ class RequestHandler(th.Thread):
 
 	def ping(self, c):
 		"""TODO"""
-		c.send(b"pong")
+		c.sendall(b"pong")
 
 
 	def send_server_id(self, c):
 		"""TODO"""
-		c.send(SC4MP_SERVER_ID.encode())
+		c.sendall(SC4MP_SERVER_ID.encode())
 
 
 	def send_server_name(self, c):
 		"""TODO"""
-		c.send(SC4MP_SERVER_NAME.encode())
+		c.sendall(SC4MP_SERVER_NAME.encode())
 
 
 	def send_server_description(self, c):
 		"""TODO"""
-		c.send(SC4MP_SERVER_DESCRIPTION.encode())
+		c.sendall(SC4MP_SERVER_DESCRIPTION.encode())
 
 
 	def send_server_url(self, c):
 		"""TODO"""
-		c.send(sc4mp_config["INFO"]["server_url"].encode())
+		c.sendall(sc4mp_config["INFO"]["server_url"].encode())
 
 
 	def send_server_version(self, c):
 		"""TODO"""
-		c.send(SC4MP_VERSION.encode())
+		c.sendall(SC4MP_VERSION.encode())
 
 
 	def send_user_id(self, c, in_hash):
@@ -1889,7 +1889,7 @@ class RequestHandler(th.Thread):
 			try:
 				token = data[user_id]["token"]
 				if hashlib.sha256((user_id + token).encode()).hexdigest() == in_hash:
-					c.send(user_id.encode())
+					c.sendall(user_id.encode())
 					break
 			except:
 				pass
@@ -1916,7 +1916,7 @@ class RequestHandler(th.Thread):
 		entry["token"] = token
 
 		# Send token
-		c.send(token.encode())
+		c.sendall(token.encode())
 
 
 	def send_plugins(self, c):
@@ -1948,15 +1948,15 @@ class RequestHandler(th.Thread):
 	'''def delete(self, c):
 		"""TODO"""
 
-		c.send(SC4MP_SEPARATOR)
+		c.sendall(SC4MP_SEPARATOR)
 
 		user_id = self.log_user(c)
-		c.send(SC4MP_SEPARATOR)
+		c.sendall(SC4MP_SEPARATOR)
 		region = c.recv(SC4MP_BUFFER_SIZE).decode()
-		c.send(SC4MP_SEPARATOR)
+		c.sendall(SC4MP_SEPARATOR)
 		city = c.recv(SC4MP_BUFFER_SIZE).decode()
 
-		c.send(SC4MP_SEPARATOR) #TODO verify that the user can make the deletion
+		c.sendall(SC4MP_SEPARATOR) #TODO verify that the user can make the deletion
 
 		#TODO only delete file if user is authorized
 
@@ -1971,14 +1971,14 @@ class RequestHandler(th.Thread):
 		user_id = self.user_id
 
 		# Separator
-		c.send(b"ok")
+		c.sendall(b"ok")
 
 		# Receive region name, file sizes
 		region, file_sizes = recv_json(c)
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Separator
-		c.send(b"ok")
+		c.sendall(b"ok")
 
 		# Set save id
 		save_id = datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id
@@ -1989,11 +1989,11 @@ class RequestHandler(th.Thread):
 
 			# Receive region name
 			#region = c.recv(SC4MP_BUFFER_SIZE).decode()
-			#.send(b"ok")
+			#.sendall(b"ok")
 
 			# Receive city name
 			#city = c.recv(SC4MP_BUFFER_SIZE).decode()
-			#c.send(b"ok")
+			#c.sendall(b"ok")
 
 			# Receive file
 			path = os.path.join(sc4mp_server_path, "_Temp", "inbound", save_id, region)
@@ -2004,10 +2004,10 @@ class RequestHandler(th.Thread):
 
 			count += 1
 
-			#c.send(b"ok")
+			#c.sendall(b"ok")
 
 		# Separator
-		#c.send(b"ok")
+		#c.sendall(b"ok")
 		#c.recv(SC4MP_BUFFER_SIZE)
 
 		# Get path to save directory
@@ -2018,7 +2018,7 @@ class RequestHandler(th.Thread):
 
 		# Only allow save pushes of one region
 		if len(regions) > 1:
-			c.send(b"Too many regions.")
+			c.sendall(b"Too many regions.")
 			return		
 
 		# Loop through regions. Should only loop once since save pushes of multiple regions are filtered out.
@@ -2109,12 +2109,12 @@ class RequestHandler(th.Thread):
 					time.sleep(SC4MP_DELAY)
 
 				# Send the output to the client
-				c.send((sc4mp_regions_manager.outputs[save_id]).encode())
+				c.sendall((sc4mp_regions_manager.outputs[save_id]).encode())
 
 			else:
 
 				# Report to the client that the save push is invalid
-				c.send(b"Unpause the game, then retry.")
+				c.sendall(b"Unpause the game, then retry.")
 
 			# Delete savegame arrays to avoid file deletion errors
 			savegames = None
@@ -2150,7 +2150,7 @@ class RequestHandler(th.Thread):
 		for server_info in server_dict.values():
 			servers.add((server_info["host"], server_info["port"]))
 
-		c.send(json.dumps(list(servers)).encode())
+		c.sendall(json.dumps(list(servers)).encode())
 
 
 	def log_user(self, c, user_id):
@@ -2207,33 +2207,33 @@ class RequestHandler(th.Thread):
 	def password_enabled(self, c):
 		"""TODO"""
 		if sc4mp_config['SECURITY']['password_enabled']:
-			c.send(b"y")
+			c.sendall(b"y")
 		else:
-			c.send(b"n")
+			c.sendall(b"n")
 
 
 	def check_password(self, c, password):
 		"""TODO"""
 		if password == sc4mp_config["SECURITY"]["password"]:
-			c.send(b'y')
+			c.sendall(b'y')
 		else:
-			c.send(b'n')
+			c.sendall(b'n')
 
 
 	def user_plugins_enabled(self, c):
 		"""TODO"""
 		if sc4mp_config['RULES']['user_plugins']:
-			c.send(b"y")
+			c.sendall(b"y")
 		else:
-			c.send(b"n")
+			c.sendall(b"n")
 
 
 	def private(self, c):
 		"""TODO"""
 		if sc4mp_config['SECURITY']['private']:
-			c.send(b"y")
+			c.sendall(b"y")
 		else:
-			c.send(b"n")
+			c.sendall(b"n")
 
 
 	def refresh(self, c):
@@ -2249,13 +2249,13 @@ class RequestHandler(th.Thread):
 				region_data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json"))
 				for city_entry in region_data.values():
 					if (city_entry is not None and city_entry["owner"] != user_id):
-						c.send(city_entry["hashcode"].encode())
+						c.sendall(city_entry["hashcode"].encode())
 						if c.recv(SC4MP_BUFFER_SIZE).decode() == "missing":
-							c.send(region.encode())
+							c.sendall(region.encode())
 							c.recv(SC4MP_BUFFER_SIZE)
 							send_file(c, os.path.join(sc4mp_server_path, "Regions", region, city_entry["filename"]))
 							c.recv(SC4MP_BUFFER_SIZE)
-		c.send(b'done')
+		c.sendall(b'done')
 
 
 class ServerQueue:
@@ -2410,7 +2410,7 @@ class ServerList(th.Thread):
 	def request_server_id(self, server):
 		"""TODO"""
 		s = self.create_socket(server)
-		s.send(b"server_id")
+		s.sendall(b"server_id")
 		return s.recv(SC4MP_BUFFER_SIZE).decode()
 
 
@@ -2419,7 +2419,7 @@ class ServerList(th.Thread):
 		s = self.create_socket(server)
 		try:
 			start = time.time()
-			s.send(b"ping")
+			s.sendall(b"ping")
 			s.recv(SC4MP_BUFFER_SIZE)
 			end = time.time()
 			s.close()
@@ -2431,13 +2431,13 @@ class ServerList(th.Thread):
 	def add_server(self, server):
 		"""TODO"""
 		s = self.create_socket(server)
-		s.send(b"add_server " + str(SC4MP_PORT).encode())
+		s.sendall(b"add_server " + str(SC4MP_PORT).encode())
 
 
 	def server_list(self, server):
 		"""TODO"""
 		s = self.create_socket(server)
-		s.send(b"server_list")
+		s.sendall(b"server_list")
 		servers = recv_json(s)
 		try:
 			for host, port in servers:
