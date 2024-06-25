@@ -22,14 +22,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
-from core.config import *
-from core.dbpf import *
-from core.util import *
-
-
-# Header
-
-SC4MP_VERSION = "0.5.0"
+SC4MP_VERSION = "0.4.4"
 
 SC4MP_SERVERS = [("servers.sc4mp.org", port) for port in range(7240, 7250)]
 
@@ -446,7 +439,7 @@ def send_filestream(c, rootpath):
 				if not data:
 					break
 				size_read += len(data)
-				c.sendall(data)
+				c.send(data)
 
 
 def send_json(s, data):
@@ -478,7 +471,7 @@ def send_tree(c, rootpath):
 			fullpaths.append(os.path.join(path, file))
 
 	# Send file count
-	c.sendall(str(len(fullpaths)).encode())
+	c.send(str(len(fullpaths)).encode())
 
 	# Separator
 	c.recv(SC4MP_BUFFER_SIZE)
@@ -487,7 +480,7 @@ def send_tree(c, rootpath):
 	size = 0
 	for fullpath in fullpaths:
 		size += os.path.getsize(fullpath)
-	c.sendall(str(size).encode())
+	c.send(str(size).encode())
 
 	# Loop through the file list and send each one to the client
 	for fullpath in fullpaths:
@@ -499,19 +492,19 @@ def send_tree(c, rootpath):
 		relpath = os.path.relpath(fullpath, rootpath)
 
 		# Send hashcode
-		c.sendall(md5(fullpath).encode())
+		c.send(md5(fullpath).encode())
 
 		# Separator
 		c.recv(SC4MP_BUFFER_SIZE)
 
 		# Send filesize
-		c.sendall(str(os.path.getsize(fullpath)).encode())
+		c.send(str(os.path.getsize(fullpath)).encode())
 
 		# Separator
 		c.recv(SC4MP_BUFFER_SIZE)
 
 		# Send relative path
-		c.sendall(relpath.encode())
+		c.send(relpath.encode())
 
 		# Send the file if not cached
 		if c.recv(SC4MP_BUFFER_SIZE).decode() != "y":
@@ -525,7 +518,7 @@ def send_tree(c, rootpath):
 
 def send_or_cached(c, filename):
 	"""TODO"""
-	c.sendall(md5(filename).encode())
+	c.send(md5(filename).encode())
 	if c.recv(SC4MP_BUFFER_SIZE).decode() == "n":
 		send_file(c, filename)
 	else:
@@ -538,7 +531,7 @@ def send_file(c, filename):
 	report("Sending file " + filename + "...")
 
 	filesize = os.path.getsize(filename)
-	c.sendall(str(filesize).encode())
+	c.send(str(filesize).encode())
 
 	with open(filename, "rb") as f:
 		while True:
@@ -555,7 +548,7 @@ def receive_file(c, filename, filesize):
 	#
 	#	filesize = int(c.recv(SC4MP_BUFFER_SIZE).decode())
 	#
-	#	c.sendall(SC4MP_SEPARATOR)
+	#	c.send(SC4MP_SEPARATOR)
 
 	report("Receiving " + str(filesize) + " bytes...")
 	report("writing to " + filename)
@@ -724,6 +717,342 @@ def set_thread_name(name, enumerate=True):
 		return name
 
 
+# Objects
+
+class Config:
+	"""TODO"""
+
+
+	def __init__(self, path, defaults):
+		"""TODO"""
+
+		# Parameters
+		self.PATH = path
+		self.DEFAULTS = defaults
+
+		# Create dictionary with default config settings
+		self.data = {}
+		for section_name, section_items in self.DEFAULTS:
+			self.data.setdefault(section_name, {})
+			for item_name, item_value in section_items:
+				self.data[section_name].setdefault(item_name, item_value)
+		
+		# Try to read settings from the config file and update the dictionary accordingly
+		parser = configparser.RawConfigParser()
+		try:
+			parser.read(self.PATH)
+			for section_name, section in self.data.items():
+				try:
+					for item_name in section:
+						try:
+							from_file = parser.get(section_name, item_name)
+							if from_file in ("true", "True", "TRUE"):
+								self.data[section_name][item_name] = True
+							elif from_file in ("false", "False", "FALSE"):
+								self.data[section_name][item_name] = False
+							elif from_file in ("none", "None", "NONE"):
+								self.data[section_name][item_name] = None
+							else:
+								t = type(self.data[section_name][item_name])
+								self.data[section_name][item_name] = t(from_file)
+						except (configparser.NoSectionError, configparser.NoOptionError):
+							print(f"[WARNING] Option \"{item_name}\" missing from section \"{section_name}\" of the config file at \"{self.PATH}\". Using default value.")
+						except Exception as e:
+							show_error(e, no_ui=True)
+				except Exception as e:
+					show_error(e, no_ui=True)
+		except Exception as e:
+			show_error(e, no_ui=True)
+
+		# Update config file
+		self.update()
+
+
+	def __getitem__(self, key):
+		"""TODO"""
+		return self.data.__getitem__(key)
+
+
+	def __setitem__(self, key, value):
+		"""TODO"""
+		return self.data.__setitem__(key, value)
+
+
+	def update(self):
+		"""TODO"""
+		parser = configparser.RawConfigParser()
+		for section_name, section in self.data.items():
+			parser.add_section(section_name)
+			for item_name, item_value in section.items():
+				parser.set(section_name, item_name, item_value)
+		with open(self.PATH, 'wt') as file:
+			parser.write(file)
+		try:
+			update_config_constants(self)
+		except:
+			pass
+
+
+class DBPF:
+	"""TODO include credits to original php file"""
+
+
+	def __init__(self, filename, offset=0):
+		"""TODO"""
+
+		report('Parsing "' + filename + '"...', self)
+
+		self.filename = filename
+		self.offset = offset
+
+		self.NONSENSE_BYTE_OFFSET = 9
+
+		# Try opening the file to read bytes
+		try:
+			self.file = open(self.filename, 'rb')
+		except Exception as e:
+			raise e #TODO
+
+		# Advance to offset
+		start = self.offset
+		if self.offset > 0:
+			self.file.seek(self.offset)
+
+		# Verify that the file is a DBPF
+		test = self.file.read(4)
+		if test != b"DBPF":
+			return #TODO raise exception
+
+		# Read the header
+		self.majorVersion = self.read_UL4()
+		self.minorVersion = self.read_UL4()
+		self.reserved = self.file.read(12)
+		self.dateCreated = self.read_UL4()
+		self.dateModified = self.read_UL4()
+		self.indexMajorVersion = self.read_UL4()
+		self.indexCount = self.read_UL4()
+		self.indexOffset = self.read_UL4()
+		self.indexSize = self.read_UL4()
+		self.holesCount = self.read_UL4()
+		self.holesOffset = self.read_UL4()
+		self.holesSize = self.read_UL4()
+		self.indexMinorVersion = self.read_UL4() - 1
+		self.reserved2 = self.file.read(32)
+		self.header_end = self.file.tell()
+
+		# Seek to index table
+		self.file.seek(offset + self.indexOffset)
+
+		# Read index table
+		self.indexData = []
+		for index in range(0, self.indexCount):
+			self.indexData.append({})
+			self.indexData[index]['typeID'] = self.read_ID()
+			self.indexData[index]['groupID'] = self.read_ID()
+			self.indexData[index]['instanceID'] = self.read_ID()
+			if ((self.indexMajorVersion == "7") and (self.indexMinorVersion == "1")):
+				self.indexData[index]['instanceID2'] = self.read_ID()
+			self.indexData[index]['offset'] = self.read_UL4()
+			self.indexData[index]['filesize'] = self.read_UL4()
+			self.indexData[index]['compressed'] = False #TODO
+			self.indexData[index]['truesize'] = 0 #TODO
+
+
+	def decompress(self, length):
+
+		#report('Decompressing ' + str(length) + ' bytes...', self)
+
+		buf = ""
+		answer = bytes()
+		answerlen = 0
+		numplain = ""
+		numcopy = ""
+		offset = ""
+
+		while length > 0:
+			try:
+				cc = self.read_UL1(self.file)
+			except Exception as e:
+				show_error(e)
+				break
+			length -= 1
+			#print("Control char is " + str(cc) + ", length remaining is " + str(length) + ".\n")
+			if cc >= 252: #0xFC
+				numplain = cc & 3 #0x03
+				if numplain > length:
+					numplain = length
+				numcopy = 0
+				offset = 0
+			elif cc >= 224: #0xE0
+				numplain = (cc - 223) << 2 #223 = 0xdf
+				numcopy = 0
+				offset = 0
+			elif cc >= 192: #0xC0
+				length -= 3
+				byte1 = self.read_UL1(self.file)
+				byte2 = self.read_UL1(self.file)
+				byte3 = self.read_UL1(self.file)
+				numplain = cc & 3 #0x03
+				numcopy = ((cc & 12) << 6) + 5 + byte3 #12 = 0x0c
+				offset = ((cc & 16) << 12) + (byte1 << 8) + byte2 #16 = 0x10
+			elif cc >= 128: #0x80
+				length -= 2
+				byte1 = self.read_UL1(self.file)
+				byte2 = self.read_UL1(self.file)
+				numplain = (byte1 & 192) >> 6 #192 = 0xc0
+				numcopy = (cc & 63) + 4 #63 = 0x3f
+				offset = ((byte1 & 63) << 8) + byte2 #63 = 0x3f
+			else:
+				length -= 1
+				byte1 = self.read_UL1(self.file)
+				numplain = cc & 3 #3 = 0x03
+				numcopy = ((cc & 28) >> 2) + 3 #28 = 0x1c
+				offset = ((cc & 96) << 3) + byte1 #96 = 0x60
+			length -= numplain
+
+			# This section basically copies the parts of the string to the end of the buffer:
+			if numplain > 0:
+				buf = self.file.read(numplain)
+				answer = answer + buf
+			fromoffset = len(answer) - (offset + 1)  # 0 == last char
+			for index in range(numcopy):
+				#print(str(answer))
+				#print(str(cc))
+				#print(str(offset))
+				#print(str(fromoffset))
+				#TODO remove try and except block. decompression algorithm breaks with a control char of 206. the offset becomes larger than the length of the answer, causing a negative fromindex and an indexing error. for now it does not seem to affect city coordinates
+				try:
+					answer = answer + (answer[fromoffset + index]).to_bytes(1, 'little') #substr(fromoffset + index, 1)
+				except Exception as e:
+					#show_error(e) #TODO
+					return io.BytesIO(answer)
+			answerlen += numplain
+			answerlen += numcopy
+
+		return io.BytesIO(answer)
+
+
+	def read_UL1(self, file=None):
+		"""TODO"""
+		if file is None:
+			file = self.file
+		return struct.unpack('<B', file.read(1))[0]
+
+
+	def read_UL2(self, file=None):
+		"""TODO"""
+		if file is None:
+			file = self.file
+		return struct.unpack('<H', file.read(2))[0]
+	
+	
+	def read_UL4(self, file=None):
+		"""TODO"""
+		if file is None:
+			file = self.file
+		return struct.unpack('<L', file.read(4))[0]
+
+
+	def read_ID(self, file=None):
+		"""TODO"""
+		if file is None:
+			file = self.file
+		return file.read(4)[::-1].hex()
+
+
+	def get_indexData_entry_by_type_ID(self, type_id):
+		"""TODO"""
+		for entry in self.indexData:
+			if entry['typeID'] == type_id:
+				return entry
+
+
+	def goto_subfile(self, type_id):
+		"""TODO"""
+		entry = self.get_indexData_entry_by_type_ID(type_id)
+		self.file.seek(entry['offset'])
+		#print(entry['offset'] + 9)
+
+
+	def get_subfile_size(self, type_id):
+		"""TODO"""
+		entry = self.get_indexData_entry_by_type_ID(type_id)
+		return entry['filesize']
+
+
+	#def get_subfile_header(self, type_id):
+	#	"""TODO"""
+	#	self.goto_subfile(type_id)
+	#	return (self.read_UL4(), self.read_ID(), ) #TODO how to read these values?
+
+
+	def decompress_subfile(self, type_id):
+		"""TODO"""
+		#report('Decompressing "' + type_id + '"...', self)
+		self.goto_subfile(type_id)
+		self.file.read(self.NONSENSE_BYTE_OFFSET)
+		return self.decompress(self.get_subfile_size(type_id))
+
+
+	def get_SC4ReadRegionalCity(self):
+		"""TODO"""
+
+		report('Parsing region view subfile of "' + self.filename + '"...', self)
+
+		data = self.decompress_subfile("ca027edb")
+	
+		#print(data.read())
+		#data.seek(0)
+
+		self.SC4ReadRegionalCity = {}
+
+		self.SC4ReadRegionalCity['majorVersion'] = self.read_UL2(data)
+		self.SC4ReadRegionalCity['minorVersion'] = self.read_UL2(data)
+		
+		self.SC4ReadRegionalCity['tileXLocation'] = self.read_UL4(data)
+		self.SC4ReadRegionalCity['tileYLocation'] = self.read_UL4(data)
+		
+		self.SC4ReadRegionalCity['citySizeX'] = self.read_UL4(data)
+		self.SC4ReadRegionalCity['citySizeY'] = self.read_UL4(data)
+		
+		self.SC4ReadRegionalCity['residentialPopulation'] = self.read_UL4(data)
+		self.SC4ReadRegionalCity['commercialPopulation'] = self.read_UL4(data)
+		self.SC4ReadRegionalCity['industrialPopulation'] = self.read_UL4(data)
+
+		self.SC4ReadRegionalCity['unknown1'] = data.read(4) #TODO read float
+
+		self.SC4ReadRegionalCity['mayorRating'] = self.read_UL1(data)
+		self.SC4ReadRegionalCity['starCount'] = self.read_UL1(data)
+		self.SC4ReadRegionalCity['tutorialFlag'] = self.read_UL1(data)
+
+		self.SC4ReadRegionalCity['cityGUID'] = self.read_UL4(data)
+
+		self.SC4ReadRegionalCity['unknown5'] = self.read_UL4(data)
+		self.SC4ReadRegionalCity['unknown6'] = self.read_UL4(data)
+		self.SC4ReadRegionalCity['unknown7'] = self.read_UL4(data)
+		self.SC4ReadRegionalCity['unknown8'] = self.read_UL4(data)
+		self.SC4ReadRegionalCity['unknown9'] = self.read_UL4(data)
+
+		self.SC4ReadRegionalCity['modeFlag'] = self.read_UL1(data)
+
+		#TODO keep reading file
+
+		return self.SC4ReadRegionalCity
+
+	
+	def get_cSC4Simulator(self):
+		"""TODO"""
+
+		data = self.decompress_subfile("2990c1e5")
+
+		print(data.read())
+		data.seek(0)
+
+		self.cSC4Simulator = {}
+
+		#TODO
+
+
 # Workers
 
 class Server(th.Thread):
@@ -873,7 +1202,7 @@ class Server(th.Thread):
 				s = socket.socket()
 				s.settimeout(5)
 				s.connect((host, port))
-				s.sendall(b"server_version")
+				s.send(b"server_version")
 				bytes = s.recv(SC4MP_BUFFER_SIZE)
 				if (len(bytes) > 0):
 					split_bytes = bytes.split(SC4MP_SEPARATOR)
@@ -920,7 +1249,7 @@ class Server(th.Thread):
 
 		report("Loading config...")
 		
-		sc4mp_config = Config(SC4MP_CONFIG_PATH, SC4MP_CONFIG_DEFAULTS, error_callback=show_error, update_constants_callback=update_config_constants)
+		sc4mp_config = Config(SC4MP_CONFIG_PATH, SC4MP_CONFIG_DEFAULTS)
 
 		'''global SC4MP_HOST
 		global SC4MP_PORT
@@ -996,13 +1325,6 @@ class Server(th.Thread):
 			# Region directory
 			region_directory = os.path.join(regions_directory, region)
 
-			# Create `region.ini` file if not present
-			region_ini_path = os.path.join(region_directory, "region.ini")
-			if not os.path.exists(region_ini_path):
-				print(f"[WARNING] Region \"{region}\" is missing a configuration file. Creating...")
-				with open(region_ini_path, "w") as file:
-					file.write(f"[Regional Settings]\nName = {region}\nTerrain type = 0\nWater Min = 60\nWater Max = 100\n")
-
 			# Create subdirectories in region directory
 			region_subdirectories = ["_Database", "_Backups"]
 			for region_subdirectory in region_subdirectories:
@@ -1029,7 +1351,7 @@ class Server(th.Thread):
 			# Open savegames as DBPF objects
 			savegames = []
 			for savegame_path in savegame_paths:
-				savegames.append(DBPF(savegame_path, error_callback=show_error))
+				savegames.append(DBPF(savegame_path))
 
 			# Get the region subfile of each DBPF object and update the database
 			for savegame in savegames:
@@ -1805,9 +2127,9 @@ class RequestHandler(th.Thread):
 				elif request == "private":
 					self.private(c)
 				elif request == "time":
-					c.sendall(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
+					c.send(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
 				elif request == "info":
-					c.sendall((json.dumps({  
+					c.send((json.dumps({  
 						"server_id": sc4mp_config["INFO"]["server_id"],  
 						"server_name": sc4mp_config["INFO"]["server_name"],
 						"server_description": sc4mp_config["INFO"]["server_description"],
@@ -1850,32 +2172,32 @@ class RequestHandler(th.Thread):
 
 	def ping(self, c):
 		"""TODO"""
-		c.sendall(b"pong")
+		c.send(b"pong")
 
 
 	def send_server_id(self, c):
 		"""TODO"""
-		c.sendall(SC4MP_SERVER_ID.encode())
+		c.send(SC4MP_SERVER_ID.encode())
 
 
 	def send_server_name(self, c):
 		"""TODO"""
-		c.sendall(SC4MP_SERVER_NAME.encode())
+		c.send(SC4MP_SERVER_NAME.encode())
 
 
 	def send_server_description(self, c):
 		"""TODO"""
-		c.sendall(SC4MP_SERVER_DESCRIPTION.encode())
+		c.send(SC4MP_SERVER_DESCRIPTION.encode())
 
 
 	def send_server_url(self, c):
 		"""TODO"""
-		c.sendall(sc4mp_config["INFO"]["server_url"].encode())
+		c.send(sc4mp_config["INFO"]["server_url"].encode())
 
 
 	def send_server_version(self, c):
 		"""TODO"""
-		c.sendall(SC4MP_VERSION.encode())
+		c.send(SC4MP_VERSION.encode())
 
 
 	def send_user_id(self, c, in_hash):
@@ -1889,7 +2211,7 @@ class RequestHandler(th.Thread):
 			try:
 				token = data[user_id]["token"]
 				if hashlib.sha256((user_id + token).encode()).hexdigest() == in_hash:
-					c.sendall(user_id.encode())
+					c.send(user_id.encode())
 					break
 			except:
 				pass
@@ -1916,7 +2238,7 @@ class RequestHandler(th.Thread):
 		entry["token"] = token
 
 		# Send token
-		c.sendall(token.encode())
+		c.send(token.encode())
 
 
 	def send_plugins(self, c):
@@ -1948,15 +2270,15 @@ class RequestHandler(th.Thread):
 	'''def delete(self, c):
 		"""TODO"""
 
-		c.sendall(SC4MP_SEPARATOR)
+		c.send(SC4MP_SEPARATOR)
 
 		user_id = self.log_user(c)
-		c.sendall(SC4MP_SEPARATOR)
+		c.send(SC4MP_SEPARATOR)
 		region = c.recv(SC4MP_BUFFER_SIZE).decode()
-		c.sendall(SC4MP_SEPARATOR)
+		c.send(SC4MP_SEPARATOR)
 		city = c.recv(SC4MP_BUFFER_SIZE).decode()
 
-		c.sendall(SC4MP_SEPARATOR) #TODO verify that the user can make the deletion
+		c.send(SC4MP_SEPARATOR) #TODO verify that the user can make the deletion
 
 		#TODO only delete file if user is authorized
 
@@ -1971,14 +2293,14 @@ class RequestHandler(th.Thread):
 		user_id = self.user_id
 
 		# Separator
-		c.sendall(b"ok")
+		c.send(b"ok")
 
 		# Receive region name, file sizes
 		region, file_sizes = recv_json(c)
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Separator
-		c.sendall(b"ok")
+		c.send(b"ok")
 
 		# Set save id
 		save_id = datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id
@@ -1989,11 +2311,11 @@ class RequestHandler(th.Thread):
 
 			# Receive region name
 			#region = c.recv(SC4MP_BUFFER_SIZE).decode()
-			#.sendall(b"ok")
+			#.send(b"ok")
 
 			# Receive city name
 			#city = c.recv(SC4MP_BUFFER_SIZE).decode()
-			#c.sendall(b"ok")
+			#c.send(b"ok")
 
 			# Receive file
 			path = os.path.join(sc4mp_server_path, "_Temp", "inbound", save_id, region)
@@ -2004,10 +2326,10 @@ class RequestHandler(th.Thread):
 
 			count += 1
 
-			#c.sendall(b"ok")
+			#c.send(b"ok")
 
 		# Separator
-		#c.sendall(b"ok")
+		#c.send(b"ok")
 		#c.recv(SC4MP_BUFFER_SIZE)
 
 		# Get path to save directory
@@ -2018,7 +2340,7 @@ class RequestHandler(th.Thread):
 
 		# Only allow save pushes of one region
 		if len(regions) > 1:
-			c.sendall(b"Too many regions.")
+			c.send(b"Too many regions.")
 			return		
 
 		# Loop through regions. Should only loop once since save pushes of multiple regions are filtered out.
@@ -2031,7 +2353,7 @@ class RequestHandler(th.Thread):
 			savegames = []
 			for filename in os.listdir(region_path):
 				filename = os.path.join(region_path, filename)
-				savegames.append(DBPF(filename, error_callback=show_error))
+				savegames.append(DBPF(filename))
 
 			# Extract the region subfile from each DBPF
 			for savegame in savegames:
@@ -2109,12 +2431,12 @@ class RequestHandler(th.Thread):
 					time.sleep(SC4MP_DELAY)
 
 				# Send the output to the client
-				c.sendall((sc4mp_regions_manager.outputs[save_id]).encode())
+				c.send((sc4mp_regions_manager.outputs[save_id]).encode())
 
 			else:
 
 				# Report to the client that the save push is invalid
-				c.sendall(b"Unpause the game, then retry.")
+				c.send(b"Unpause the game, then retry.")
 
 			# Delete savegame arrays to avoid file deletion errors
 			savegames = None
@@ -2150,7 +2472,7 @@ class RequestHandler(th.Thread):
 		for server_info in server_dict.values():
 			servers.add((server_info["host"], server_info["port"]))
 
-		c.sendall(json.dumps(list(servers)).encode())
+		c.send(json.dumps(list(servers)).encode())
 
 
 	def log_user(self, c, user_id):
@@ -2207,33 +2529,33 @@ class RequestHandler(th.Thread):
 	def password_enabled(self, c):
 		"""TODO"""
 		if sc4mp_config['SECURITY']['password_enabled']:
-			c.sendall(b"y")
+			c.send(b"y")
 		else:
-			c.sendall(b"n")
+			c.send(b"n")
 
 
 	def check_password(self, c, password):
 		"""TODO"""
 		if password == sc4mp_config["SECURITY"]["password"]:
-			c.sendall(b'y')
+			c.send(b'y')
 		else:
-			c.sendall(b'n')
+			c.send(b'n')
 
 
 	def user_plugins_enabled(self, c):
 		"""TODO"""
 		if sc4mp_config['RULES']['user_plugins']:
-			c.sendall(b"y")
+			c.send(b"y")
 		else:
-			c.sendall(b"n")
+			c.send(b"n")
 
 
 	def private(self, c):
 		"""TODO"""
 		if sc4mp_config['SECURITY']['private']:
-			c.sendall(b"y")
+			c.send(b"y")
 		else:
-			c.sendall(b"n")
+			c.send(b"n")
 
 
 	def refresh(self, c):
@@ -2249,13 +2571,13 @@ class RequestHandler(th.Thread):
 				region_data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json"))
 				for city_entry in region_data.values():
 					if (city_entry is not None and city_entry["owner"] != user_id):
-						c.sendall(city_entry["hashcode"].encode())
+						c.send(city_entry["hashcode"].encode())
 						if c.recv(SC4MP_BUFFER_SIZE).decode() == "missing":
-							c.sendall(region.encode())
+							c.send(region.encode())
 							c.recv(SC4MP_BUFFER_SIZE)
 							send_file(c, os.path.join(sc4mp_server_path, "Regions", region, city_entry["filename"]))
 							c.recv(SC4MP_BUFFER_SIZE)
-		c.sendall(b'done')
+		c.send(b'done')
 
 
 class ServerQueue:
@@ -2410,7 +2732,7 @@ class ServerList(th.Thread):
 	def request_server_id(self, server):
 		"""TODO"""
 		s = self.create_socket(server)
-		s.sendall(b"server_id")
+		s.send(b"server_id")
 		return s.recv(SC4MP_BUFFER_SIZE).decode()
 
 
@@ -2419,7 +2741,7 @@ class ServerList(th.Thread):
 		s = self.create_socket(server)
 		try:
 			start = time.time()
-			s.sendall(b"ping")
+			s.send(b"ping")
 			s.recv(SC4MP_BUFFER_SIZE)
 			end = time.time()
 			s.close()
@@ -2431,13 +2753,13 @@ class ServerList(th.Thread):
 	def add_server(self, server):
 		"""TODO"""
 		s = self.create_socket(server)
-		s.sendall(b"add_server " + str(SC4MP_PORT).encode())
+		s.send(b"add_server " + str(SC4MP_PORT).encode())
 
 
 	def server_list(self, server):
 		"""TODO"""
 		s = self.create_socket(server)
-		s.sendall(b"server_list")
+		s.send(b"server_list")
 		servers = recv_json(s)
 		try:
 			for host, port in servers:
