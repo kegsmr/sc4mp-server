@@ -5,6 +5,7 @@
 /builds
 /core/dummy
 /dbpf
+/dist
 /dist32
 /dist64
 /logs
