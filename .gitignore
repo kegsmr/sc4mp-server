@@ -9,6 +9,7 @@
 /dist64
 /logs
 /setupbuilds
+/temp
 dbpf.py.old
 testing.py
 test_console.py
@@ -19,3 +20,4 @@ spawn_test_servers.py
 *.log
 *.sc4
 clear_logfiles.py
+version.rc
