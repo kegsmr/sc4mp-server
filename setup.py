@@ -70,7 +70,7 @@ def main():
 	])
 
 	# Copy binary files to distribution directory
-	shutil.copytree(os.path.join("dist", "sc4mpclient"), DIST, dirs_exist_ok=True)
+	shutil.copytree(os.path.join("dist", "sc4mpserver"), DIST, dirs_exist_ok=True)
 
 
 	# Copy extra files to distribution directory
