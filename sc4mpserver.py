@@ -358,12 +358,11 @@ def export(export_type):
 				if os.path.isdir(os.path.join(target, region)):
 					data_filename = os.path.join(target, region, "_Database", "region.json")
 					data = load_json(data_filename)
-					for coords, entry in data.items():
+					for entry in data.values():
 						if entry is not None:
 							filename = entry.get("filename", None)
 							reset_filename = entry.get("reset_filename", None)
 							if filename is not None and reset_filename is not None:
-								savegameX, savegameY = coords.split("_")
 								filename = os.path.join(target, region, filename)
 								reset_filename = os.path.join(target, region, reset_filename)
 								if (not os.path.exists(filename)) and (os.path.exists(reset_filename)):
