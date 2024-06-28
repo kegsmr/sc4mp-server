@@ -728,7 +728,7 @@ def set_thread_name(name, enumerate=True):
 
 
 def filter_non_alpha_numeric(text):
-	return re.sub('[^0-9a-zA-Z ]+', " ", text)
+	return " ".join(re.sub('[^0-9a-zA-Z ]+', " ", text).split())
 
 
 # Workers
