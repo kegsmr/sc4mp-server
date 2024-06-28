@@ -21,6 +21,7 @@ from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
+import re
 
 from core.config import *
 from core.dbpf import *
@@ -724,6 +725,10 @@ def set_thread_name(name, enumerate=True):
 
 		th.current_thread().name = name
 		return name
+
+
+def filter_non_alpha_numeric(text):
+	return re.sub('[^0-9a-zA-Z ]+', " ", text)
 
 
 # Workers
@@ -1548,7 +1553,7 @@ class RegionsManager(th.Thread):
 											os.remove(previous_filename)
 
 									# Set new filename
-									new_filename = f"({savegameX}, {savegameY}) {savegameCityName} - {savegameMayorName}.sc4"
+									new_filename = f"({savegameX:0>{3}}, {savegameY:0>{3}}) - {filter_non_alpha_numeric(savegameCityName)} - {filter_non_alpha_numeric(savegameMayorName)}.sc4"
 
 									# Copy save file from temporary directory to regions directory
 									destination = os.path.join(sc4mp_server_path, "Regions", region, new_filename) #TODO include city name?
