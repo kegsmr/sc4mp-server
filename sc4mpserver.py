@@ -727,8 +727,31 @@ def set_thread_name(name, enumerate=True):
 		return name
 
 
+def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag):
+
+	prefix = f"({savegameX:0>{3}}-{savegameY:0>{3}})"
+
+	if savegameModeFlag == 0:
+
+		return f"{prefix} - (Empty).sc4"
+	
+	else:
+
+		city_name = filter_non_alpha_numeric(savegameCityName)
+		if len(city_name) < 1:
+			city_name = "New City"
+
+		mayor_name = filter_non_alpha_numeric(savegameMayorName)
+		if len(mayor_name) < 1:
+			mayor_name = "Defacto"
+		
+		return f"{prefix} - {city_name} - {mayor_name}"[:252] + ".sc4"
+
+
 def filter_non_alpha_numeric(text):
 	return " ".join(re.sub('[^0-9a-zA-Z ]+', " ", text).split())
+
+
 
 
 # Workers
@@ -1048,6 +1071,9 @@ class Server(th.Thread):
 				savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
 				savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
 				savegameSize = savegame.SC4ReadRegionalCity["citySizeX"]
+				savegameCityName = savegame.SC4ReadRegionalCity["cityName"]
+				savegameMayorName = savegame.SC4ReadRegionalCity["mayorName"]
+				savegameModeFlag = savegame.SC4ReadRegionalCity["modeFlag"]
 
 				# Get md5 hashcode of date subfile
 				#savegame_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
@@ -1070,13 +1096,26 @@ class Server(th.Thread):
 
 				# Set entry values
 				set_savegame_data(entry, savegame)
-
+					
 				# Reserve tiles which the savegame occupies
 				for offsetX in range(savegameSize):
 					x = savegameX + offsetX
 					for offsetY in range(savegameSize):
 						y = savegameY + offsetY
 						data.setdefault(str(x) + "_" + str(y), None)
+
+				# Close DBPF file
+				savegame.close()
+
+				# Rename savegame file to match correct format
+				new_filename = set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag)
+				if entry["filename"] != new_filename:
+					print(f"- renaming {entry['filename']} to {new_filename}")
+					try:
+						os.rename(os.path.join(region_directory, entry["filename"]), os.path.join(region_directory, new_filename))
+						entry["filename"] = new_filename
+					except Exception as e:
+						show_error(e)
 
 			# Cleanup DBPF objects to avoid errors when attempting to delete save files
 			savegames = None
@@ -1553,10 +1592,10 @@ class RegionsManager(th.Thread):
 											os.remove(previous_filename)
 
 									# Set new filename
-									new_filename = f"({savegameX:0>{3}}, {savegameY:0>{3}}) - {filter_non_alpha_numeric(savegameCityName)} - {filter_non_alpha_numeric(savegameMayorName)}.sc4"
+									new_filename = set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag)
 
 									# Copy save file from temporary directory to regions directory
-									destination = os.path.join(sc4mp_server_path, "Regions", region, new_filename) #TODO include city name?
+									destination = os.path.join(sc4mp_server_path, "Regions", region, new_filename)
 									if os.path.exists(destination):
 										os.remove(destination)
 									shutil.copy(filename, destination)
