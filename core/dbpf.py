@@ -260,3 +260,14 @@ class DBPF:
 		self.cSC4Simulator = {}
 
 		#TODO
+
+
+if __name__ == "__main__":
+
+	import sys
+
+	def error(e):
+		print(f"{e}")
+
+	dbpf = DBPF(sys.argv[1], 0, error)
+	print(dbpf.get_SC4ReadRegionalCity())
