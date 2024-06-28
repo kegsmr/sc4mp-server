@@ -19,11 +19,13 @@ import traceback
 from argparse import ArgumentParser, Namespace
 from collections import deque
 from datetime import datetime, timedelta
+from logging import LoggerAdapter
 from pathlib import Path
 from typing import Iterable
 
 from core.config import *
 from core.dbpf import *
+from core.logger import build_logger
 from core.util import *
 
 
@@ -120,12 +122,15 @@ def main():
 		# Parse arguments
 		args = parse_args()
 
+		# Create logger
+		logger = build_logger(verbose=args.verbose)
+
 		# Output
 		sys.stdout = Logger()
 		set_thread_name("Main", enumerate=False)
 
 		# Title
-		report(SC4MP_TITLE)
+		logger.info(SC4MP_TITLE)
 
 		# -s / --server-path argument
 		global sc4mp_server_path
@@ -143,10 +148,6 @@ def main():
 		else:
 			sc4mp_nostart = False
 
-		# -v / --verbose argument
-		if args.verbose:
-			# TODO: use this flag to set logger level to debug once the logger PR is merged
-			pass
 
 		# Server
 		global sc4mp_server
@@ -156,7 +157,7 @@ def main():
 
 	except Exception as e:
 
-		fatal_error(e)
+		logger.critical('Caught generic exception - fatal error', exc_info=True, stack_info=True)
 
 
 def parse_args() -> Namespace:
@@ -296,12 +297,12 @@ def update_json(filename, data):
 def package_plugins_and_regions():
 	"""TODO"""
 
-	report("Packaging plugins and regions...")
+	logger.info("Packaging plugins and regions...")
 
-	report("- packaging plugins...")
+	logger.info("- packaging plugins...")
 	package("plugins")
 
-	report("- packaging regions...")
+	logger.info("- packaging regions...")
 	package("regions")
 
 	# Regions manager
@@ -535,7 +536,7 @@ def send_or_cached(c, filename):
 def send_file(c, filename):
 	"""TODO"""
 
-	report("Sending file " + filename + "...")
+	logger.info(f"Sending file {filename}...")
 
 	filesize = os.path.getsize(filename)
 	c.sendall(str(filesize).encode())
@@ -557,8 +558,8 @@ def receive_file(c, filename, filesize):
 	#
 	#	c.sendall(SC4MP_SEPARATOR)
 
-	report("Receiving " + str(filesize) + " bytes...")
-	report("writing to " + filename)
+	logger.info(f"Receiving {filesize} bytes...")
+	logger.info(f"writing to {filename}")
 
 	if os.path.exists(filename):
 		os.remove(filename)
@@ -647,7 +648,7 @@ def restore(filename):
 		else:
 			if path[-5:] != ".json":
 				raise ServerException("Backup file must be a \".json\" file.")
-			print("Restoring backup at \"" + path + "\"")
+			logger.info(f'Restoring backup at "{path}"')
 			data = load_json(path)
 			directory, filename = os.path.split(os.path.abspath(path))
 			files_entry = data["files"]
@@ -656,12 +657,12 @@ def restore(filename):
 				size = file_entry["size"]
 				data_filename = os.path.join(directory, "data", hashcode + "_" + str(size))
 				restore_filename = os.path.join(directory, "restores", filename[:-5], original_filename)
-				print("Copying \"" + data_filename + "\" to \"" + restore_filename + "\"")
+				logger.info(f'Copying "{data_filename}" to "{restore_filename}"')
 				restore_directory = os.path.split(restore_filename)[0]
 				if not os.path.exists(restore_directory):
 					os.makedirs(restore_directory)
 				shutil.copy(data_filename, restore_filename)
-			print("- done.")
+			logger.info("- done.")
 			return
 	raise ServerException("File not found.")
 
@@ -735,6 +736,9 @@ class Server(th.Thread):
 
 		super().__init__()
 
+		self.logger = LoggerAdapter(logger,
+			extra={'className': self.__class__.__name__})
+
 		self.BIND_RETRY_DELAY = 5
 
 		#self.check_version() #TODO
@@ -756,22 +760,21 @@ class Server(th.Thread):
 
 			global sc4mp_server_running, sc4mp_request_threads
 
-			report("Starting server...")
+			self.logger.info("Starting server...")
 
-			report("- creating socket...")
+			self.logger.info("- creating socket...")
 			s = socket.socket()
 
-			report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
+			self.logger.info(f"- binding host {SC4MP_HOST} and port {SC4MP_PORT}...")
 			while True:
 				try:
 					s.bind((SC4MP_HOST, SC4MP_PORT))
 					break
 				except OSError as e:
-					show_error(e)
-					print(f"[WARNING] - failed to bind socket, retrying in {self.BIND_RETRY_DELAY} seconds...")
+					self.logger.warning(f"failed to bind socket, retrying in {self.BIND_RETRY_DELAY} seconds...", exc_info=True)
 					time.sleep(self.BIND_RETRY_DELAY)
 
-			report("- listening for connections...")
+			self.logger.info("- listening for connections...")
 			s.listen(5)
 			
 			sc4mp_server_running = True
@@ -798,15 +801,17 @@ class Server(th.Thread):
 
 							c.settimeout(sc4mp_config["PERFORMANCE"]["connection_timeout"])
 
+							c.settimeout(sc4mp_config["PERFORMANCE"]["connection_timeout"])
+
 							if (sc4mp_config["PERFORMANCE"]["request_limit"] is not None and host in client_requests and client_requests[host] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
-								report("[WARNING] Connection blocked from " + str(host) + ":" + str(port) + ".")
+								logger.warning(f"Connection blocked from {host}:{port}.")
 								c.close()
 								continue
 							else:
 								client_requests.setdefault(host, 0)
 								client_requests[host] += 1
 
-							report("Connection accepted with " + str(host) + ":" + str(port) + ".")
+							self.logger.info(f"Connection accepted with {host}:{port}.")
 
 							self.log_client(c)
 
@@ -816,11 +821,11 @@ class Server(th.Thread):
 
 						except Exception as e: #socket.error as e:
 
-							show_error(e)
+							self.logger.exception("caught generic exception", stack_info=True)
 				
 					else:
 
-						print("[WARNING] Request thread limit reached!")
+						self.logger.warning("Request thread limit reached!")
 
 						time.sleep(SC4MP_DELAY)
 				
@@ -828,12 +833,13 @@ class Server(th.Thread):
 
 				pass
 
-			report("Shutting down...")
+			logger.info("Shutting down...")
 			sc4mp_server_running = False
 
 		except Exception as e:
 
-			fatal_error(e)
+			logger.critical('Caught generic exception - fatal error', exc_info=True, stack_info=True)
+			sc4mp_server_running = False
 
 
 	def log_client(self, c):
@@ -895,7 +901,7 @@ class Server(th.Thread):
 	def create_subdirectories(self):
 		"""TODO"""
 
-		report("Creating subdirectories...")
+		self.logger.info("Creating subdirectories...")
 
 		directories = ["_Backups", "_Database", "_Temp", "Plugins", "Regions"]
 
@@ -907,7 +913,7 @@ class Server(th.Thread):
 					if (directory == "Plugins" or directory == "Regions"):
 						shutil.unpack_archive(get_sc4mp_path(directory + ".zip"), new_directory)
 				except Exception as e:
-					show_error(e)
+					self.logger.exception("caught generic exception", stack_info=True)
 					#report("Failed to create " + directory + " subdirectory.", None, "WARNING")
 					#report('(this may have been printed by error, check your sc4mp_server_path subdirectory)', None, "WARNING")
 
@@ -918,7 +924,7 @@ class Server(th.Thread):
 		global sc4mp_config, SC4MP_CONFIG_PATH
 		SC4MP_CONFIG_PATH = os.path.join(sc4mp_server_path, "serverconfig.ini")
 
-		report("Loading config...")
+		self.logger.info("Loading config...")
 		
 		sc4mp_config = Config(SC4MP_CONFIG_PATH, SC4MP_CONFIG_DEFAULTS, error_callback=show_error, update_constants_callback=update_config_constants)
 
@@ -966,7 +972,7 @@ class Server(th.Thread):
 	def prep_database(self):
 		"""TODO"""
 
-		report("Preparing database...")
+		self.logger.info("Preparing database...")
 
 		# Database directory
 		database_directory = os.path.join(sc4mp_server_path, "_Database")
@@ -1093,7 +1099,7 @@ class Server(th.Thread):
 	def clear_temp(self):
 		"""TODO"""
 
-		report("Clearing temporary files...")
+		self.logger.info("Clearing temporary files...")
 
 		try:
 			purge_directory(os.path.join(sc4mp_server_path, "_Temp"))
@@ -1107,7 +1113,7 @@ class Server(th.Thread):
 		if sc4mp_nostart:
 			return
 
-		report("Preparing regions...")
+		self.logger.info("Preparing regions...")
 
 		export("regions")
 
@@ -1120,7 +1126,7 @@ class Server(th.Thread):
 	def prep_backups(self):
 		"""TODO"""
 
-		report("Preparing backups...")
+		self.logger.info("Preparing backups...")
 
 		# Backups manager
 		global sc4mp_backups_manager
@@ -1154,7 +1160,7 @@ class Server(th.Thread):
 		if not sc4mp_config["NETWORK"]["discoverable"]:
 			return
 
-		report("Preparing server list...")
+		self.logger.info("Preparing server list...")
 
 		global sc4mp_server_list
 		sc4mp_server_list = ServerList()
@@ -1171,6 +1177,9 @@ class BackupsManager(th.Thread):
 		self.backup_dir = Path(sc4mp_server_path) / "_Backups"
 		super().__init__()
 
+		self.logger = LoggerAdapter(logger,
+			extra={'className': self.__class__.__name__})
+	
 
 	def run(self):
 		"""TODO"""
@@ -1210,7 +1219,8 @@ class BackupsManager(th.Thread):
 
 		except Exception as e:
 
-			fatal_error(e)
+			logger.critical('Caught generic exception - fatal error', exc_info=True, stack_info=True)
+			sc4mp_server_running = False
 
 
 	def load_json(self, filename):
@@ -1240,7 +1250,7 @@ class BackupsManager(th.Thread):
 			show_error("An error occured while pruning backups.")
 
 		# Report creating backups
-		report("Creating backup...", self)
+		self.logger.info("Creating backup...")
 
 		# Loop through all files in server directory and append them to a list
 		fullpaths = []
@@ -1261,7 +1271,7 @@ class BackupsManager(th.Thread):
 				os.makedirs(directory)
 			filename = os.path.join(directory, hashcode + "_" + str(filesize))
 			if not os.path.exists(filename) or hashcode != md5(filename) or filesize != os.path.getsize(filename):
-				report('- copying "' + fullpath + '"...', self)
+				self.logger.info(f'- copying "{fullpath}"...')
 				if os.path.exists(filename):
 					os.remove(filename)
 				shutil.copy(fullpath, filename)
@@ -1280,7 +1290,7 @@ class BackupsManager(th.Thread):
 		self.update_json(backup_filename, backup_data)
 
 		# Report done
-		report("- done.", self)
+		self.logger.info("- done.")
 
 
 	def prune(self) -> None:
@@ -1354,6 +1364,9 @@ class DatabaseManager(th.Thread):
 		"""TODO"""
 
 		super().__init__()
+
+		self.logger = LoggerAdapter(logger,
+			extra={'className': self.__class__.__name__})
 	
 		self.filename = filename #os.path.join(sc4mp_server_path, "_Database", "users.json")
 		self.data = self.load_json(self.filename)
@@ -1381,16 +1394,17 @@ class DatabaseManager(th.Thread):
 					time.sleep(SC4MP_DELAY)
 					new_data = str(self.data)
 					if old_data != new_data:
-						report('Updating "' + self.filename + '"...', self)
+						self.logger.info(f'Updating "{self.filename}"...')
 						self.update_json(self.filename, self.data)
-						report("- done.", self)
+						self.logger.info("- done.")
 					old_data = new_data
 				except Exception as e:
-					show_error(e)
+					self.logger.exception("caught generic exception", stack_info=True)
 
 		except Exception as e:
 
-			fatal_error(e)
+			logger.critical('Caught generic exception - fatal error', exc_info=True, stack_info=True)
+			sc4mp_server_running = False
 
 
 	def load_json(self, filename):
@@ -1418,6 +1432,9 @@ class RegionsManager(th.Thread):
 		"""TODO"""
 
 		super().__init__()
+
+		self.logger = LoggerAdapter(logger,
+			extra={'className': self.__class__.__name__})
 
 		self.regions_modified = False
 		self.export_regions = False
@@ -1452,11 +1469,11 @@ class RegionsManager(th.Thread):
 					# Export regions if requested, otherwise check for new tasks
 					if self.export_regions:
 
-						report("Exporting regions as requested...", self)
+						self.logger.info("Exporting regions as requested...")
 
 						export("regions")
 
-						report("- done.", self)
+						self.logger.info("- done.")
 
 						self.regions_modified = False
 						self.export_regions = False
@@ -1472,7 +1489,7 @@ class RegionsManager(th.Thread):
 							# Read values from tuple
 							save_id, user_id, region, savegame = task
 
-							report('Processing task "' + save_id + '"...', self)
+							self.logger.info(f'Processing task "{save_id}"...')
 
 							# Another layer of exception handling so that the request handler isn't waiting around in the event of an error
 							try:
@@ -1585,7 +1602,7 @@ class RegionsManager(th.Thread):
 								# Raise the exception so that it appears in the server's output
 								raise e
 
-							report("- done.", self)
+							self.logger.info("- done.")
 
 						else:
 
@@ -1609,11 +1626,12 @@ class RegionsManager(th.Thread):
 
 				except Exception as e:
 
-					show_error(e)
+					self.logger.exception("caught generic exception", stack_info=True)
 
 		except Exception as e:
 
-			fatal_error(e)
+			logger.critical('Caught generic exception - fatal error', exc_info=True, stack_info=True)
+			sc4mp_server_running = False
 
 
 	def load_json(self, filename):
@@ -1738,7 +1756,10 @@ class RequestHandler(th.Thread):
 		"""TODO"""
 
 		super().__init__()
-		
+
+		self.logger = LoggerAdapter(logger,
+			extra={'className': self.__class__.__name__})
+
 		self.c = c
 
 
@@ -1759,7 +1780,7 @@ class RequestHandler(th.Thread):
 
 				request = args[0]
 
-				report("Request: " + request, self)
+				self.logger.info(f"Request: {request}")
 
 				if request == "ping":
 					self.ping(c)
@@ -1824,13 +1845,14 @@ class RequestHandler(th.Thread):
 
 			except Exception as e:
 
-				show_error(e)
+				self.logger.exception("caught generic exception", stack_info=True)
 
 			sc4mp_request_threads -= 1
 
 		except Exception as e:
 
-			fatal_error(e)
+			logger.critical('Caught generic exception - fatal error', exc_info=True, stack_info=True)
+			sc4mp_server_running = False
 
 
 	def request_header(self, c, args):
@@ -2038,7 +2060,7 @@ class RequestHandler(th.Thread):
 				savegame.get_SC4ReadRegionalCity()
 			
 			# Filter out tiles that do not border every other tile
-			report("Savegame filter 1", self)
+			logger.debug("Savegame filter 1")
 			new_savegames = []
 			for savegame in savegames:
 				add = True
@@ -2064,14 +2086,14 @@ class RequestHandler(th.Thread):
 						add = False
 				if add:
 					new_savegames.append(savegame)
-					report("YES (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+					self.logger.debug(f"YES ({savegameX}, {savegameY})")
 				else:
-					report("NO (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+					self.logger.debug(f"NO ({savegameX}, {savegameY})")
 			savegames = new_savegames
 
 			# Filter out tiles which have identical date subfiles as their previous versions
 			if len(savegames) > 1:
-				report("Savegame filter 2", self)
+				self.logger.debug("Savegame filter 2")
 				new_savegames = []
 				for savegame in savegames:
 					savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
@@ -2084,16 +2106,16 @@ class RequestHandler(th.Thread):
 						new_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
 						if new_date_subfile_hash not in date_subfile_hashes:
 							new_savegames.append(savegame)
-							report("YES (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+							self.logger.debug(f"YES ({savegameX}, {savegameY})")
 						else:
-							report("NO (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+							self.logger.debug(f"NO ({savegameX}, {savegameY})")
 					else:
 						new_savegames.append(savegame)
-						report("YES (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+						self.logger.debug(f"YES ({savegameX}, {savegameY})")
 					savegame = None
 				savegames = new_savegames
 			else:
-				report("Skipping savegame filter 2", self)
+				self.logger.debug("Skipping savegame filter 2")
 
 			# If one savegame remains, pass it to the regions manager, otherwise report to the client that the save push is invalid
 			if len(savegames) == 1:
@@ -2296,6 +2318,9 @@ class ServerList(th.Thread):
 
 		super().__init__()
 
+		self.logger = LoggerAdapter(logger,
+			extra={'className': self.__class__.__name__})
+
 		self.SERVER_LIMIT = 1 + len(SC4MP_SERVERS) + 100 #TODO make configurable
 
 		try:
@@ -2340,7 +2365,7 @@ class ServerList(th.Thread):
 						server_id = random.choice(list(self.servers.keys()))
 						server_entry = self.servers.pop(server_id)
 						server = (server_entry["host"], server_entry["port"])
-					print("Synchronizing server list with " + server[0] + ":" + str(server[1]) + "...")
+					self.logger.debug(f"Synchronizing server list with {server[0]}:{server[1]}...")
 
 					# Ping the next server
 					try:
@@ -2350,33 +2375,33 @@ class ServerList(th.Thread):
 
 						# Skip it if it matches the server id of this server
 						if server_id == sc4mp_config["INFO"]["server_id"]:
-							print("- \"" + server_id + "\" is our server_id!")
+							self.logger.debug(f'- "{server_id}" is our server_id!')
 							continue
 
 						# Resolve server id confilcts
 						if server_id in self.servers:
-							print("- \"" + server_id + "\" already found in our server list")
+							self.logger.debug(f' - "{server_id}" already found in our server list')
 							old_server = (self.servers[server_id]["host"], self.servers[server_id]["port"])
 							if server != old_server:
-								print("[WARNING] Resolving server_id conflict...")
+								self.logger.warning(" - Resolving server_id conflict...")
 								if self.ping(old_server) is None:
-									print("[WARNING] - keeping the new server!")
+									self.logger.warning(" - keeping the new server!")
 									self.servers[server_id] = {"host": server[0], "port": server[1]}
 								else:
-									print("[WARNING] - keeping the old server!")
+									self.logger.warning(" - keeping the old server!")
 						else:
-							print("- adding \"" + server_id + "\" to our server list")
+							self.logger.debug(f' - adding "{server_id}" to our server list')
 							self.servers[server_id] = {"host": server[0], "port": server[1]}
 
 						# Request to be added to the server's server list
-						print("- requesting to be added to their server list...")
+						self.logger.debug(" - requesting to be added to their server list...")
 						self.add_server(server)
 
 						# Get the server's server list
-						print("- receiving their server list...")
+						self.logger.debug(" - receiving their server list...")
 						self.server_list(server)
 
-						print("- done.")
+						self.logger.debug(" - done.")
 
 					except Exception as e:
 						
@@ -2391,7 +2416,7 @@ class ServerList(th.Thread):
 
 		except Exception as e:
 			
-			show_error(e)
+			self.logger.exception("caught generic exception", stack_info=True)
 
 
 	def create_socket(self, server):
