@@ -189,10 +189,11 @@ class DBPF:
 		return entry['filesize']
 
 
-	#def get_subfile_header(self, type_id):
-	#	"""TODO"""
-	#	self.goto_subfile(type_id)
-	#	return (self.read_UL4(), self.read_ID(), ) #TODO how to read these values?
+	def get_subfile_header(self, type_id):
+		"""TODO"""
+		#self.goto_subfile(type_id)
+		#return (self.read_UL4(), self.read_ID(), ) #TODO how to read these values?
+		pass
 
 
 	def decompress_subfile(self, type_id):
@@ -210,6 +211,7 @@ class DBPF:
 
 		data = self.decompress_subfile("ca027edb")
 	
+		# For development
 		#print(data.read())
 		#data.seek(0)
 
@@ -254,8 +256,9 @@ class DBPF:
 
 		data = self.decompress_subfile("2990c1e5")
 
-		print(data.read())
-		data.seek(0)
+		# For development
+		#print(data.read())
+		#data.seek(0)
 
 		self.cSC4Simulator = {}
 
