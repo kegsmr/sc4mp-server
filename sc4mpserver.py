@@ -1594,12 +1594,20 @@ class RegionsManager(th.Thread):
 
 									# Set new filename
 									new_filename = set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag)
+									new_filename_oldscheme = f"{coords}.sc4"
 
-									# Copy save file from temporary directory to regions directory
-									destination = os.path.join(sc4mp_server_path, "Regions", region, new_filename)
-									if os.path.exists(destination):
-										os.remove(destination)
-									shutil.copy(filename, destination)
+									# Copy save file from temporary directory to regions directory (use old naming scheme if new one causes an error)
+									destination_directory = os.path.join(sc4mp_server_path, "Regions", region)
+									try:
+										destination = os.path.join(destination_directory, new_filename)
+										if os.path.exists(destination):
+											os.remove(destination)
+										shutil.copy(filename, destination)
+									except:
+										destination = os.path.join(destination_directory, new_filename_oldscheme)
+										if os.path.exists(destination):
+											os.remove(destination)
+										shutil.copy(filename, destination)
 
 									# Copy save file from temporary directory to backup directory
 									backup_directory = os.path.join(sc4mp_server_path, "Regions", region, "_Backups", coords)
