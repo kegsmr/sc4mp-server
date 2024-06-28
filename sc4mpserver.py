@@ -772,6 +772,7 @@ class Server(th.Thread):
 		#TODO lock server directory
 		self.create_subdirectories()
 		self.load_config()
+		self.check_updates()
 		self.prep_database()
 		self.clear_temp()
 		self.prep_filetables()
@@ -992,6 +993,11 @@ class Server(th.Thread):
 			SC4MP_SERVER_ID = default_server_id
 			SC4MP_SERVER_NAME = default_server_name
 			SC4MP_SERVER_DESCRIPTION = default_server_description'''
+
+
+	def check_updates(self):
+
+		pass
 
 
 	def prep_database(self):
