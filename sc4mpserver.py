@@ -259,7 +259,6 @@ def set_savegame_data(entry, savegame):
 	"""TODO entry values"""
 
 	# No overwrite
-	entry.setdefault("filename", os.path.basename(os.path.normpath(savegame.filename)))
 	entry.setdefault("owner", None)
 	entry.setdefault("modified", None)
 	entry.setdefault("locked", False)
@@ -273,6 +272,7 @@ def set_savegame_data(entry, savegame):
 		date_subfile_hashes.append(date_subfile_hash)
 
 	# Overwrite
+	entry["filename"] = os.path.basename(os.path.normpath(savegame.filename))
 	entry["hashcode"] = md5(savegame.filename)
 	entry["size"] = savegame.SC4ReadRegionalCity["citySizeX"] 
 	entry["city_name"] = savegame.SC4ReadRegionalCity["cityName"]
@@ -355,18 +355,19 @@ def export(export_type):
 	try:
 		if export_type == "regions":
 			for region in os.listdir(target):
-					if os.path.isdir(os.path.join(target, region)):
-						data_filename = os.path.join(target, region, "_Database", "region.json")
-						data = load_json(data_filename)
-						for coords in data.keys():
-							entry = data.get(coords, None)
-							if entry is not None:
-								filename = entry.get("filename", None)
-								reset_filename = entry.get("reset_filename", None)
-								if filename is not None and reset_filename is not None:
-									filename = os.path.join(target, region, filename)
-									if (not os.path.exists(filename)) and os.path.exists(reset_filename):
-										shutil.copy(reset_filename, filename)
+				if os.path.isdir(os.path.join(target, region)):
+					data_filename = os.path.join(target, region, "_Database", "region.json")
+					data = load_json(data_filename)
+					for coords, entry in data.items():
+						if entry is not None:
+							filename = entry.get("filename", None)
+							reset_filename = entry.get("reset_filename", None)
+							if filename is not None and reset_filename is not None:
+								savegameX, savegameY = coords.split("_")
+								filename = os.path.join(target, region, filename)
+								reset_filename = os.path.join(target, region, reset_filename)
+								if (not os.path.exists(filename)) and (os.path.exists(reset_filename)):
+									shutil.copy(reset_filename, filename)
 	except Exception as e:
 		show_error(e)
 
@@ -1086,12 +1087,12 @@ class Server(th.Thread):
 				data[coords] = entry
 
 				# Create reset savegame file if needed
-				if "reset_filename" not in entry:
-					reset_directory = os.path.join(region_directory, "_Backups", coords)
-					if not os.path.exists(reset_directory):
-						os.makedirs(reset_directory)
+				if ("reset_filename" not in entry.keys()) or ((entry["reset_filename"] is not None) and (not os.path.exists(os.path.join(region_directory, entry["reset_filename"])))):
+					reset_directory = os.path.join("_Backups", coords)
+					os.makedirs(os.path.join(region_directory, reset_directory), exist_ok=True)
 					reset_filename = os.path.join(reset_directory, "reset.sc4")
-					shutil.copy(savegame.filename, reset_filename)
+					if not os.path.exists(os.path.join(region_directory, reset_filename)):
+						shutil.copy(savegame.filename, os.path.join(region_directory, reset_filename))
 					entry["reset_filename"] = reset_filename
 
 				# Set entry values
