@@ -274,6 +274,8 @@ def set_savegame_data(entry, savegame):
 	# Overwrite
 	entry["hashcode"] = md5(savegame.filename)
 	entry["size"] = savegame.SC4ReadRegionalCity["citySizeX"] 
+	entry["city_name"] = savegame.SC4ReadRegionalCity["cityName"]
+	entry["mayor_name"] = savegame.SC4ReadRegionalCity["mayorName"] 
 	entry["gamemode"] = savegame.SC4ReadRegionalCity["modeFlag"]
 	entry["difficulty"] = savegame.SC4ReadRegionalCity["starCount"]
 	entry["mayor_rating"] = savegame.SC4ReadRegionalCity["mayorRating"]
@@ -1484,6 +1486,8 @@ class RegionsManager(th.Thread):
 								savegameSizeX = savegame.SC4ReadRegionalCity["citySizeX"]
 								savegameSizeY = savegame.SC4ReadRegionalCity["citySizeY"]
 								savegameModeFlag = savegame.SC4ReadRegionalCity["modeFlag"]
+								savegameCityName = savegame.SC4ReadRegionalCity["cityName"]
+								savegameMayorName = savegame.SC4ReadRegionalCity["mayorName"]
 
 								# Set "coords" variable. Used as a key in the region database and also for the name of the new save file
 								coords = f'{savegameX}_{savegameY}'
@@ -1543,8 +1547,11 @@ class RegionsManager(th.Thread):
 										if os.path.exists(previous_filename):
 											os.remove(previous_filename)
 
+									# Set new filename
+									new_filename = f"({savegameX}, {savegameY}) {savegameCityName} - {savegameMayorName}.sc4"
+
 									# Copy save file from temporary directory to regions directory
-									destination = os.path.join(sc4mp_server_path, "Regions", region, coords + ".sc4") #TODO include city name?
+									destination = os.path.join(sc4mp_server_path, "Regions", region, new_filename) #TODO include city name?
 									if os.path.exists(destination):
 										os.remove(destination)
 									shutil.copy(filename, destination)
@@ -1563,7 +1570,7 @@ class RegionsManager(th.Thread):
 									#TODO delete old backups
 
 									# Set entry values
-									entry["filename"] = coords + ".sc4"
+									entry["filename"] = new_filename
 									entry["owner"] = user_id
 									entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 									set_savegame_data(entry, savegame)
