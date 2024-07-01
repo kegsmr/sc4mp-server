@@ -1062,6 +1062,10 @@ class Server(th.Thread):
 								if exec_file == PROCESS_NAME:
 									os.chdir(exec_dir)
 
+								# Delete updater.bat
+								if os.path.exists("updater.bat"):
+									os.unlink("updater.bat")
+
 								# Purge update directory
 								try:
 									if os.path.exists("update"):
@@ -1081,7 +1085,7 @@ class Server(th.Thread):
 								report("Downloading update...")
 
 								# Get download URL
-								"""download_url = None
+								download_url = None
 								for asset in latest_release_info["assets"]:
 									if asset["name"].startswith("sc4mp-server-installer-windows"):
 										download_url = asset["browser_download_url"]
@@ -1105,26 +1109,37 @@ class Server(th.Thread):
 										while download_size_downloaded < download_size:
 											bytes_read = rfile.read(SC4MP_BUFFER_SIZE) 
 											download_size_downloaded += len(bytes_read)
-											wfile.write(bytes_read)"""
+											wfile.write(bytes_read)
 
-								destination = "update\\sc4mp-server-installer-windows-v0.5.0.20240630225652.exe" #TODO remove
+								
+								# Convert destination to path object
+								destination = Path(destination)
 
 								# Report installing update
 								report("Installing update...")
 
 								# Create `updater.bat``								
+								args = sys.argv
+								if args[0].endswith("sc4mpserver.py"):
+									args.pop(0)
+								if "-u" in args:
+									args.remove("-u")
+								if "--force-update" in args:
+									args.remove("--force-update")
 								with open("updater.bat", "w") as batch_file:
 									batch_file.writelines([
-										f"@echo off",
-										f"cd \"{os.getcwd()}\"",
-										f"echo Running installer..."
-										f"{os.path.abspath(destination)} /dir={os.getcwd()} /verysilent"
-										f"echo Relaunching server..."
-										f"{PROCESS_NAME} {' '.join(sys.argv)}"
+										f"@echo off\n",
+										f"cd \"{os.getcwd()}\"\n",
+										f"echo Running installer...\n",
+										f"cd {destination.parent}\n",
+										f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",
+										f"cd ..\n",
+										f"echo Relaunching server...\n",
+										f"{PROCESS_NAME} {' '.join(sys.argv)}\n"
 									])
 
 								# Start installer in very silent mode and exit
-								subprocess.Popen(["cmd", "updater.bat"])
+								subprocess.Popen(["updater.bat"])
 							
 							except Exception as e:
 
