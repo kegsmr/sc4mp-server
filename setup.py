@@ -79,7 +79,7 @@ def main():
 	shutil.copy("License.txt", DIST)
 	shutil.copy("Readme.html", DIST)
 
-	# CREATE A ZIP ARCHIVE OF THE DISTRIBUTION IF REQUESTED
+	# Create a zip archive of the distribution
 	destination = os.path.join(os.path.join("builds", "sc4mp-server-" + platform.system().lower() + "-" + str(8 * struct.calcsize("P")) + "-v" + VERSION + "." + datetime.now().strftime("%Y%m%d%H%M%S")))
 	print('Creating zip archive of "' + DIST + '" at "' + destination + '"')
 	shutil.make_archive(destination, "zip", DIST)
