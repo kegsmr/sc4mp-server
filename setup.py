@@ -30,32 +30,48 @@ def main():
 		else:
 			shutil.rmtree(item)
 
-	# USE PY2EXE
-	sys.argv.append('py2exe')
-
-	# RUN SETUP
-	setup(
-		console=[{
-			"script": "sc4mpserver.py",
-			"icon_resources": [(1, "resources/icon.ico")],
-		}],
-		zipfile=None,
-		options={
-			"py2exe": {
-				"packages": [],
-				"bundle_files": 1,
-                "dist_dir": DIST,
-				"optimize": 2,
-				"compressed": True,
-				"excludes":[],
-				"verbose": 4
-			}
-		},
-		data_files=find_data_files('resources','resources',['*'])
+	# Create version file
+	print(f"Creating version file...")
+	create_versionfile(
+		output_file="version.rc",
+		version=VERSION,
+		company_name=PUBLISHER,
+		file_description=TITLE,
+		internal_name=TITLE,
+		legal_copyright=LICENSE,
+		original_filename=NAME,
+		product_name=TITLE,
 	)
+
+	# Run setup
+	print("Running setup...")
+	pyinstaller.run([
+		f"sc4mpserver.py",
+		f"--specpath",
+		f"{os.path.join('temp', 'spec')}",
+        f"--distpath",
+		f"dist",
+        f"--workpath",
+		f"{os.path.join('temp', 'build')}",
+        f"--onedir",
+		f"--contents-directory",
+		f"resources",
+		f"--noconfirm",
+		f"--noupx",
+        f"--console",
+        f"-i",
+		f"{os.path.abspath(os.path.join('resources', 'icon.ico'))}",
+		f"--version-file",
+		f"{os.path.abspath('version.rc')}"
+	])
+
+	# Copy binary files to distribution directory
+	shutil.copytree(os.path.join("dist", "sc4mpserver"), DIST, dirs_exist_ok=True)
+
 
 	# COPY LICENSE AND README TO DISTRIBUTION DIRECTORY
 	print(f'Copying extra files to "{DIST}"...')
+	shutil.copytree("resources", os.path.join(DIST, "resources"), dirs_exist_ok=True)
 	shutil.copy("License.txt", DIST)
 	shutil.copy("Readme.html", DIST)
 

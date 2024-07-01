@@ -12,6 +12,7 @@ import shutil
 import socket
 import string
 import struct
+import subprocess
 import sys
 import threading as th
 import time
@@ -21,8 +22,17 @@ from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
+import re
+import urllib.request
 
-SC4MP_VERSION = "0.4.4"
+from core.config import *
+from core.dbpf import *
+from core.util import *
+
+
+# Header
+
+SC4MP_VERSION = "0.5.0"
 
 SC4MP_SERVERS = [("servers.sc4mp.org", port) for port in range(7240, 7250)]
 
@@ -120,9 +130,25 @@ def main():
 		# Title
 		report(SC4MP_TITLE)
 
+		# -k / --skip-update argument
+		global sc4mp_skip_update
+		if args.skip_update is True:
+			sc4mp_skip_update = True
+		else:
+			sc4mp_skip_update = False
+
+		# -u / --force-update argument
+		global sc4mp_force_update
+		if args.force_update is True:
+			sc4mp_force_update = True
+		else:
+			sc4mp_force_update = False
+
 		# -s / --server-path argument
 		global sc4mp_server_path
 		if args.server_path:
+			if not sc4mp_force_update:
+				sc4mp_skip_update = True
 			sc4mp_server_path = args.server_path
 
 		# -r / --restore argument
@@ -159,6 +185,10 @@ def parse_args() -> Namespace:
 						 description="SimCity 4 Multiplayer Server")
 
 	parser.add_argument("-s", "--server-path", help="specify server directory relative path")
+
+	parser.add_argument("-k", "--skip-update", help="skip the update check at startup", action="store_true")
+
+	parser.add_argument("-u", "--force-update", help="force update at startup", action="store_true")
 
 	parser.add_argument("-r", "--restore", help="restore the server to the specified backup")
 
@@ -251,7 +281,6 @@ def set_savegame_data(entry, savegame):
 	"""TODO entry values"""
 
 	# No overwrite
-	entry.setdefault("filename", os.path.basename(os.path.normpath(savegame.filename)))
 	entry.setdefault("owner", None)
 	entry.setdefault("modified", None)
 	entry.setdefault("locked", False)
@@ -265,8 +294,11 @@ def set_savegame_data(entry, savegame):
 		date_subfile_hashes.append(date_subfile_hash)
 
 	# Overwrite
+	entry["filename"] = os.path.basename(os.path.normpath(savegame.filename))
 	entry["hashcode"] = md5(savegame.filename)
 	entry["size"] = savegame.SC4ReadRegionalCity["citySizeX"] 
+	entry["city_name"] = savegame.SC4ReadRegionalCity["cityName"]
+	entry["mayor_name"] = savegame.SC4ReadRegionalCity["mayorName"] 
 	entry["gamemode"] = savegame.SC4ReadRegionalCity["modeFlag"]
 	entry["difficulty"] = savegame.SC4ReadRegionalCity["starCount"]
 	entry["mayor_rating"] = savegame.SC4ReadRegionalCity["mayorRating"]
@@ -345,18 +377,19 @@ def export(export_type):
 	try:
 		if export_type == "regions":
 			for region in os.listdir(target):
-					if os.path.isdir(os.path.join(target, region)):
-						data_filename = os.path.join(target, region, "_Database", "region.json")
-						data = load_json(data_filename)
-						for coords in data.keys():
-							entry = data.get(coords, None)
-							if entry is not None:
-								filename = entry.get("filename", None)
-								reset_filename = entry.get("reset_filename", None)
-								if filename is not None and reset_filename is not None:
-									filename = os.path.join(target, region, filename)
-									if (not os.path.exists(filename)) and os.path.exists(reset_filename):
-										shutil.copy(reset_filename, filename)
+				if os.path.isdir(os.path.join(target, region)):
+					data_filename = os.path.join(target, region, "_Database", "region.json")
+					data = load_json(data_filename)
+					for entry in data.values():
+						if entry is not None:
+							filename = entry.get("filename", None)
+							reset_filename = entry.get("reset_filename", None)
+							if filename is not None and reset_filename is not None:
+								filename = os.path.join(target, region, filename)
+								reset_filename = os.path.join(target, region, reset_filename)
+								if (not os.path.exists(filename)) and (os.path.exists(reset_filename)):
+									print(f"[WARNING] Savegame at \"{filename}\" is missing! Replacing with \"{reset_filename}\"...")
+									shutil.copy(reset_filename, filename)
 	except Exception as e:
 		show_error(e)
 
@@ -717,340 +750,31 @@ def set_thread_name(name, enumerate=True):
 		return name
 
 
-# Objects
+def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag):
 
-class Config:
-	"""TODO"""
+	prefix = f"({savegameX:0>{3}}-{savegameY:0>{3}})"
 
+	if savegameModeFlag == 0:
 
-	def __init__(self, path, defaults):
-		"""TODO"""
-
-		# Parameters
-		self.PATH = path
-		self.DEFAULTS = defaults
-
-		# Create dictionary with default config settings
-		self.data = {}
-		for section_name, section_items in self.DEFAULTS:
-			self.data.setdefault(section_name, {})
-			for item_name, item_value in section_items:
-				self.data[section_name].setdefault(item_name, item_value)
-		
-		# Try to read settings from the config file and update the dictionary accordingly
-		parser = configparser.RawConfigParser()
-		try:
-			parser.read(self.PATH)
-			for section_name, section in self.data.items():
-				try:
-					for item_name in section:
-						try:
-							from_file = parser.get(section_name, item_name)
-							if from_file in ("true", "True", "TRUE"):
-								self.data[section_name][item_name] = True
-							elif from_file in ("false", "False", "FALSE"):
-								self.data[section_name][item_name] = False
-							elif from_file in ("none", "None", "NONE"):
-								self.data[section_name][item_name] = None
-							else:
-								t = type(self.data[section_name][item_name])
-								self.data[section_name][item_name] = t(from_file)
-						except (configparser.NoSectionError, configparser.NoOptionError):
-							print(f"[WARNING] Option \"{item_name}\" missing from section \"{section_name}\" of the config file at \"{self.PATH}\". Using default value.")
-						except Exception as e:
-							show_error(e, no_ui=True)
-				except Exception as e:
-					show_error(e, no_ui=True)
-		except Exception as e:
-			show_error(e, no_ui=True)
-
-		# Update config file
-		self.update()
-
-
-	def __getitem__(self, key):
-		"""TODO"""
-		return self.data.__getitem__(key)
-
-
-	def __setitem__(self, key, value):
-		"""TODO"""
-		return self.data.__setitem__(key, value)
-
-
-	def update(self):
-		"""TODO"""
-		parser = configparser.RawConfigParser()
-		for section_name, section in self.data.items():
-			parser.add_section(section_name)
-			for item_name, item_value in section.items():
-				parser.set(section_name, item_name, item_value)
-		with open(self.PATH, 'wt') as file:
-			parser.write(file)
-		try:
-			update_config_constants(self)
-		except:
-			pass
-
-
-class DBPF:
-	"""TODO include credits to original php file"""
-
-
-	def __init__(self, filename, offset=0):
-		"""TODO"""
-
-		report('Parsing "' + filename + '"...', self)
-
-		self.filename = filename
-		self.offset = offset
-
-		self.NONSENSE_BYTE_OFFSET = 9
-
-		# Try opening the file to read bytes
-		try:
-			self.file = open(self.filename, 'rb')
-		except Exception as e:
-			raise e #TODO
-
-		# Advance to offset
-		start = self.offset
-		if self.offset > 0:
-			self.file.seek(self.offset)
-
-		# Verify that the file is a DBPF
-		test = self.file.read(4)
-		if test != b"DBPF":
-			return #TODO raise exception
-
-		# Read the header
-		self.majorVersion = self.read_UL4()
-		self.minorVersion = self.read_UL4()
-		self.reserved = self.file.read(12)
-		self.dateCreated = self.read_UL4()
-		self.dateModified = self.read_UL4()
-		self.indexMajorVersion = self.read_UL4()
-		self.indexCount = self.read_UL4()
-		self.indexOffset = self.read_UL4()
-		self.indexSize = self.read_UL4()
-		self.holesCount = self.read_UL4()
-		self.holesOffset = self.read_UL4()
-		self.holesSize = self.read_UL4()
-		self.indexMinorVersion = self.read_UL4() - 1
-		self.reserved2 = self.file.read(32)
-		self.header_end = self.file.tell()
-
-		# Seek to index table
-		self.file.seek(offset + self.indexOffset)
-
-		# Read index table
-		self.indexData = []
-		for index in range(0, self.indexCount):
-			self.indexData.append({})
-			self.indexData[index]['typeID'] = self.read_ID()
-			self.indexData[index]['groupID'] = self.read_ID()
-			self.indexData[index]['instanceID'] = self.read_ID()
-			if ((self.indexMajorVersion == "7") and (self.indexMinorVersion == "1")):
-				self.indexData[index]['instanceID2'] = self.read_ID()
-			self.indexData[index]['offset'] = self.read_UL4()
-			self.indexData[index]['filesize'] = self.read_UL4()
-			self.indexData[index]['compressed'] = False #TODO
-			self.indexData[index]['truesize'] = 0 #TODO
-
-
-	def decompress(self, length):
-
-		#report('Decompressing ' + str(length) + ' bytes...', self)
-
-		buf = ""
-		answer = bytes()
-		answerlen = 0
-		numplain = ""
-		numcopy = ""
-		offset = ""
-
-		while length > 0:
-			try:
-				cc = self.read_UL1(self.file)
-			except Exception as e:
-				show_error(e)
-				break
-			length -= 1
-			#print("Control char is " + str(cc) + ", length remaining is " + str(length) + ".\n")
-			if cc >= 252: #0xFC
-				numplain = cc & 3 #0x03
-				if numplain > length:
-					numplain = length
-				numcopy = 0
-				offset = 0
-			elif cc >= 224: #0xE0
-				numplain = (cc - 223) << 2 #223 = 0xdf
-				numcopy = 0
-				offset = 0
-			elif cc >= 192: #0xC0
-				length -= 3
-				byte1 = self.read_UL1(self.file)
-				byte2 = self.read_UL1(self.file)
-				byte3 = self.read_UL1(self.file)
-				numplain = cc & 3 #0x03
-				numcopy = ((cc & 12) << 6) + 5 + byte3 #12 = 0x0c
-				offset = ((cc & 16) << 12) + (byte1 << 8) + byte2 #16 = 0x10
-			elif cc >= 128: #0x80
-				length -= 2
-				byte1 = self.read_UL1(self.file)
-				byte2 = self.read_UL1(self.file)
-				numplain = (byte1 & 192) >> 6 #192 = 0xc0
-				numcopy = (cc & 63) + 4 #63 = 0x3f
-				offset = ((byte1 & 63) << 8) + byte2 #63 = 0x3f
-			else:
-				length -= 1
-				byte1 = self.read_UL1(self.file)
-				numplain = cc & 3 #3 = 0x03
-				numcopy = ((cc & 28) >> 2) + 3 #28 = 0x1c
-				offset = ((cc & 96) << 3) + byte1 #96 = 0x60
-			length -= numplain
-
-			# This section basically copies the parts of the string to the end of the buffer:
-			if numplain > 0:
-				buf = self.file.read(numplain)
-				answer = answer + buf
-			fromoffset = len(answer) - (offset + 1)  # 0 == last char
-			for index in range(numcopy):
-				#print(str(answer))
-				#print(str(cc))
-				#print(str(offset))
-				#print(str(fromoffset))
-				#TODO remove try and except block. decompression algorithm breaks with a control char of 206. the offset becomes larger than the length of the answer, causing a negative fromindex and an indexing error. for now it does not seem to affect city coordinates
-				try:
-					answer = answer + (answer[fromoffset + index]).to_bytes(1, 'little') #substr(fromoffset + index, 1)
-				except Exception as e:
-					#show_error(e) #TODO
-					return io.BytesIO(answer)
-			answerlen += numplain
-			answerlen += numcopy
-
-		return io.BytesIO(answer)
-
-
-	def read_UL1(self, file=None):
-		"""TODO"""
-		if file is None:
-			file = self.file
-		return struct.unpack('<B', file.read(1))[0]
-
-
-	def read_UL2(self, file=None):
-		"""TODO"""
-		if file is None:
-			file = self.file
-		return struct.unpack('<H', file.read(2))[0]
+		return f"{prefix} - (Empty).sc4"
 	
-	
-	def read_UL4(self, file=None):
-		"""TODO"""
-		if file is None:
-			file = self.file
-		return struct.unpack('<L', file.read(4))[0]
+	else:
 
+		city_name = filter_non_alpha_numeric(savegameCityName)
+		if len(city_name) < 1:
+			city_name = "New City"
 
-	def read_ID(self, file=None):
-		"""TODO"""
-		if file is None:
-			file = self.file
-		return file.read(4)[::-1].hex()
-
-
-	def get_indexData_entry_by_type_ID(self, type_id):
-		"""TODO"""
-		for entry in self.indexData:
-			if entry['typeID'] == type_id:
-				return entry
-
-
-	def goto_subfile(self, type_id):
-		"""TODO"""
-		entry = self.get_indexData_entry_by_type_ID(type_id)
-		self.file.seek(entry['offset'])
-		#print(entry['offset'] + 9)
-
-
-	def get_subfile_size(self, type_id):
-		"""TODO"""
-		entry = self.get_indexData_entry_by_type_ID(type_id)
-		return entry['filesize']
-
-
-	#def get_subfile_header(self, type_id):
-	#	"""TODO"""
-	#	self.goto_subfile(type_id)
-	#	return (self.read_UL4(), self.read_ID(), ) #TODO how to read these values?
-
-
-	def decompress_subfile(self, type_id):
-		"""TODO"""
-		#report('Decompressing "' + type_id + '"...', self)
-		self.goto_subfile(type_id)
-		self.file.read(self.NONSENSE_BYTE_OFFSET)
-		return self.decompress(self.get_subfile_size(type_id))
-
-
-	def get_SC4ReadRegionalCity(self):
-		"""TODO"""
-
-		report('Parsing region view subfile of "' + self.filename + '"...', self)
-
-		data = self.decompress_subfile("ca027edb")
-	
-		#print(data.read())
-		#data.seek(0)
-
-		self.SC4ReadRegionalCity = {}
-
-		self.SC4ReadRegionalCity['majorVersion'] = self.read_UL2(data)
-		self.SC4ReadRegionalCity['minorVersion'] = self.read_UL2(data)
+		mayor_name = filter_non_alpha_numeric(savegameMayorName)
+		if len(mayor_name) < 1:
+			mayor_name = "Defacto"
 		
-		self.SC4ReadRegionalCity['tileXLocation'] = self.read_UL4(data)
-		self.SC4ReadRegionalCity['tileYLocation'] = self.read_UL4(data)
-		
-		self.SC4ReadRegionalCity['citySizeX'] = self.read_UL4(data)
-		self.SC4ReadRegionalCity['citySizeY'] = self.read_UL4(data)
-		
-		self.SC4ReadRegionalCity['residentialPopulation'] = self.read_UL4(data)
-		self.SC4ReadRegionalCity['commercialPopulation'] = self.read_UL4(data)
-		self.SC4ReadRegionalCity['industrialPopulation'] = self.read_UL4(data)
+		return f"{prefix} - {city_name} - {mayor_name}"[:252] + ".sc4"
 
-		self.SC4ReadRegionalCity['unknown1'] = data.read(4) #TODO read float
 
-		self.SC4ReadRegionalCity['mayorRating'] = self.read_UL1(data)
-		self.SC4ReadRegionalCity['starCount'] = self.read_UL1(data)
-		self.SC4ReadRegionalCity['tutorialFlag'] = self.read_UL1(data)
+def filter_non_alpha_numeric(text):
+	return " ".join(re.sub('[^0-9a-zA-Z ]+', " ", text).split())
 
-		self.SC4ReadRegionalCity['cityGUID'] = self.read_UL4(data)
 
-		self.SC4ReadRegionalCity['unknown5'] = self.read_UL4(data)
-		self.SC4ReadRegionalCity['unknown6'] = self.read_UL4(data)
-		self.SC4ReadRegionalCity['unknown7'] = self.read_UL4(data)
-		self.SC4ReadRegionalCity['unknown8'] = self.read_UL4(data)
-		self.SC4ReadRegionalCity['unknown9'] = self.read_UL4(data)
-
-		self.SC4ReadRegionalCity['modeFlag'] = self.read_UL1(data)
-
-		#TODO keep reading file
-
-		return self.SC4ReadRegionalCity
-
-	
-	def get_cSC4Simulator(self):
-		"""TODO"""
-
-		data = self.decompress_subfile("2990c1e5")
-
-		print(data.read())
-		data.seek(0)
-
-		self.cSC4Simulator = {}
-
-		#TODO
 
 
 # Workers
@@ -1070,6 +794,7 @@ class Server(th.Thread):
 		#TODO lock server directory
 		self.create_subdirectories()
 		self.load_config()
+		self.check_updates()
 		self.prep_database()
 		self.clear_temp()
 		self.prep_filetables()
@@ -1292,6 +1017,146 @@ class Server(th.Thread):
 			SC4MP_SERVER_DESCRIPTION = default_server_description'''
 
 
+	def check_updates(self):
+
+		if not sc4mp_skip_update:
+
+			print("Checking for updates...")
+
+			try:
+
+				global sc4mp_ui
+
+				PROCESS_NAME = "sc4mpserver.exe"
+
+				# Get the path of the executable file which is currently running
+				exec_path = Path(sys.executable)
+				exec_file = exec_path.name
+				exec_dir = exec_path.parent
+
+				# Only update if running a Windows distribution
+				if sc4mp_force_update or (exec_file == PROCESS_NAME and process_count(PROCESS_NAME) == 1):
+
+					# Get latest release info
+					try:
+						with urllib.request.urlopen(f"https://api.github.com/repos/kegsmr/sc4mp-server/releases/latest", timeout=5) as url:
+							latest_release_info = json.load(url)
+					except urllib.error.URLError:
+						raise ServerException("GitHub API call timed out.")
+
+					# Download the update if the version doesn't match
+					if sc4mp_force_update or latest_release_info["tag_name"] != f"v{SC4MP_VERSION}":
+
+						# Local function for update thread
+						def update():
+							
+							try:
+
+								set_thread_name("UpdtThread", enumerate=False)
+
+								# Function to write to console and update ui
+								def report(message):
+									print(message)
+
+								# Change working directory to the one where the executable can be found
+								if exec_file == PROCESS_NAME:
+									os.chdir(exec_dir)
+
+								# Delete updater.bat
+								if os.path.exists("updater.bat"):
+									os.unlink("updater.bat")
+
+								# Purge update directory
+								try:
+									if os.path.exists("update"):
+										purge_directory(Path("update"))
+								except:
+									pass
+
+								# Delete uninstaller if exists
+								try:
+									for filename in ["unins000.dat", "unins000.exe"]:
+										if os.path.exists(filename):
+											os.unlink(filename)
+								except:
+									pass
+
+								# Report
+								report("Downloading update...")
+
+								# Get download URL
+								download_url = None
+								for asset in latest_release_info["assets"]:
+									if asset["name"].startswith("sc4mp-server-installer-windows"):
+										download_url = asset["browser_download_url"]
+										destination = os.path.join("update", asset["name"])
+										break
+
+								# Raise an exception if the download URL was not found
+								if download_url is None:
+									raise ServerException("The correct release asset was not found.")
+
+								# Prepare destination
+								os.makedirs("update", exist_ok=True)
+								if os.path.exists(destination):
+									os.unlink(destination)
+
+								# Download file
+								download_size = int(urllib.request.urlopen(download_url).headers["Content-Length"])
+								with urllib.request.urlopen(download_url) as rfile:
+									with open(destination, "wb") as wfile:
+										download_size_downloaded = 0
+										while download_size_downloaded < download_size:
+											bytes_read = rfile.read(SC4MP_BUFFER_SIZE) 
+											download_size_downloaded += len(bytes_read)
+											wfile.write(bytes_read)
+
+								
+								# Convert destination to path object
+								destination = Path(destination)
+
+								# Report installing update
+								report("Installing update...")
+
+								# Create `updater.bat``								
+								args = sys.argv
+								if args[0].endswith("sc4mpserver.py"):
+									args.pop(0)
+								if "-u" in args:
+									args.remove("-u")
+								if "--force-update" in args:
+									args.remove("--force-update")
+								with open("updater.bat", "w") as batch_file:
+									batch_file.writelines([
+										f"@echo off\n",
+										f"cd \"{os.getcwd()}\"\n",
+										f"echo Running installer...\n",
+										f"cd {destination.parent}\n",
+										f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",
+										f"cd ..\n",
+										f"echo Relaunching server...\n",
+										f"{PROCESS_NAME} {' '.join(sys.argv)}\n"
+									])
+
+								# Start installer in very silent mode and exit
+								subprocess.Popen(["updater.bat"])
+							
+							except Exception as e:
+
+								show_error(f"An error occurred in the update thread.\n\n{e}", no_ui=True)
+
+						# Run update function
+						update()
+
+						# Exit when complete
+						sys.exit()
+				
+			except Exception as e:
+
+				# Show error silently and continue as usual
+				show_error(f"An error occurred while updating.\n\n{e}", no_ui=True)
+
+
 	def prep_database(self):
 		"""TODO"""
 
@@ -1363,6 +1228,9 @@ class Server(th.Thread):
 				savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
 				savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
 				savegameSize = savegame.SC4ReadRegionalCity["citySizeX"]
+				savegameCityName = savegame.SC4ReadRegionalCity["cityName"]
+				savegameMayorName = savegame.SC4ReadRegionalCity["mayorName"]
+				savegameModeFlag = savegame.SC4ReadRegionalCity["modeFlag"]
 
 				# Get md5 hashcode of date subfile
 				#savegame_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
@@ -1375,23 +1243,36 @@ class Server(th.Thread):
 				data[coords] = entry
 
 				# Create reset savegame file if needed
-				if "reset_filename" not in entry:
-					reset_directory = os.path.join(region_directory, "_Backups", coords)
-					if not os.path.exists(reset_directory):
-						os.makedirs(reset_directory)
+				if ("reset_filename" not in entry.keys()) or ((entry["reset_filename"] is not None) and (not os.path.exists(os.path.join(region_directory, entry["reset_filename"])))):
+					reset_directory = os.path.join("_Backups", coords)
+					os.makedirs(os.path.join(region_directory, reset_directory), exist_ok=True)
 					reset_filename = os.path.join(reset_directory, "reset.sc4")
-					shutil.copy(savegame.filename, reset_filename)
+					if not os.path.exists(os.path.join(region_directory, reset_filename)):
+						shutil.copy(savegame.filename, os.path.join(region_directory, reset_filename))
 					entry["reset_filename"] = reset_filename
 
 				# Set entry values
 				set_savegame_data(entry, savegame)
-
+					
 				# Reserve tiles which the savegame occupies
 				for offsetX in range(savegameSize):
 					x = savegameX + offsetX
 					for offsetY in range(savegameSize):
 						y = savegameY + offsetY
 						data.setdefault(str(x) + "_" + str(y), None)
+
+				# Close DBPF file
+				savegame.close()
+
+				# Rename savegame file to match correct format
+				new_filename = set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag)
+				if entry["filename"] != new_filename:
+					print(f"- renaming \"{entry['filename']}\" to \"{new_filename}\"...")
+					try:
+						os.rename(os.path.join(region_directory, entry["filename"]), os.path.join(region_directory, new_filename))
+						entry["filename"] = new_filename
+					except Exception as e:
+						show_error(e)
 
 			# Cleanup DBPF objects to avoid errors when attempting to delete save files
 			savegames = None
@@ -1806,6 +1687,8 @@ class RegionsManager(th.Thread):
 								savegameSizeX = savegame.SC4ReadRegionalCity["citySizeX"]
 								savegameSizeY = savegame.SC4ReadRegionalCity["citySizeY"]
 								savegameModeFlag = savegame.SC4ReadRegionalCity["modeFlag"]
+								savegameCityName = savegame.SC4ReadRegionalCity["cityName"]
+								savegameMayorName = savegame.SC4ReadRegionalCity["mayorName"]
 
 								# Set "coords" variable. Used as a key in the region database and also for the name of the new save file
 								coords = f'{savegameX}_{savegameY}'
@@ -1865,11 +1748,22 @@ class RegionsManager(th.Thread):
 										if os.path.exists(previous_filename):
 											os.remove(previous_filename)
 
-									# Copy save file from temporary directory to regions directory
-									destination = os.path.join(sc4mp_server_path, "Regions", region, coords + ".sc4") #TODO include city name?
-									if os.path.exists(destination):
-										os.remove(destination)
-									shutil.copy(filename, destination)
+									# Set new filename
+									new_filename = set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag)
+									new_filename_oldscheme = f"{coords}.sc4"
+
+									# Copy save file from temporary directory to regions directory (use old naming scheme if new one causes an error)
+									destination_directory = os.path.join(sc4mp_server_path, "Regions", region)
+									try:
+										destination = os.path.join(destination_directory, new_filename)
+										if os.path.exists(destination):
+											os.remove(destination)
+										shutil.copy(filename, destination)
+									except:
+										destination = os.path.join(destination_directory, new_filename_oldscheme)
+										if os.path.exists(destination):
+											os.remove(destination)
+										shutil.copy(filename, destination)
 
 									# Copy save file from temporary directory to backup directory
 									backup_directory = os.path.join(sc4mp_server_path, "Regions", region, "_Backups", coords)
@@ -1885,7 +1779,7 @@ class RegionsManager(th.Thread):
 									#TODO delete old backups
 
 									# Set entry values
-									entry["filename"] = coords + ".sc4"
+									entry["filename"] = new_filename
 									entry["owner"] = user_id
 									entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 									set_savegame_data(entry, savegame)
