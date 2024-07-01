@@ -595,8 +595,8 @@ def receive_file(c, filename, filesize):
 			filesize_remaining = filesize - filesize_read
 			buffersize = SC4MP_BUFFER_SIZE if filesize_remaining > SC4MP_BUFFER_SIZE else filesize_remaining
 			bytes_read = c.recv(buffersize)
-			if not bytes_read:    
-				break
+			#if not bytes_read:    
+			#	break
 			f.write(bytes_read)
 			filesize_read += len(bytes_read)
 			#print('Downloading "' + filename + '" (' + str(filesize_read) + " / " + str(filesize) + " bytes)...", int(filesize_read), int(filesize)) #os.path.basename(os.path.normpath(filename))
