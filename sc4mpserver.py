@@ -1081,7 +1081,7 @@ class Server(th.Thread):
 								report("Downloading update...")
 
 								# Get download URL
-								download_url = None
+								"""download_url = None
 								for asset in latest_release_info["assets"]:
 									if asset["name"].startswith("sc4mp-server-installer-windows"):
 										download_url = asset["browser_download_url"]
@@ -1105,9 +1105,11 @@ class Server(th.Thread):
 										while download_size_downloaded < download_size:
 											bytes_read = rfile.read(SC4MP_BUFFER_SIZE) 
 											download_size_downloaded += len(bytes_read)
-											wfile.write(bytes_read)
+											wfile.write(bytes_read)"""
 
-								# Report installing update and wait a few seconds (gives time for users to cancel)
+								destination = "update\\sc4mp-server-installer-windows-v0.5.0.20240630225652.exe" #TODO remove
+
+								# Report installing update
 								report("Installing update...")
 
 								# Create `updater.bat``								
@@ -1128,30 +1130,11 @@ class Server(th.Thread):
 
 								show_error(f"An error occurred in the update thread.\n\n{e}", no_ui=True)
 
-						# Prepare the UI if not running in command-line mode
-						if sc4mp_ui:
+						# Run update function
+						update()
 
-							# Create hidden top-level window
-							sc4mp_ui = tk.Tk()
-							sc4mp_ui.iconphoto(True, tk.PhotoImage(file=SC4MP_ICON))
-							sc4mp_ui.withdraw()
-
-							# Create updater UI
-							updater_ui = UpdaterUI(sc4mp_ui)
-
-							# Start update thread
-							th.Thread(target=update, kwargs={"ui": updater_ui}, daemon=True).start()
-
-							# Run the UI main loop
-							sc4mp_ui.mainloop()
-
-							# Exit when complete
-							sys.exit()
-
-						else:
-
-							# Run update thread directly
-							update()
+						# Exit when complete
+						sys.exit()
 				
 			except Exception as e:
 
