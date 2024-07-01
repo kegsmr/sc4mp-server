@@ -12,6 +12,7 @@ import shutil
 import socket
 import string
 import struct
+import subprocess
 import sys
 import threading as th
 import time
@@ -22,6 +23,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 import re
+import urllib.request
 
 from core.config import *
 from core.dbpf import *
@@ -128,9 +130,25 @@ def main():
 		# Title
 		report(SC4MP_TITLE)
 
+		# -k / --skip-update argument
+		global sc4mp_skip_update
+		if args.skip_update is True:
+			sc4mp_skip_update = True
+		else:
+			sc4mp_skip_update = False
+
+		# -u / --force-update argument
+		global sc4mp_force_update
+		if args.force_update is True:
+			sc4mp_force_update = True
+		else:
+			sc4mp_force_update = False
+
 		# -s / --server-path argument
 		global sc4mp_server_path
 		if args.server_path:
+			if not sc4mp_force_update:
+				sc4mp_skip_update = True
 			sc4mp_server_path = args.server_path
 
 		# -r / --restore argument
@@ -167,6 +185,10 @@ def parse_args() -> Namespace:
 						 description="SimCity 4 Multiplayer Server")
 
 	parser.add_argument("-s", "--server-path", help="specify server directory relative path")
+
+	parser.add_argument("-k", "--skip-update", help="skip the update check at startup", action="store_true")
+
+	parser.add_argument("-u", "--force-update", help="force update at startup", action="store_true")
 
 	parser.add_argument("-r", "--restore", help="restore the server to the specified backup")
 
@@ -772,6 +794,7 @@ class Server(th.Thread):
 		#TODO lock server directory
 		self.create_subdirectories()
 		self.load_config()
+		self.check_updates()
 		self.prep_database()
 		self.clear_temp()
 		self.prep_filetables()
@@ -992,6 +1015,146 @@ class Server(th.Thread):
 			SC4MP_SERVER_ID = default_server_id
 			SC4MP_SERVER_NAME = default_server_name
 			SC4MP_SERVER_DESCRIPTION = default_server_description'''
+
+
+	def check_updates(self):
+
+		if not sc4mp_skip_update:
+
+			print("Checking for updates...")
+
+			try:
+
+				global sc4mp_ui
+
+				PROCESS_NAME = "sc4mpserver.exe"
+
+				# Get the path of the executable file which is currently running
+				exec_path = Path(sys.executable)
+				exec_file = exec_path.name
+				exec_dir = exec_path.parent
+
+				# Only update if running a Windows distribution
+				if sc4mp_force_update or (exec_file == PROCESS_NAME and process_count(PROCESS_NAME) == 1):
+
+					# Get latest release info
+					try:
+						with urllib.request.urlopen(f"https://api.github.com/repos/kegsmr/sc4mp-server/releases/latest", timeout=5) as url:
+							latest_release_info = json.load(url)
+					except urllib.error.URLError:
+						raise ServerException("GitHub API call timed out.")
+
+					# Download the update if the version doesn't match
+					if sc4mp_force_update or latest_release_info["tag_name"] != f"v{SC4MP_VERSION}":
+
+						# Local function for update thread
+						def update():
+							
+							try:
+
+								set_thread_name("UpdtThread", enumerate=False)
+
+								# Function to write to console and update ui
+								def report(message):
+									print(message)
+
+								# Change working directory to the one where the executable can be found
+								if exec_file == PROCESS_NAME:
+									os.chdir(exec_dir)
+
+								# Delete updater.bat
+								if os.path.exists("updater.bat"):
+									os.unlink("updater.bat")
+
+								# Purge update directory
+								try:
+									if os.path.exists("update"):
+										purge_directory(Path("update"))
+								except:
+									pass
+
+								# Delete uninstaller if exists
+								try:
+									for filename in ["unins000.dat", "unins000.exe"]:
+										if os.path.exists(filename):
+											os.unlink(filename)
+								except:
+									pass
+
+								# Report
+								report("Downloading update...")
+
+								# Get download URL
+								download_url = None
+								for asset in latest_release_info["assets"]:
+									if asset["name"].startswith("sc4mp-server-installer-windows"):
+										download_url = asset["browser_download_url"]
+										destination = os.path.join("update", asset["name"])
+										break
+
+								# Raise an exception if the download URL was not found
+								if download_url is None:
+									raise ServerException("The correct release asset was not found.")
+
+								# Prepare destination
+								os.makedirs("update", exist_ok=True)
+								if os.path.exists(destination):
+									os.unlink(destination)
+
+								# Download file
+								download_size = int(urllib.request.urlopen(download_url).headers["Content-Length"])
+								with urllib.request.urlopen(download_url) as rfile:
+									with open(destination, "wb") as wfile:
+										download_size_downloaded = 0
+										while download_size_downloaded < download_size:
+											bytes_read = rfile.read(SC4MP_BUFFER_SIZE) 
+											download_size_downloaded += len(bytes_read)
+											wfile.write(bytes_read)
+
+								
+								# Convert destination to path object
+								destination = Path(destination)
+
+								# Report installing update
+								report("Installing update...")
+
+								# Create `updater.bat``								
+								args = sys.argv
+								if args[0].endswith("sc4mpserver.py"):
+									args.pop(0)
+								if "-u" in args:
+									args.remove("-u")
+								if "--force-update" in args:
+									args.remove("--force-update")
+								with open("updater.bat", "w") as batch_file:
+									batch_file.writelines([
+										f"@echo off\n",
+										f"cd \"{os.getcwd()}\"\n",
+										f"echo Running installer...\n",
+										f"cd {destination.parent}\n",
+										f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",
+										f"cd ..\n",
+										f"echo Relaunching server...\n",
+										f"{PROCESS_NAME} {' '.join(sys.argv)}\n"
+									])
+
+								# Start installer in very silent mode and exit
+								subprocess.Popen(["updater.bat"])
+							
+							except Exception as e:
+
+								show_error(f"An error occurred in the update thread.\n\n{e}", no_ui=True)
+
+						# Run update function
+						update()
+
+						# Exit when complete
+						sys.exit()
+				
+			except Exception as e:
+
+				# Show error silently and continue as usual
+				show_error(f"An error occurred while updating.\n\n{e}", no_ui=True)
 
 
 	def prep_database(self):
