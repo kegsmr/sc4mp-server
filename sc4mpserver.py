@@ -1038,7 +1038,7 @@ class Server(th.Thread):
 				exec_dir = exec_path.parent
 
 				# Only update if running a Windows distribution
-				if sc4mp_force_update or (exec_file == PROCESS_NAME and process_count(PROCESS_NAME) == 1):
+				if sc4mp_force_update or exec_file == PROCESS_NAME:
 
 					# Get latest release info
 					try:
@@ -1123,8 +1123,7 @@ class Server(th.Thread):
 
 								# Create `updater.bat``								
 								args = sys.argv
-								if args[0].endswith("sc4mpserver.py"):
-									args.pop(0)
+								args.pop(0)
 								if "-u" in args:
 									args.remove("-u")
 								if "--force-update" in args:
@@ -1138,7 +1137,7 @@ class Server(th.Thread):
 										f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",
 										f"cd ..\n",
 										f"echo Relaunching server...\n",
-										f"{PROCESS_NAME} {' '.join(sys.argv)}\n"
+										f"{PROCESS_NAME} {' '.join(args)}\n"
 									])
 
 								# Start installer in very silent mode and exit
