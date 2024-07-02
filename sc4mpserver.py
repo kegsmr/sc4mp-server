@@ -143,7 +143,7 @@ def main():
 			if not sc4mp_force_update:
 				sc4mp_skip_update = True
 			sc4mp_server_path = args.server_path
-			os.makedirs(sc4mp_server_path)
+			os.makedirs(sc4mp_server_path, exist_ok=True)
 
 		# -r / --restore argument
 		if args.restore:
