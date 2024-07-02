@@ -285,6 +285,7 @@ def set_savegame_data(entry, savegame):
 	entry.setdefault("owner", None)
 	entry.setdefault("modified", None)
 	entry.setdefault("locked", False)
+	entry.setdefault("filename", os.path.basename(os.path.normpath(savegame.filename)))
 	entry.setdefault("reset_filename", None)
 	entry.setdefault("date_subfile_hashes", [])
 
@@ -295,7 +296,6 @@ def set_savegame_data(entry, savegame):
 		date_subfile_hashes.append(date_subfile_hash)
 
 	# Overwrite
-	entry["filename"] = os.path.basename(os.path.normpath(savegame.filename))
 	entry["hashcode"] = md5(savegame.filename)
 	entry["size"] = savegame.SC4ReadRegionalCity["citySizeX"] 
 	entry["city_name"] = savegame.SC4ReadRegionalCity["cityName"]
@@ -388,6 +388,8 @@ def export(export_type):
 							if filename is not None and reset_filename is not None:
 								filename = os.path.join(target, region, filename)
 								reset_filename = os.path.join(target, region, reset_filename)
+								print(filename)
+								print(reset_filename)
 								if (not os.path.exists(filename)) and (os.path.exists(reset_filename)):
 									print(f"[WARNING] Savegame at \"{filename}\" is missing! Replacing with \"{reset_filename}\"...")
 									shutil.copy(reset_filename, filename)
