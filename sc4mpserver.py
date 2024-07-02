@@ -123,13 +123,6 @@ def main():
 		# Parse arguments
 		args = parse_args()
 
-		# Output
-		sys.stdout = Logger()
-		set_thread_name("Main", enumerate=False)
-
-		# Title
-		report(SC4MP_TITLE)
-
 		# -k / --skip-update argument
 		global sc4mp_skip_update
 		if args.skip_update is True:
@@ -166,6 +159,13 @@ def main():
 		if args.verbose:
 			# TODO: use this flag to set logger level to debug once the logger PR is merged
 			pass
+
+		# Output
+		sys.stdout = Logger()
+		set_thread_name("Main", enumerate=False)
+
+		# Title
+		report(SC4MP_TITLE)
 
 		# Server
 		global sc4mp_server
@@ -2695,7 +2695,7 @@ class Logger():
 	def __init__(self):
 		"""TODO"""
 		self.terminal = sys.stdout
-		self.log = SC4MP_LOG_PATH
+		self.log = SC4MP_LOG_PATH if sc4mp_server_path == "_SC4MP" else os.path.join(sc4mp_server_path, SC4MP_LOG_PATH)
 		if os.path.exists(self.log):
 			os.remove(self.log)
    
