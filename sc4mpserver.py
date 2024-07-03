@@ -479,25 +479,6 @@ def send_filestream(c, rootpath):
 				c.sendall(data)
 
 
-def send_json(s, data):
-	"""TODO"""
-	s.sendall(json.dumps(data).encode())
-
-
-def recv_json(s):
-	"""TODO"""
-	data = ""
-	while sc4mp_server_running:
-		new_data = s.recv(SC4MP_BUFFER_SIZE).decode()
-		if len(new_data) > 0:
-			data += new_data
-			try:
-				return json.loads(data)
-			except json.decoder.JSONDecodeError:
-				pass
-		time.sleep(SC4MP_DELAY)
-
-
 def send_tree(c, rootpath):
 	"""TODO"""
 
