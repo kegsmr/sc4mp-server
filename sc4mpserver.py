@@ -388,8 +388,6 @@ def export(export_type):
 							if filename is not None and reset_filename is not None:
 								filename = os.path.join(target, region, filename)
 								reset_filename = os.path.join(target, region, reset_filename)
-								print(filename)
-								print(reset_filename)
 								if (not os.path.exists(filename)) and (os.path.exists(reset_filename)):
 									print(f"[WARNING] Savegame at \"{filename}\" is missing! Replacing with \"{reset_filename}\"...")
 									shutil.copy(reset_filename, filename)
