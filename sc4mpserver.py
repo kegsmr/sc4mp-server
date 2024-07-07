@@ -242,11 +242,6 @@ def md5(filename):
 	return hash_md5.hexdigest()
 
 
-'''def string_md5(text):
-	"""TODO"""
-	return hashlib.md5(text.encode()).hexdigest()'''
-
-
 def file_md5(file):
 	"""TODO"""
 	hash_md5 = hashlib.md5()
@@ -629,17 +624,6 @@ def update_config_constants(config):
 	SC4MP_SERVER_DESCRIPTION = config['INFO']['server_description']
 
 
-def format_version(version: tuple[int, int, int]) -> str:
-	"""Converts a version number from a tuple to a string."""
-	major, minor, patch = version
-	return f'{major}.{minor}.{patch}'
-
-
-def unformat_version(version: str) -> tuple[int, int, int]:
-	"""Converts a version number from a string to a tuple."""
-	return tuple([int(v) for v in version.split('.')])
-
-
 def restore(filename):
 	"""TODO"""
 	possible_paths = [
@@ -713,26 +697,6 @@ def fatal_error(e):
 	#sys.exit()
 
 
-def set_thread_name(name, enumerate=True):
-
-	if enumerate:
-
-		thread_names = [thread.name for thread in th.enumerate()]
-
-		count = 1
-		while (sc4mp_server_running):
-			thread_name = f"{name}-{count}"
-			if not thread_name in thread_names:
-				th.current_thread().name = thread_name
-				return thread_name
-			count += 1
-
-	else:
-
-		th.current_thread().name = name
-		return name
-
-
 def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag):
 
 	prefix = f"({savegameX:0>{3}}-{savegameY:0>{3}})"
@@ -756,8 +720,6 @@ def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorN
 
 def filter_non_alpha_numeric(text):
 	return " ".join(re.sub('[^0-9a-zA-Z ]+', " ", text).split())
-
-
 
 
 # Workers
