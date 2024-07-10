@@ -63,6 +63,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
 		("host", "0.0.0.0"),
 		("port", 7240),
+		#("domain", None),					#TODO for servers hosted on a DDNS or other specific domain
 		("discoverable", True),
 	]),
 	("INFO", [
@@ -79,10 +80,10 @@ SC4MP_CONFIG_DEFAULTS = [
 	]),
 	("RULES", [
 		("claim_duration", 30),
-		#("abandoned_reset_delay", None) #TODO for resetting old abandoned saves
-		#("claim_delay", 60), #TODO
+		#("abandoned_reset_delay", None) 	#TODO for resetting old abandoned saves
+		#("claim_timeout", None), 			#TODO prevent users from making another claim within this time
 		("max_region_claims", 1),
-		#("max_total_claims", None), #TODO
+		#("max_total_claims", None), 		#TODO max claims accross entire server
 		("godmode_filter", True),
 		("user_plugins", False),
 	]),
@@ -90,13 +91,12 @@ SC4MP_CONFIG_DEFAULTS = [
 		("request_limit", 60),
 		("max_request_threads", 200),
 		("connection_timeout", 600),
-		("filetable_update_interval", 60)
+		("filetable_update_interval", 600),
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 6),
 		("backup_server_on_startup", True),
 		("max_server_backup_days", 30),
-		#("max_server_backups", 720),
 		("max_savegame_backups", 100),
 	])
 ]
