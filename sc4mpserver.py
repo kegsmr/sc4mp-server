@@ -97,7 +97,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		("server_backup_interval", 6),
 		("backup_server_on_startup", True),
 		("max_server_backup_days", 30),
-		("max_savegame_backups", 100),
+		("max_savegame_backups", 20),
 	])
 ]
 
