@@ -888,20 +888,20 @@ class Server(th.Thread):
 					batch_file.writelines([
 						f"@echo off",
 						f"cd \"{exec_dir}\"\n",
-						f"sc4mpserver.exe -s {sc4mp_server_path}",
+						f"sc4mpserver.exe -s \"{sc4mp_server_path}\"",
 					])
 				with open(os.path.join(sc4mp_server_path, "prep.bat"), "w") as batch_file:
 					batch_file.writelines([
 						f"@echo off",
 						f"cd \"{exec_dir}\"\n",
-						f"sc4mpserver.exe -s {sc4mp_server_path} --prep",
+						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --prep",
 					])
 				with open(os.path.join(sc4mp_server_path, "restore.bat"), "w") as batch_file:
 					batch_file.writelines([
 						f"@echo off",
 						f"cd \"{exec_dir}\"\n",
 						f"set /p backup=\"Enter a backup to restore...\"",
-						f"sc4mpserver.exe -s {sc4mp_server_path} --restore %backup%",
+						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --restore %backup%",
 					])
 		except Exception as e:
 			show_error(f"Failed to create helper batch files.\n\n{e}")
