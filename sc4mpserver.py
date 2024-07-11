@@ -859,38 +859,6 @@ class Server(th.Thread):
 		client_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-	'''def check_version(self): #TODO doesnt work
-		"""TODO"""
-
-		report("Checking for updates...")
-
-		version = []
-		for server in SC4MP_SERVERS:
-			host = server[0]
-			port = server[1]
-			try:
-				s = socket.socket()
-				s.settimeout(5)
-				s.connect((host, port))
-				s.sendall(b"server_version")
-				bytes = s.recv(SC4MP_BUFFER_SIZE)
-				if (len(bytes) > 0):
-					split_bytes = bytes.split(SC4MP_SEPARATOR)
-					for bytes in split_bytes:
-						version.append(int(bytes.decode()))
-					break
-			except Exception as e:
-				show_error(e)
-
-		new_version_available = False
-		if (len(version) == 3):
-			version = tuple(version)
-			new_version_available = version > unformat_version(SC4MP__VERSION)
-
-		if (new_version_available):
-			print("[WARNING] Version v" + '.'.join(version) + " is available!")'''
-
-
 	def create_subdirectories(self):
 		"""TODO"""
 
@@ -909,6 +877,28 @@ class Server(th.Thread):
 					show_error(e)
 					#report("Failed to create " + directory + " subdirectory.", None, "WARNING")
 					#report('(this may have been printed by error, check your sc4mp_server_path subdirectory)', None, "WARNING")
+
+		# Create helper batch files on Windows
+		try:
+			exec_path = Path(sys.executable)
+			exec_file = exec_path.name
+			exec_dir = exec_path.parent
+			if exec_file == "sc4mpserver.exe":
+				with open(os.path.join(sc4mp_server_path, "prep.bat"), "w") as batch_file:
+					batch_file.writelines([
+						f"@echo off",
+						f"cd \"{exec_dir}\"\n",
+						f"sc4mpserver.exe -s {sc4mp_server_path} --prep",
+					])
+				with open(os.path.join(sc4mp_server_path, "restore.bat"), "w") as batch_file:
+					batch_file.writelines([
+						f"@echo off",
+						f"cd \"{exec_dir}\"\n",
+						f"set /p backup=\"Enter a backup to restore...\"",
+						f"sc4mpserver.exe -s {sc4mp_server_path} --restore %backup%",
+					])
+		except Exception as e:
+			show_error(f"Failed to create helper batch files.\n\n{e}")
 
 
 	def load_config(self):
