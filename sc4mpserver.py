@@ -1971,7 +1971,7 @@ class RequestHandler(th.Thread):
 				elif request == "time":
 					c.sendall(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
 				elif request == "info":
-					c.sendall((json.dumps({  
+					send_json(c, {  
 						"server_id": sc4mp_config["INFO"]["server_id"],  
 						"server_name": sc4mp_config["INFO"]["server_name"],
 						"server_description": sc4mp_config["INFO"]["server_description"],
@@ -1980,7 +1980,7 @@ class RequestHandler(th.Thread):
 						"private": sc4mp_config["SECURITY"]["private"],
 						"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
 						"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
-					}).encode()))
+					})
 
 				c.close()
 			
@@ -2314,7 +2314,7 @@ class RequestHandler(th.Thread):
 		for server_info in server_dict.values():
 			servers.add((server_info["host"], server_info["port"]))
 
-		c.sendall(json.dumps(list(servers)).encode())
+		send_json(c, list(servers))
 
 
 	def log_user(self, c, user_id):
