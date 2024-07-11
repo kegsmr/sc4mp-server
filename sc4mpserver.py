@@ -884,6 +884,12 @@ class Server(th.Thread):
 			exec_file = exec_path.name
 			exec_dir = exec_path.parent
 			if exec_file == "sc4mpserver.exe":
+				with open(os.path.join(sc4mp_server_path, "run.bat"), "w") as batch_file:
+					batch_file.writelines([
+						f"@echo off",
+						f"cd \"{exec_dir}\"\n",
+						f"sc4mpserver.exe -s {sc4mp_server_path}",
+					])
 				with open(os.path.join(sc4mp_server_path, "prep.bat"), "w") as batch_file:
 					batch_file.writelines([
 						f"@echo off",
