@@ -78,7 +78,6 @@ def main():
 	shutil.copytree("resources", os.path.join(DIST, "resources"), dirs_exist_ok=True)
 	shutil.copy("License.txt", DIST)
 	shutil.copy("Readme.html", DIST)
-	shutil.copy("update.bat", DIST)
 
 	# Create a zip archive of the distribution
 	destination = os.path.join(os.path.join("builds", "sc4mp-server-" + platform.system().lower() + "-" + str(8 * struct.calcsize("P")) + "-v" + VERSION + "." + datetime.now().strftime("%Y%m%d%H%M%S")))

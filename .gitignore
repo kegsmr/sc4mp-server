@@ -21,4 +21,4 @@ spawn_test_servers.py
 *.sc4
 clear_logfiles.py
 version.rc
-setup*.bat
+*bat
