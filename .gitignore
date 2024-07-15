@@ -15,10 +15,10 @@ dbpf.py.old
 testing.py
 test_console.py
 spawn_test_servers.py
-*.bat
 *.cfg
 *.bak
 *.log
 *.sc4
 clear_logfiles.py
 version.rc
+*bat

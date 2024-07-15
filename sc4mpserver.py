@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import configparser
 import getpass
 import hashlib
 import inspect
-import io
 import json
 import os
 import random
@@ -27,6 +25,7 @@ import urllib.request
 
 from core.config import *
 from core.dbpf import *
+from core.networking import *
 from core.util import *
 
 
@@ -64,6 +63,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
 		("host", "0.0.0.0"),
 		("port", 7240),
+		#("domain", None),					#TODO for servers hosted on a DDNS or other specific domain
 		("discoverable", True),
 	]),
 	("INFO", [
@@ -80,10 +80,10 @@ SC4MP_CONFIG_DEFAULTS = [
 	]),
 	("RULES", [
 		("claim_duration", 30),
-		#("abandoned_reset_delay", None) #TODO for resetting old abandoned saves
-		#("claim_delay", 60), #TODO
+		#("abandoned_reset_delay", None) 	#TODO for resetting old abandoned saves
+		#("claim_timeout", None), 			#TODO prevent users from making another claim within this time
 		("max_region_claims", 1),
-		#("max_total_claims", None), #TODO
+		#("max_total_claims", None), 		#TODO max claims accross entire server
 		("godmode_filter", True),
 		("user_plugins", False),
 	]),
@@ -91,14 +91,13 @@ SC4MP_CONFIG_DEFAULTS = [
 		("request_limit", 60),
 		("max_request_threads", 200),
 		("connection_timeout", 600),
-		("filetable_update_interval", 60)
+		("filetable_update_interval", 600),
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 6),
 		("backup_server_on_startup", True),
 		("max_server_backup_days", 30),
-		#("max_server_backups", 720),
-		("max_savegame_backups", 100),
+		("max_savegame_backups", 20),
 	])
 ]
 
@@ -148,6 +147,7 @@ def main():
 		# -r / --restore argument
 		if args.restore:
 			restore(args.restore)
+			return
 
 		# -p / --prep argument
 		global sc4mp_nostart
@@ -241,11 +241,6 @@ def md5(filename):
 		for chunk in iter(lambda: f.read(4096), b""):
 			hash_md5.update(chunk)
 	return hash_md5.hexdigest()
-
-
-'''def string_md5(text):
-	"""TODO"""
-	return hashlib.md5(text.encode()).hexdigest()'''
 
 
 def file_md5(file):
@@ -476,25 +471,6 @@ def send_filestream(c, rootpath):
 				c.sendall(data)
 
 
-def send_json(s, data):
-	"""TODO"""
-	s.sendall(json.dumps(data).encode())
-
-
-def recv_json(s):
-	"""TODO"""
-	data = ""
-	while sc4mp_server_running:
-		new_data = s.recv(SC4MP_BUFFER_SIZE).decode()
-		if len(new_data) > 0:
-			data += new_data
-			try:
-				return json.loads(data)
-			except json.decoder.JSONDecodeError:
-				pass
-		time.sleep(SC4MP_DELAY)
-
-
 def send_tree(c, rootpath):
 	"""TODO"""
 
@@ -647,17 +623,6 @@ def update_config_constants(config):
 	SC4MP_SERVER_DESCRIPTION = config['INFO']['server_description']
 
 
-def format_version(version: tuple[int, int, int]) -> str:
-	"""Converts a version number from a tuple to a string."""
-	major, minor, patch = version
-	return f'{major}.{minor}.{patch}'
-
-
-def unformat_version(version: str) -> tuple[int, int, int]:
-	"""Converts a version number from a string to a tuple."""
-	return tuple([int(v) for v in version.split('.')])
-
-
 def restore(filename):
 	"""TODO"""
 	possible_paths = [
@@ -731,26 +696,6 @@ def fatal_error(e):
 	#sys.exit()
 
 
-def set_thread_name(name, enumerate=True):
-
-	if enumerate:
-
-		thread_names = [thread.name for thread in th.enumerate()]
-
-		count = 1
-		while (sc4mp_server_running):
-			thread_name = f"{name}-{count}"
-			if not thread_name in thread_names:
-				th.current_thread().name = thread_name
-				return thread_name
-			count += 1
-
-	else:
-
-		th.current_thread().name = name
-		return name
-
-
 def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag):
 
 	prefix = f"({savegameX:0>{3}}-{savegameY:0>{3}})"
@@ -774,8 +719,6 @@ def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorN
 
 def filter_non_alpha_numeric(text):
 	return " ".join(re.sub('[^0-9a-zA-Z ]+', " ", text).split())
-
-
 
 
 # Workers
@@ -915,38 +858,6 @@ class Server(th.Thread):
 		client_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-	'''def check_version(self): #TODO doesnt work
-		"""TODO"""
-
-		report("Checking for updates...")
-
-		version = []
-		for server in SC4MP_SERVERS:
-			host = server[0]
-			port = server[1]
-			try:
-				s = socket.socket()
-				s.settimeout(5)
-				s.connect((host, port))
-				s.sendall(b"server_version")
-				bytes = s.recv(SC4MP_BUFFER_SIZE)
-				if (len(bytes) > 0):
-					split_bytes = bytes.split(SC4MP_SEPARATOR)
-					for bytes in split_bytes:
-						version.append(int(bytes.decode()))
-					break
-			except Exception as e:
-				show_error(e)
-
-		new_version_available = False
-		if (len(version) == 3):
-			version = tuple(version)
-			new_version_available = version > unformat_version(SC4MP__VERSION)
-
-		if (new_version_available):
-			print("[WARNING] Version v" + '.'.join(version) + " is available!")'''
-
-
 	def create_subdirectories(self):
 		"""TODO"""
 
@@ -965,6 +876,34 @@ class Server(th.Thread):
 					show_error(e)
 					#report("Failed to create " + directory + " subdirectory.", None, "WARNING")
 					#report('(this may have been printed by error, check your sc4mp_server_path subdirectory)', None, "WARNING")
+
+		# Create helper batch files on Windows
+		try:
+			exec_path = Path(sys.executable)
+			exec_file = exec_path.name
+			exec_dir = exec_path.parent
+			if exec_file == "sc4mpserver.exe":
+				with open(os.path.join(sc4mp_server_path, "run.bat"), "w") as batch_file:
+					batch_file.writelines([
+						f"@echo off\n",
+						f"cd \"{exec_dir}\"\n",
+						f"sc4mpserver.exe -s \"{sc4mp_server_path}\"\n",
+					])
+				with open(os.path.join(sc4mp_server_path, "prep.bat"), "w") as batch_file:
+					batch_file.writelines([
+						f"@echo off\n",
+						f"cd \"{exec_dir}\"\n",
+						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --prep\n",
+					])
+				with open(os.path.join(sc4mp_server_path, "restore.bat"), "w") as batch_file:
+					batch_file.writelines([
+						f"@echo off\n",
+						f"cd \"{exec_dir}\"\n",
+						f"set /p backup=\"Enter a backup to restore...\"\n",
+						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --restore %backup%\n",
+					])
+		except Exception as e:
+			show_error(f"Failed to create helper batch files.\n\n{e}")
 
 
 	def load_config(self):
@@ -2030,7 +1969,7 @@ class RequestHandler(th.Thread):
 				elif request == "time":
 					c.sendall(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
 				elif request == "info":
-					c.sendall((json.dumps({  
+					send_json(c, {  
 						"server_id": sc4mp_config["INFO"]["server_id"],  
 						"server_name": sc4mp_config["INFO"]["server_name"],
 						"server_description": sc4mp_config["INFO"]["server_description"],
@@ -2039,7 +1978,7 @@ class RequestHandler(th.Thread):
 						"private": sc4mp_config["SECURITY"]["private"],
 						"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
 						"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
-					}).encode()))
+					})
 
 				c.close()
 			
@@ -2373,7 +2312,7 @@ class RequestHandler(th.Thread):
 		for server_info in server_dict.values():
 			servers.add((server_info["host"], server_info["port"]))
 
-		c.sendall(json.dumps(list(servers)).encode())
+		send_json(c, list(servers))
 
 
 	def log_user(self, c, user_id):
