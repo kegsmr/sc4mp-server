@@ -119,6 +119,13 @@ def main():
 
 	try:
 
+		# Set working directory
+		exec_path = Path(sys.executable)
+		exec_file = exec_path.name
+		exec_dir = exec_path.parent
+		if exec_file == "sc4mpserver.exe":
+			os.chdir(exec_dir)
+
 		# Parse arguments
 		args = parse_args()
 
