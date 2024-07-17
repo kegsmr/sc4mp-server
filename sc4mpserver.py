@@ -1171,7 +1171,7 @@ class Server(th.Thread):
 			# Open savegames as DBPF objects
 			savegames = []
 			for savegame_path in savegame_paths:
-				savegames.append(DBPF(savegame_path, error_callback=show_error))
+				savegames.append(SC4Savegame(savegame_path, error_callback=show_error))
 
 			# Get the region subfile of each DBPF object and update the database
 			for savegame in savegames:
@@ -2202,7 +2202,7 @@ class RequestHandler(th.Thread):
 			savegames = []
 			for filename in os.listdir(region_path):
 				filename = os.path.join(region_path, filename)
-				savegames.append(DBPF(filename, error_callback=show_error))
+				savegames.append(SC4Savegame(filename, error_callback=show_error))
 
 			# Extract the region subfile from each DBPF
 			for savegame in savegames:
