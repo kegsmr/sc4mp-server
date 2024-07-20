@@ -369,23 +369,32 @@ def export(export_type):
 
 	#TODO delete old abandoned savegames
 
-	# Replace missing savegame files with the reset savegame file
+	# Replace missing savegame files with the reset savegame file if it exists, and reset the claim
 	try:
 		if export_type == "regions":
 			for region in os.listdir(target):
 				if os.path.isdir(os.path.join(target, region)):
 					data_filename = os.path.join(target, region, "_Database", "region.json")
 					data = load_json(data_filename)
+					update_database = False
 					for entry in data.values():
 						if entry is not None:
 							filename = entry.get("filename", None)
-							reset_filename = entry.get("reset_filename", None)
-							if filename is not None and reset_filename is not None:
+							if filename is not None:
 								filename = os.path.join(target, region, filename)
-								reset_filename = os.path.join(target, region, reset_filename)
-								if (not os.path.exists(filename)) and (os.path.exists(reset_filename)):
-									print(f"[WARNING] Savegame at \"{filename}\" is missing! Replacing with \"{reset_filename}\"...")
-									shutil.copy(reset_filename, filename)
+								if not os.path.exists(filename):
+									print(f"[WARNING] Savegame at \"{filename}\" is missing!")
+									reset_filename = entry.get("reset_filename", None)
+									if reset_filename is not None:
+										reset_filename = os.path.join(target, region, reset_filename)
+										if os.path.exists(reset_filename):
+											print(f"[WARNING] - replacing with \"{reset_filename}\"...")
+											shutil.copy(reset_filename, filename)
+									print(f"[WARNING] - resetting claim...")
+									entry["owner"] = None
+									update_database = True
+					if update_database:
+						update_json(data_filename, data)
 	except Exception as e:
 		show_error(e)
 
