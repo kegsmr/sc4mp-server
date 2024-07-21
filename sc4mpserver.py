@@ -1581,7 +1581,7 @@ class RegionsManager(th.Thread):
 		self.export_regions = False
 		self.tasks = []
 		self.outputs = {}
-		self.lastmtime = self.get_mtime()
+		#self.lastmtime = self.get_mtime()
 
 
 	def run(self):
@@ -1807,7 +1807,7 @@ class RegionsManager(th.Thread):
 	def get_mtime(self):
 
 		os.path.getmtime(os.path.join(sc4mp_server_path, "Regions"))
-
+			
 
 class FileTablesManager(th.Thread):
 
