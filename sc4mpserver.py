@@ -1293,7 +1293,7 @@ class Server(th.Thread):
 
 		if not sc4mp_nostart:
 
-			report("Preparing file tables...")
+			report("Preparing plugins...") #report("Preparing file tables...")
 
 			global sc4mp_filetables_manager
 			sc4mp_filetables_manager = FileTablesManager()
@@ -2521,39 +2521,39 @@ class ServerList(th.Thread):
 
 						# Skip it if it matches the server id of this server
 						if server_id == sc4mp_config["INFO"]["server_id"]:
-							print("- \"" + server_id + "\" is our server_id!")
+							#print("- \"" + server_id + "\" is our server_id!")
 							continue
 
 						# Resolve server id confilcts
 						if server_id in self.servers:
-							print("- \"" + server_id + "\" already found in our server list")
+							#print("- \"" + server_id + "\" already found in our server list")
 							old_server = (self.servers[server_id]["host"], self.servers[server_id]["port"])
 							if server != old_server:
-								print("[WARNING] Resolving server_id conflict...")
+								print(f"[WARNING] The server at {server[0]}:{server[1]} is using a server ID, \"{server_id}\", which is already used by {old_server[0]}:{old_server[1]}. Resolving server ID conflict...")
 								if self.ping(old_server) is None:
-									print("[WARNING] - keeping the new server!")
+									print(f"[WARNING] - keeping the new server ({server[0]}:{server[1]}) and discarding the old one ({old_server[0]}:{old_server[1]}).")
 									self.servers[server_id] = {"host": server[0], "port": server[1]}
 								else:
-									print("[WARNING] - keeping the old server!")
+									print(f"[WARNING] - keeping the old server ({old_server[0]}:{old_server[1]}) and discarding the new one ({server[0]}:{server[1]}).")
 						else:
-							print("- adding \"" + server_id + "\" to our server list")
+							#print("- adding \"" + server_id + "\" to our server list")
 							self.servers[server_id] = {"host": server[0], "port": server[1]}
 
 						# Request to be added to the server's server list
-						print("- requesting to be added to their server list...")
+						#print("- requesting to be added to their server list...")
 						self.add_server(server)
 
 						# Get the server's server list
-						print("- receiving their server list...")
+						#print("- receiving their server list...")
 						self.server_list(server)
 
-						print("- done.")
+						#print("- done.")
 
 					except Exception as e:
 						
 						#show_error(e)
 
-						print("[WARNING] Failed! " + str(e))
+						print(f"[WARNING] Failed to synchronize server list with {server[0]}:{server[1]}! " + str(e))
 				
 				# Update database
 				#report('Updating "' + os.path.join(sc4mp_server_path, "_Database", "servers.json") + '"...')
