@@ -390,6 +390,8 @@ def export(export_type):
 										if os.path.exists(reset_filename):
 											print(f"[WARNING] - replacing with \"{reset_filename}\"...")
 											shutil.copy(reset_filename, filename)
+										else:
+											print(f"[WARNING] - cannot replace with \"{reset_filename}\", since the file does not exist.")
 									else:
 										entry["filename"] = None
 									print(f"[WARNING] - resetting claim...")
