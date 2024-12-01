@@ -2588,7 +2588,7 @@ class ServerList(th.Thread):
 			s.connect((host, port))
 			return s
 		except:
-			raise ServerException("Server not found")
+			raise ServerException("Server not found.")
 
 	
 	def request_server_id(self, server):
