@@ -390,6 +390,8 @@ def export(export_type):
 										if os.path.exists(reset_filename):
 											print(f"[WARNING] - replacing with \"{reset_filename}\"...")
 											shutil.copy(reset_filename, filename)
+									else:
+										entry["filename"] = None
 									print(f"[WARNING] - resetting claim...")
 									entry["owner"] = None
 									update_database = True
