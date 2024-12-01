@@ -2532,13 +2532,22 @@ class ServerList(th.Thread):
 						if server_id in self.servers:
 							#print("- \"" + server_id + "\" already found in our server list")
 							old_server = (self.servers[server_id]["host"], self.servers[server_id]["port"])
+
 							if server != old_server:
+								
 								print(f"[WARNING] The server at {server[0]}:{server[1]} is using a server ID, \"{server_id}\", which is already used by {old_server[0]}:{old_server[1]}. Resolving server ID conflict...")
-								if self.ping(old_server) is None:
+								
+								try:
+									old_server_id = self.request_server_id(old_server)
+								except:
+									old_server_id = None
+
+								if old_server_id == server_id:
+									print(f"[WARNING] - keeping the old server ({old_server[0]}:{old_server[1]}) and discarding the new one ({server[0]}:{server[1]}).")
+								else:
 									print(f"[WARNING] - keeping the new server ({server[0]}:{server[1]}) and discarding the old one ({old_server[0]}:{old_server[1]}).")
 									self.servers[server_id] = {"host": server[0], "port": server[1]}
-								else:
-									print(f"[WARNING] - keeping the old server ({old_server[0]}:{old_server[1]}) and discarding the new one ({server[0]}:{server[1]}).")
+
 						else:
 							#print("- adding \"" + server_id + "\" to our server list")
 							self.servers[server_id] = {"host": server[0], "port": server[1]}
