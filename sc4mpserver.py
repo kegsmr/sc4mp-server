@@ -592,10 +592,6 @@ def receive_file(c, filename, filesize):
 			#print('Downloading "' + filename + '" (' + str(filesize_read) + " / " + str(filesize) + " bytes)...", int(filesize_read), int(filesize)) #os.path.basename(os.path.normpath(filename))
 
 
-def xor(conditionA, conditionB):
-	return (conditionA or conditionB) and (not (conditionA and conditionB))
-
-
 def report(message, obj=None, msg_type="INFO", ): #TODO do this in the logger to make sure output prints correctly
 	"""TODO"""
 	'''color = '\033[94m '
@@ -1785,6 +1781,8 @@ class RegionsManager(th.Thread):
 				except Exception as e:
 
 					show_error(e)
+
+					time.sleep(5)
 
 		except Exception as e:
 
