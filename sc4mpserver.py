@@ -829,7 +829,8 @@ class Server(th.Thread):
 
 						print("[WARNING] Request thread limit reached!")
 
-						time.sleep(SC4MP_DELAY)
+						while not (sc4mp_request_threads < max_request_threads):
+							time.sleep(SC4MP_DELAY)
 				
 			except (SystemExit, KeyboardInterrupt) as e:
 
