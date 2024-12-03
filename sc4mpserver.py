@@ -1481,13 +1481,15 @@ class BackupsManager(th.Thread):
 
 		# remove unreferenced backup files
 		backup_file_dir = self.backup_dir / 'data'
-		for file in [f for f in backup_file_dir.iterdir() if f.is_file()]:
-			# parse hash and filesize from file name
-			hashcode, size_str = file.stem.split('_')
-			size = int(size_str)
+		if backup_file_dir.exists():
+			for file in [f for f in backup_file_dir.iterdir() if f.is_file()]:
+				
+				# parse hash and filesize from file name
+				hashcode, size_str = file.stem.split('_')
+				size = int(size_str)
 
-			if (hashcode, size) not in referenced_files:
-				file.unlink()
+				if (hashcode, size) not in referenced_files:
+					file.unlink()
 
 
 	def get_referenced_files(self) -> set[tuple[str, int]]:
