@@ -835,8 +835,13 @@ class Server(th.Thread):
 
 				pass
 
-			report("Shutting down...")
-			sc4mp_server_running = False
+			while True:
+				try:
+					report("Shutting down...")
+					sc4mp_server_running = False
+					break
+				except:
+					time.sleep(SC4MP_DELAY)
 
 		except Exception as e:
 
