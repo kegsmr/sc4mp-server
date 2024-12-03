@@ -1539,9 +1539,9 @@ class DatabaseManager(th.Thread):
 					time.sleep(SC4MP_DELAY)
 					new_data = str(self.data)
 					if old_data != new_data:
-						report('Updating "' + self.filename + '"...', self)
+						#report('Updating "' + self.filename + '"...', self) #TODO make verbose
 						self.update_json(self.filename, self.data)
-						report("- done.", self)
+						#report("- done.", self) #TODO make verbose
 					old_data = new_data
 				except Exception as e:
 					show_error(e)
