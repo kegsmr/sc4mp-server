@@ -397,6 +397,10 @@ def export(export_type):
 										if os.path.exists(reset_filename):
 											print(f"[WARNING] - replacing with \"{reset_filename}\"...")
 											shutil.copy(reset_filename, filename)
+										else:
+											print(f"[WARNING] - cannot replace with \"{reset_filename}\", since the file does not exist.")
+									else:
+										entry["filename"] = None
 									print(f"[WARNING] - resetting claim...")
 									entry["owner"] = None
 									update_database = True
@@ -593,10 +597,6 @@ def receive_file(c, filename, filesize):
 			f.write(bytes_read)
 			filesize_read += len(bytes_read)
 			#print('Downloading "' + filename + '" (' + str(filesize_read) + " / " + str(filesize) + " bytes)...", int(filesize_read), int(filesize)) #os.path.basename(os.path.normpath(filename))
-
-
-def xor(conditionA, conditionB):
-	return (conditionA or conditionB) and (not (conditionA and conditionB))
 
 
 def report(message, obj=None, msg_type="INFO", ): #TODO do this in the logger to make sure output prints correctly
@@ -836,14 +836,20 @@ class Server(th.Thread):
 
 						print("[WARNING] Request thread limit reached!")
 
-						time.sleep(SC4MP_DELAY)
+						while not (sc4mp_request_threads < max_request_threads):
+							time.sleep(SC4MP_DELAY)
 				
 			except (SystemExit, KeyboardInterrupt) as e:
 
 				pass
 
-			report("Shutting down...")
-			sc4mp_server_running = False
+			while True:
+				try:
+					report("Shutting down...")
+					sc4mp_server_running = False
+					break
+				except:
+					time.sleep(SC4MP_DELAY)
 
 		except Exception as e:
 
@@ -1300,7 +1306,7 @@ class Server(th.Thread):
 
 		if not sc4mp_nostart:
 
-			report("Preparing file tables...")
+			report("Preparing plugins...") #report("Preparing file tables...")
 
 			global sc4mp_filetables_manager
 			sc4mp_filetables_manager = FileTablesManager()
@@ -1482,13 +1488,15 @@ class BackupsManager(th.Thread):
 
 		# remove unreferenced backup files
 		backup_file_dir = self.backup_dir / 'data'
-		for file in [f for f in backup_file_dir.iterdir() if f.is_file()]:
-			# parse hash and filesize from file name
-			hashcode, size_str = file.stem.split('_')
-			size = int(size_str)
+		if backup_file_dir.exists():
+			for file in [f for f in backup_file_dir.iterdir() if f.is_file()]:
+				
+				# parse hash and filesize from file name
+				hashcode, size_str = file.stem.split('_')
+				size = int(size_str)
 
-			if (hashcode, size) not in referenced_files:
-				file.unlink()
+				if (hashcode, size) not in referenced_files:
+					file.unlink()
 
 
 	def get_referenced_files(self) -> set[tuple[str, int]]:
@@ -1546,9 +1554,9 @@ class DatabaseManager(th.Thread):
 					time.sleep(SC4MP_DELAY)
 					new_data = str(self.data)
 					if old_data != new_data:
-						report('Updating "' + self.filename + '"...', self)
+						#report('Updating "' + self.filename + '"...', self) #TODO make verbose
 						self.update_json(self.filename, self.data)
-						report("- done.", self)
+						#report("- done.", self) #TODO make verbose
 					old_data = new_data
 				except Exception as e:
 					show_error(e)
@@ -1788,6 +1796,8 @@ class RegionsManager(th.Thread):
 				except Exception as e:
 
 					show_error(e)
+
+					time.sleep(5)
 
 		except Exception as e:
 
@@ -2528,39 +2538,48 @@ class ServerList(th.Thread):
 
 						# Skip it if it matches the server id of this server
 						if server_id == sc4mp_config["INFO"]["server_id"]:
-							print("- \"" + server_id + "\" is our server_id!")
+							#print("- \"" + server_id + "\" is our server_id!")
 							continue
 
 						# Resolve server id confilcts
 						if server_id in self.servers:
-							print("- \"" + server_id + "\" already found in our server list")
+							#print("- \"" + server_id + "\" already found in our server list")
 							old_server = (self.servers[server_id]["host"], self.servers[server_id]["port"])
+
 							if server != old_server:
-								print("[WARNING] Resolving server_id conflict...")
-								if self.ping(old_server) is None:
-									print("[WARNING] - keeping the new server!")
-									self.servers[server_id] = {"host": server[0], "port": server[1]}
+								
+								print(f"[WARNING] The server at {server[0]}:{server[1]} is using a server ID, \"{server_id}\", which is already used by {old_server[0]}:{old_server[1]}. Resolving server ID conflict...")
+								
+								try:
+									old_server_id = self.request_server_id(old_server)
+								except:
+									old_server_id = None
+
+								if old_server_id == server_id:
+									print(f"[WARNING] - keeping the old server ({old_server[0]}:{old_server[1]}) and discarding the new one ({server[0]}:{server[1]}).")
 								else:
-									print("[WARNING] - keeping the old server!")
+									print(f"[WARNING] - keeping the new server ({server[0]}:{server[1]}) and discarding the old one ({old_server[0]}:{old_server[1]}).")
+									self.servers[server_id] = {"host": server[0], "port": server[1]}
+
 						else:
-							print("- adding \"" + server_id + "\" to our server list")
+							#print("- adding \"" + server_id + "\" to our server list")
 							self.servers[server_id] = {"host": server[0], "port": server[1]}
 
 						# Request to be added to the server's server list
-						print("- requesting to be added to their server list...")
+						#print("- requesting to be added to their server list...")
 						self.add_server(server)
 
 						# Get the server's server list
-						print("- receiving their server list...")
+						#print("- receiving their server list...")
 						self.server_list(server)
 
-						print("- done.")
+						#print("- done.")
 
 					except Exception as e:
 						
 						#show_error(e)
 
-						print("[WARNING] Failed! " + str(e))
+						print(f"[WARNING] Failed to synchronize server list with {server[0]}:{server[1]}! " + str(e))
 				
 				# Update database
 				#report('Updating "' + os.path.join(sc4mp_server_path, "_Database", "servers.json") + '"...')
@@ -2582,7 +2601,7 @@ class ServerList(th.Thread):
 			s.connect((host, port))
 			return s
 		except:
-			raise ServerException("Server not found")
+			raise ServerException("Server not found.")
 
 	
 	def request_server_id(self, server):
