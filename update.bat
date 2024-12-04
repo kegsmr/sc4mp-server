@@ -1,0 +1,1 @@
+sc4mpserver -u -p

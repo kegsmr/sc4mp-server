@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import configparser
 import getpass
 import hashlib
 import inspect
-import io
 import json
 import os
 import random
@@ -33,7 +31,7 @@ from core.util import *
 
 # Header
 
-SC4MP_VERSION = "0.5.2"
+SC4MP_VERSION = "0.6.1"
 
 SC4MP_SERVERS = [("servers.sc4mp.org", port) for port in range(7240, 7250)]
 
@@ -65,6 +63,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
 		("host", "0.0.0.0"),
 		("port", 7240),
+		#("domain", None),					#TODO for servers hosted on a DDNS or other specific domain
 		("discoverable", True),
 	]),
 	("INFO", [
@@ -81,10 +80,10 @@ SC4MP_CONFIG_DEFAULTS = [
 	]),
 	("RULES", [
 		("claim_duration", 30),
-		#("abandoned_reset_delay", None) #TODO for resetting old abandoned saves
-		#("claim_delay", 60), #TODO
+		#("abandoned_reset_delay", None) 	#TODO for resetting old abandoned saves
+		#("claim_timeout", None), 			#TODO prevent users from making another claim within this time
 		("max_region_claims", 1),
-		#("max_total_claims", None), #TODO
+		#("max_total_claims", None), 		#TODO max claims accross entire server
 		("godmode_filter", True),
 		("user_plugins", False),
 	]),
@@ -92,14 +91,13 @@ SC4MP_CONFIG_DEFAULTS = [
 		("request_limit", 60),
 		("max_request_threads", 200),
 		("connection_timeout", 600),
-		("filetable_update_interval", 60)
+		("filetable_update_interval", 600),
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 6),
 		("backup_server_on_startup", True),
 		("max_server_backup_days", 30),
-		#("max_server_backups", 720),
-		("max_savegame_backups", 100),
+		("max_savegame_backups", 20),
 	])
 ]
 
@@ -120,6 +118,13 @@ def main():
 	"""The main method."""
 
 	try:
+
+		# Set working directory
+		exec_path = Path(sys.executable)
+		exec_file = exec_path.name
+		exec_dir = exec_path.parent
+		if exec_file == "sc4mpserver.exe":
+			os.chdir(exec_dir)
 
 		# Parse arguments
 		args = parse_args()
@@ -149,6 +154,7 @@ def main():
 		# -r / --restore argument
 		if args.restore:
 			restore(args.restore)
+			return
 
 		# -p / --prep argument
 		global sc4mp_nostart
@@ -242,11 +248,6 @@ def md5(filename):
 		for chunk in iter(lambda: f.read(4096), b""):
 			hash_md5.update(chunk)
 	return hash_md5.hexdigest()
-
-
-'''def string_md5(text):
-	"""TODO"""
-	return hashlib.md5(text.encode()).hexdigest()'''
 
 
 def file_md5(file):
@@ -375,25 +376,36 @@ def export(export_type):
 
 	#TODO delete old abandoned savegames
 
-	# Replace missing savegame files with the reset savegame file
+	# Replace missing savegame files with the reset savegame file if it exists, and reset the claim
 	try:
 		if export_type == "regions":
 			for region in os.listdir(target):
 				if os.path.isdir(os.path.join(target, region)):
 					data_filename = os.path.join(target, region, "_Database", "region.json")
 					data = load_json(data_filename)
+					update_database = False
 					for entry in data.values():
 						if entry is not None:
 							filename = entry.get("filename", None)
-							reset_filename = entry.get("reset_filename", None)
-							if filename is not None and reset_filename is not None:
+							if filename is not None:
 								filename = os.path.join(target, region, filename)
-								reset_filename = os.path.join(target, region, reset_filename)
-								print(filename)
-								print(reset_filename)
-								if (not os.path.exists(filename)) and (os.path.exists(reset_filename)):
-									print(f"[WARNING] Savegame at \"{filename}\" is missing! Replacing with \"{reset_filename}\"...")
-									shutil.copy(reset_filename, filename)
+								if not os.path.exists(filename):
+									print(f"[WARNING] Savegame at \"{filename}\" is missing!")
+									reset_filename = entry.get("reset_filename", None)
+									if reset_filename is not None:
+										reset_filename = os.path.join(target, region, reset_filename)
+										if os.path.exists(reset_filename):
+											print(f"[WARNING] - replacing with \"{reset_filename}\"...")
+											shutil.copy(reset_filename, filename)
+										else:
+											print(f"[WARNING] - cannot replace with \"{reset_filename}\", since the file does not exist.")
+									else:
+										entry["filename"] = None
+									print(f"[WARNING] - resetting claim...")
+									entry["owner"] = None
+									update_database = True
+					if update_database:
+						update_json(data_filename, data)
 	except Exception as e:
 		show_error(e)
 
@@ -587,10 +599,6 @@ def receive_file(c, filename, filesize):
 			#print('Downloading "' + filename + '" (' + str(filesize_read) + " / " + str(filesize) + " bytes)...", int(filesize_read), int(filesize)) #os.path.basename(os.path.normpath(filename))
 
 
-def xor(conditionA, conditionB):
-	return (conditionA or conditionB) and (not (conditionA and conditionB))
-
-
 def report(message, obj=None, msg_type="INFO", ): #TODO do this in the logger to make sure output prints correctly
 	"""TODO"""
 	'''color = '\033[94m '
@@ -629,17 +637,6 @@ def update_config_constants(config):
 	SC4MP_SERVER_ID = config['INFO']['server_id']
 	SC4MP_SERVER_NAME = config['INFO']['server_name']
 	SC4MP_SERVER_DESCRIPTION = config['INFO']['server_description']
-
-
-def format_version(version: tuple[int, int, int]) -> str:
-	"""Converts a version number from a tuple to a string."""
-	major, minor, patch = version
-	return f'{major}.{minor}.{patch}'
-
-
-def unformat_version(version: str) -> tuple[int, int, int]:
-	"""Converts a version number from a string to a tuple."""
-	return tuple([int(v) for v in version.split('.')])
 
 
 def restore(filename):
@@ -715,26 +712,6 @@ def fatal_error(e):
 	#sys.exit()
 
 
-def set_thread_name(name, enumerate=True):
-
-	if enumerate:
-
-		thread_names = [thread.name for thread in th.enumerate()]
-
-		count = 1
-		while (sc4mp_server_running):
-			thread_name = f"{name}-{count}"
-			if not thread_name in thread_names:
-				th.current_thread().name = thread_name
-				return thread_name
-			count += 1
-
-	else:
-
-		th.current_thread().name = name
-		return name
-
-
 def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag):
 
 	prefix = f"({savegameX:0>{3}}-{savegameY:0>{3}})"
@@ -758,8 +735,6 @@ def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorN
 
 def filter_non_alpha_numeric(text):
 	return " ".join(re.sub('[^0-9a-zA-Z ]+', " ", text).split())
-
-
 
 
 # Workers
@@ -861,14 +836,20 @@ class Server(th.Thread):
 
 						print("[WARNING] Request thread limit reached!")
 
-						time.sleep(SC4MP_DELAY)
+						while not (sc4mp_request_threads < max_request_threads):
+							time.sleep(SC4MP_DELAY)
 				
 			except (SystemExit, KeyboardInterrupt) as e:
 
 				pass
 
-			report("Shutting down...")
-			sc4mp_server_running = False
+			while True:
+				try:
+					report("Shutting down...")
+					sc4mp_server_running = False
+					break
+				except:
+					time.sleep(SC4MP_DELAY)
 
 		except Exception as e:
 
@@ -899,38 +880,6 @@ class Server(th.Thread):
 		client_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-	'''def check_version(self): #TODO doesnt work
-		"""TODO"""
-
-		report("Checking for updates...")
-
-		version = []
-		for server in SC4MP_SERVERS:
-			host = server[0]
-			port = server[1]
-			try:
-				s = socket.socket()
-				s.settimeout(5)
-				s.connect((host, port))
-				s.sendall(b"server_version")
-				bytes = s.recv(SC4MP_BUFFER_SIZE)
-				if (len(bytes) > 0):
-					split_bytes = bytes.split(SC4MP_SEPARATOR)
-					for bytes in split_bytes:
-						version.append(int(bytes.decode()))
-					break
-			except Exception as e:
-				show_error(e)
-
-		new_version_available = False
-		if (len(version) == 3):
-			version = tuple(version)
-			new_version_available = version > unformat_version(SC4MP__VERSION)
-
-		if (new_version_available):
-			print("[WARNING] Version v" + '.'.join(version) + " is available!")'''
-
-
 	def create_subdirectories(self):
 		"""TODO"""
 
@@ -949,6 +898,34 @@ class Server(th.Thread):
 					show_error(e)
 					#report("Failed to create " + directory + " subdirectory.", None, "WARNING")
 					#report('(this may have been printed by error, check your sc4mp_server_path subdirectory)', None, "WARNING")
+
+		# Create helper batch files on Windows
+		try:
+			exec_path = Path(sys.executable)
+			exec_file = exec_path.name
+			exec_dir = exec_path.parent
+			if exec_file == "sc4mpserver.exe":
+				with open(os.path.join(sc4mp_server_path, "run.bat"), "w") as batch_file:
+					batch_file.writelines([
+						f"@echo off\n",
+						f"cd \"{exec_dir}\"\n",
+						f"sc4mpserver.exe -s \"{sc4mp_server_path}\"\n",
+					])
+				with open(os.path.join(sc4mp_server_path, "prep.bat"), "w") as batch_file:
+					batch_file.writelines([
+						f"@echo off\n",
+						f"cd \"{exec_dir}\"\n",
+						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --prep\n",
+					])
+				with open(os.path.join(sc4mp_server_path, "restore.bat"), "w") as batch_file:
+					batch_file.writelines([
+						f"@echo off\n",
+						f"cd \"{exec_dir}\"\n",
+						f"set /p backup=\"Enter a backup to restore...\"\n",
+						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --restore %backup%\n",
+					])
+		except Exception as e:
+			show_error(f"Failed to create helper batch files.\n\n{e}")
 
 
 	def load_config(self):
@@ -1207,7 +1184,7 @@ class Server(th.Thread):
 			# Open savegames as DBPF objects
 			savegames = []
 			for savegame_path in savegame_paths:
-				savegames.append(DBPF(savegame_path, error_callback=show_error))
+				savegames.append(SC4Savegame(savegame_path, error_callback=show_error))
 
 			# Get the region subfile of each DBPF object and update the database
 			for savegame in savegames:
@@ -1329,7 +1306,7 @@ class Server(th.Thread):
 
 		if not sc4mp_nostart:
 
-			report("Preparing file tables...")
+			report("Preparing plugins...") #report("Preparing file tables...")
 
 			global sc4mp_filetables_manager
 			sc4mp_filetables_manager = FileTablesManager()
@@ -1511,13 +1488,15 @@ class BackupsManager(th.Thread):
 
 		# remove unreferenced backup files
 		backup_file_dir = self.backup_dir / 'data'
-		for file in [f for f in backup_file_dir.iterdir() if f.is_file()]:
-			# parse hash and filesize from file name
-			hashcode, size_str = file.stem.split('_')
-			size = int(size_str)
+		if backup_file_dir.exists():
+			for file in [f for f in backup_file_dir.iterdir() if f.is_file()]:
+				
+				# parse hash and filesize from file name
+				hashcode, size_str = file.stem.split('_')
+				size = int(size_str)
 
-			if (hashcode, size) not in referenced_files:
-				file.unlink()
+				if (hashcode, size) not in referenced_files:
+					file.unlink()
 
 
 	def get_referenced_files(self) -> set[tuple[str, int]]:
@@ -1575,9 +1554,9 @@ class DatabaseManager(th.Thread):
 					time.sleep(SC4MP_DELAY)
 					new_data = str(self.data)
 					if old_data != new_data:
-						report('Updating "' + self.filename + '"...', self)
+						#report('Updating "' + self.filename + '"...', self) #TODO make verbose
 						self.update_json(self.filename, self.data)
-						report("- done.", self)
+						#report("- done.", self) #TODO make verbose
 					old_data = new_data
 				except Exception as e:
 					show_error(e)
@@ -1617,7 +1596,7 @@ class RegionsManager(th.Thread):
 		self.export_regions = False
 		self.tasks = []
 		self.outputs = {}
-		self.lastmtime = self.get_mtime()
+		#self.lastmtime = self.get_mtime()
 
 
 	def run(self):
@@ -1818,6 +1797,8 @@ class RegionsManager(th.Thread):
 
 					show_error(e)
 
+					time.sleep(5)
+
 		except Exception as e:
 
 			fatal_error(e)
@@ -1843,7 +1824,7 @@ class RegionsManager(th.Thread):
 	def get_mtime(self):
 
 		os.path.getmtime(os.path.join(sc4mp_server_path, "Regions"))
-
+			
 
 class FileTablesManager(th.Thread):
 
@@ -2014,7 +1995,7 @@ class RequestHandler(th.Thread):
 				elif request == "time":
 					c.sendall(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
 				elif request == "info":
-					c.sendall((json.dumps({  
+					send_json(c, {  
 						"server_id": sc4mp_config["INFO"]["server_id"],  
 						"server_name": sc4mp_config["INFO"]["server_name"],
 						"server_description": sc4mp_config["INFO"]["server_description"],
@@ -2023,7 +2004,7 @@ class RequestHandler(th.Thread):
 						"private": sc4mp_config["SECURITY"]["private"],
 						"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
 						"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
-					}).encode()))
+					})
 
 				c.close()
 			
@@ -2238,7 +2219,7 @@ class RequestHandler(th.Thread):
 			savegames = []
 			for filename in os.listdir(region_path):
 				filename = os.path.join(region_path, filename)
-				savegames.append(DBPF(filename, error_callback=show_error))
+				savegames.append(SC4Savegame(filename, error_callback=show_error))
 
 			# Extract the region subfile from each DBPF
 			for savegame in savegames:
@@ -2357,7 +2338,7 @@ class RequestHandler(th.Thread):
 		for server_info in server_dict.values():
 			servers.add((server_info["host"], server_info["port"]))
 
-		c.sendall(json.dumps(list(servers)).encode())
+		send_json(c, list(servers))
 
 
 	def log_user(self, c, user_id):
@@ -2557,39 +2538,48 @@ class ServerList(th.Thread):
 
 						# Skip it if it matches the server id of this server
 						if server_id == sc4mp_config["INFO"]["server_id"]:
-							print("- \"" + server_id + "\" is our server_id!")
+							#print("- \"" + server_id + "\" is our server_id!")
 							continue
 
 						# Resolve server id confilcts
 						if server_id in self.servers:
-							print("- \"" + server_id + "\" already found in our server list")
+							#print("- \"" + server_id + "\" already found in our server list")
 							old_server = (self.servers[server_id]["host"], self.servers[server_id]["port"])
+
 							if server != old_server:
-								print("[WARNING] Resolving server_id conflict...")
-								if self.ping(old_server) is None:
-									print("[WARNING] - keeping the new server!")
-									self.servers[server_id] = {"host": server[0], "port": server[1]}
+								
+								print(f"[WARNING] The server at {server[0]}:{server[1]} is using a server ID, \"{server_id}\", which is already used by {old_server[0]}:{old_server[1]}. Resolving server ID conflict...")
+								
+								try:
+									old_server_id = self.request_server_id(old_server)
+								except:
+									old_server_id = None
+
+								if old_server_id == server_id:
+									print(f"[WARNING] - keeping the old server ({old_server[0]}:{old_server[1]}) and discarding the new one ({server[0]}:{server[1]}).")
 								else:
-									print("[WARNING] - keeping the old server!")
+									print(f"[WARNING] - keeping the new server ({server[0]}:{server[1]}) and discarding the old one ({old_server[0]}:{old_server[1]}).")
+									self.servers[server_id] = {"host": server[0], "port": server[1]}
+
 						else:
-							print("- adding \"" + server_id + "\" to our server list")
+							#print("- adding \"" + server_id + "\" to our server list")
 							self.servers[server_id] = {"host": server[0], "port": server[1]}
 
 						# Request to be added to the server's server list
-						print("- requesting to be added to their server list...")
+						#print("- requesting to be added to their server list...")
 						self.add_server(server)
 
 						# Get the server's server list
-						print("- receiving their server list...")
+						#print("- receiving their server list...")
 						self.server_list(server)
 
-						print("- done.")
+						#print("- done.")
 
 					except Exception as e:
 						
 						#show_error(e)
 
-						print("[WARNING] Failed! " + str(e))
+						print(f"[WARNING] Failed to synchronize server list with {server[0]}:{server[1]}! " + str(e))
 				
 				# Update database
 				#report('Updating "' + os.path.join(sc4mp_server_path, "_Database", "servers.json") + '"...')
@@ -2611,7 +2601,7 @@ class ServerList(th.Thread):
 			s.connect((host, port))
 			return s
 		except:
-			raise ServerException("Server not found")
+			raise ServerException("Server not found.")
 
 	
 	def request_server_id(self, server):
