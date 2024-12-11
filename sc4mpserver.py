@@ -45,7 +45,7 @@ SC4MP_WEBSITE_NAME = "www.sc4mp.org"
 SC4MP_LICENSE_NAME = "MIT-0"
 
 SC4MP_CONFIG_PATH = None
-SC4MP_LOG_PATH = "sc4mpserver-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
+SC4MP_LOG_PATH = "sc4mpserver.log" #-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
 SC4MP_README_PATH = "readme.html"
 SC4MP_RESOURCES_PATH = "resources"
 
