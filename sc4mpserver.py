@@ -112,10 +112,10 @@ sc4mp_server_running = False
 sc4mp_request_threads = 0
 
 
-# Methods
+# Functions
 
 def main():
-	"""The main method."""
+	"""The main function."""
 
 	try:
 
