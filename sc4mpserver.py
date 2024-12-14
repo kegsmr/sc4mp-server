@@ -905,6 +905,11 @@ class Server(th.Thread):
 			exec_file = exec_path.name
 			exec_dir = exec_path.parent
 			if exec_file == "sc4mpserver.exe":
+				with open("logs.bat" if sc4mp_server_path == "_SC4MP" else os.path.join(sc4mp_server_path, "logs.bat"), "w") as batch_file:
+					batch_file.writelines([
+						f"@echo off\n",
+						f"PowerShell -NoProfile -ExecutionPolicy Bypass -Command \"gc sc4mpserver.log -wait -tail 1000\"\n",
+					])
 				with open(os.path.join(sc4mp_server_path, "run.bat"), "w") as batch_file:
 					batch_file.writelines([
 						f"@echo off\n",
