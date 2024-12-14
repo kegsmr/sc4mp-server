@@ -250,7 +250,7 @@ def get_sc4mp_path(filename):
 
 
 def file_md5(file):
-	"""TODO"""
+	
 	hash_md5 = hashlib.md5()
 	for chunk in iter(lambda: file.read(4096), b""):
 		hash_md5.update(chunk)
@@ -258,7 +258,7 @@ def file_md5(file):
 
 
 def create_empty_json(filename):
-	"""TODO"""
+	
 	with open(filename, 'w') as file:
 		data = {}
 		file.seek(0)
@@ -322,7 +322,7 @@ def set_savegame_data(entry, savegame):
 
 
 def update_json(filename, data):
-	"""TODO"""
+	
 	with open(filename, 'w') as file:
 		file.seek(0)
 		json.dump(data, file, indent=4)
@@ -330,7 +330,7 @@ def update_json(filename, data):
 
 
 def package_plugins_and_regions():
-	"""TODO"""
+	
 
 	report("Packaging plugins and regions...")
 
@@ -347,7 +347,7 @@ def package_plugins_and_regions():
 
 
 def package(package_type):
-	"""TODO"""
+	
 
 	directory = None
 	if package_type == "plugins":
@@ -365,7 +365,7 @@ def package(package_type):
 
 
 def export(export_type):
-	"""TODO"""
+	
 
 	# Select directory name from input
 	directory = None
@@ -453,7 +453,7 @@ def purge_directory(directory):
 
 
 def send_filestream(c, rootpath):
-	"""TODO"""
+	
 
 	# Loop through all files in path and append them to a list
 	#fullpaths = []
@@ -500,7 +500,7 @@ def send_filestream(c, rootpath):
 
 
 def send_tree(c, rootpath):
-	"""TODO"""
+	
 
 	# Loop through all files in path and append them to a list
 	fullpaths = []
@@ -555,7 +555,7 @@ def send_tree(c, rootpath):
 
 
 def send_or_cached(c, filename):
-	"""TODO"""
+	
 	c.sendall(md5(filename).encode())
 	if c.recv(SC4MP_BUFFER_SIZE).decode() == "n":
 		send_file(c, filename)
@@ -564,7 +564,7 @@ def send_or_cached(c, filename):
 
 
 def send_file(c, filename):
-	"""TODO"""
+	
 
 	report("Sending file " + filename + "...")
 
@@ -580,7 +580,7 @@ def send_file(c, filename):
 
 
 def receive_file(c, filename, filesize):
-	"""TODO"""
+	
 
 	#if (filesize is None):
 	#
@@ -608,7 +608,7 @@ def receive_file(c, filename, filesize):
 
 
 def report(message, obj=None, msg_type="INFO", ): #TODO do this in the logger to make sure output prints correctly
-	"""TODO"""
+	
 	'''color = '\033[94m '
 	output = datetime.now().strftime("[%H:%M:%S] [SC4MP")
 	obj = None
@@ -632,7 +632,7 @@ def report(message, obj=None, msg_type="INFO", ): #TODO do this in the logger to
 
 
 def update_config_constants(config):
-	"""TODO"""
+	
 
 	global SC4MP_HOST
 	global SC4MP_PORT
@@ -648,7 +648,7 @@ def update_config_constants(config):
 
 
 def restore(filename):
-	"""TODO"""
+	
 	possible_paths = [
 		os.path.join(sc4mp_server_path, "_Backups", filename),
 		os.path.join(sc4mp_server_path, "_Backups", filename + ".json"),
@@ -683,7 +683,7 @@ def restore(filename):
 
 
 def show_error(e, no_ui=False):
-	"""TODO"""
+	
 	message = None
 	if isinstance(e, str):
 		message = e
@@ -700,7 +700,7 @@ def show_error(e, no_ui=False):
 
 
 def fatal_error(e):
-	"""TODO"""
+	
 
 	message = None
 	if isinstance(e, str):
@@ -748,11 +748,11 @@ def filter_non_alpha_numeric(text):
 # Workers
 
 class Server(th.Thread):
-	"""TODO"""
+	
 
 
 	def __init__(self):
-		"""TODO"""
+		
 
 		super().__init__()
 
@@ -772,7 +772,7 @@ class Server(th.Thread):
 
 	
 	def run(self):
-		"""TODO"""
+		
 
 		try:
 
@@ -865,7 +865,7 @@ class Server(th.Thread):
 
 
 	def log_client(self, c):
-		"""TODO"""
+		
 
 		# Get ip
 		ip = c.getpeername()[0]
@@ -889,7 +889,7 @@ class Server(th.Thread):
 
 
 	def create_subdirectories(self):
-		"""TODO"""
+		
 
 		report("Creating subdirectories...")
 
@@ -943,7 +943,7 @@ class Server(th.Thread):
 
 
 	def load_config(self):
-		"""TODO"""
+		
 
 		global sc4mp_config, SC4MP_CONFIG_PATH
 		SC4MP_CONFIG_PATH = os.path.join(sc4mp_server_path, "serverconfig.ini")
@@ -1133,7 +1133,7 @@ class Server(th.Thread):
 
 
 	def prep_database(self):
-		"""TODO"""
+		
 
 		report("Preparing database...")
 
@@ -1276,7 +1276,7 @@ class Server(th.Thread):
 
 
 	def clear_temp(self):
-		"""TODO"""
+		
 
 		report("Clearing temporary files...")
 
@@ -1287,7 +1287,7 @@ class Server(th.Thread):
 
 
 	def prep_regions(self):
-		"""TODO"""
+		
 
 		if sc4mp_nostart:
 			return
@@ -1303,7 +1303,7 @@ class Server(th.Thread):
 
 
 	def prep_backups(self):
-		"""TODO"""
+		
 
 		report("Preparing backups...")
 
@@ -1331,7 +1331,7 @@ class Server(th.Thread):
 
 
 	def prep_server_list(self):
-		"""TODO"""
+		
 
 		if sc4mp_nostart:
 			return
@@ -1347,18 +1347,18 @@ class Server(th.Thread):
 
 
 class BackupsManager(th.Thread):
-	"""TODO"""
+	
 
 
 	def __init__(self):
-		"""TODO"""
+		
 
 		self.backup_dir = Path(sc4mp_server_path) / "_Backups"
 		super().__init__()
 
 
 	def run(self):
-		"""TODO"""
+		
 
 		try:
 
@@ -1399,7 +1399,7 @@ class BackupsManager(th.Thread):
 
 
 	def load_json(self, filename):
-		"""TODO"""
+		
 		try:
 			with open(filename, 'r') as file:
 				return json.load(file)
@@ -1408,7 +1408,7 @@ class BackupsManager(th.Thread):
 
 
 	def update_json(self, filename, data):
-		"""TODO"""
+		
 		with open(filename, 'w') as file:
 			file.seek(0)
 			json.dump(data, file, indent=4)
@@ -1416,7 +1416,7 @@ class BackupsManager(th.Thread):
 
 
 	def backup(self): #TODO stop backing up the backups subdirectory
-		"""TODO"""
+		
 
 		# Prune backups
 		try:
@@ -1534,11 +1534,11 @@ class BackupsManager(th.Thread):
 
 
 class DatabaseManager(th.Thread):
-	"""TODO"""
+	
 
 	
 	def __init__(self, filename):
-		"""TODO"""
+		
 
 		super().__init__()
 	
@@ -1547,7 +1547,7 @@ class DatabaseManager(th.Thread):
 
 
 	def run(self):
-		"""TODO"""
+		
 	
 		try:
 
@@ -1581,7 +1581,7 @@ class DatabaseManager(th.Thread):
 
 
 	def load_json(self, filename):
-		"""TODO"""
+		
 		try:
 			with open(filename, 'r') as file:
 				return json.load(file)
@@ -1590,7 +1590,7 @@ class DatabaseManager(th.Thread):
 
 	
 	def update_json(self, filename, data):
-		"""TODO"""
+		
 		with open(filename, 'w') as file:
 			file.seek(0)
 			json.dump(data, file, indent=4)
@@ -1598,11 +1598,11 @@ class DatabaseManager(th.Thread):
 
 
 class RegionsManager(th.Thread):
-	"""TODO"""
+	
 
 	
 	def __init__(self):
-		"""TODO"""
+		
 
 		super().__init__()
 
@@ -1614,7 +1614,7 @@ class RegionsManager(th.Thread):
 
 
 	def run(self):
-		"""TODO"""
+		
 
 		try:
 
@@ -1822,7 +1822,7 @@ class RegionsManager(th.Thread):
 
 
 	def load_json(self, filename):
-		"""TODO"""
+		
 		try:
 			with open(filename, 'r') as file:
 				return json.load(file)
@@ -1831,7 +1831,7 @@ class RegionsManager(th.Thread):
 
 	
 	def update_json(self, filename, data):
-		"""TODO"""
+		
 		with open(filename, 'w') as file:
 			file.seek(0)
 			json.dump(data, file, indent=4)
@@ -1936,11 +1936,11 @@ class FileTablesManager(th.Thread):
 
 
 class RequestHandler(th.Thread):
-	"""TODO"""
+	
 
 
 	def __init__(self, c):
-		"""TODO"""
+		
 
 		super().__init__()
 		
@@ -1948,7 +1948,7 @@ class RequestHandler(th.Thread):
 
 
 	def run(self):
-		"""TODO"""
+		
 
 		try:
 
@@ -2041,7 +2041,7 @@ class RequestHandler(th.Thread):
 
 
 	def request_header(self, c, args):
-		"""TODO"""
+		
 
 		if unformat_version(args[1])[:2] < unformat_version(SC4MP_VERSION)[:2]:
 			c.close()
@@ -2056,37 +2056,37 @@ class RequestHandler(th.Thread):
 
 
 	def ping(self, c):
-		"""TODO"""
+		
 		c.sendall(b"pong")
 
 
 	def send_server_id(self, c):
-		"""TODO"""
+		
 		c.sendall(SC4MP_SERVER_ID.encode())
 
 
 	def send_server_name(self, c):
-		"""TODO"""
+		
 		c.sendall(SC4MP_SERVER_NAME.encode())
 
 
 	def send_server_description(self, c):
-		"""TODO"""
+		
 		c.sendall(SC4MP_SERVER_DESCRIPTION.encode())
 
 
 	def send_server_url(self, c):
-		"""TODO"""
+		
 		c.sendall(sc4mp_config["INFO"]["server_url"].encode())
 
 
 	def send_server_version(self, c):
-		"""TODO"""
+		
 		c.sendall(SC4MP_VERSION.encode())
 
 
 	def send_user_id(self, c, in_hash):
-		"""TODO"""
+		
 
 		# Get database
 		data = sc4mp_users_database_manager.data
@@ -2103,7 +2103,7 @@ class RequestHandler(th.Thread):
 
 
 	def send_token(self, c):
-		"""TODO"""
+		
 		
 		user_id = self.user_id
 
@@ -2127,7 +2127,7 @@ class RequestHandler(th.Thread):
 
 
 	def send_plugins(self, c):
-		"""TODO"""
+		
 
 		#filename = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", "Plugins.zip")))
 		#send_or_cached(c, filename)
@@ -2137,7 +2137,7 @@ class RequestHandler(th.Thread):
 
 
 	def send_regions(self, c):
-		"""TODO"""
+		
 
 		if sc4mp_regions_manager.regions_modified:
 			sc4mp_regions_manager.export_regions = True
@@ -2153,7 +2153,7 @@ class RequestHandler(th.Thread):
 
 
 	#def delete(self, c):
-	#	"""TODO"""
+	#	
 	#
 	#	c.sendall(SC4MP_SEPARATOR)
 	#
@@ -2173,7 +2173,7 @@ class RequestHandler(th.Thread):
 
 
 	def save(self, c):
-		"""TODO"""
+		
 		
 		user_id = self.user_id
 
@@ -2335,7 +2335,7 @@ class RequestHandler(th.Thread):
 
 
 	def add_server(self, c, port):
-		"""TODO"""
+		
 		if not sc4mp_config["NETWORK"]["discoverable"]:
 			return
 		host = c.getpeername()[0]
@@ -2346,7 +2346,7 @@ class RequestHandler(th.Thread):
 
 
 	def server_list(self, c):
-		"""TODO"""
+		
 
 		if not sc4mp_config["NETWORK"]["discoverable"]:
 			return
@@ -2361,7 +2361,7 @@ class RequestHandler(th.Thread):
 
 
 	def log_user(self, c, user_id):
-		"""TODO"""
+		
 
 		# Use a hashcode of the user id for extra security
 		user_id = hashlib.sha256(user_id.encode()).hexdigest()[:32]
@@ -2413,7 +2413,7 @@ class RequestHandler(th.Thread):
 
 
 	def password_enabled(self, c):
-		"""TODO"""
+		
 		if sc4mp_config['SECURITY']['password_enabled']:
 			c.sendall(b"y")
 		else:
@@ -2421,7 +2421,7 @@ class RequestHandler(th.Thread):
 
 
 	def check_password(self, c, password):
-		"""TODO"""
+		
 		if password == sc4mp_config["SECURITY"]["password"]:
 			c.sendall(b'y')
 		else:
@@ -2429,7 +2429,7 @@ class RequestHandler(th.Thread):
 
 
 	def user_plugins_enabled(self, c):
-		"""TODO"""
+		
 		if sc4mp_config['RULES']['user_plugins']:
 			c.sendall(b"y")
 		else:
@@ -2437,7 +2437,7 @@ class RequestHandler(th.Thread):
 
 
 	def private(self, c):
-		"""TODO"""
+		
 		if sc4mp_config['SECURITY']['private']:
 			c.sendall(b"y")
 		else:
@@ -2445,7 +2445,7 @@ class RequestHandler(th.Thread):
 
 
 	def refresh(self, c):
-		"""TODO"""
+		
 
 		user_id = self.user_id
 
@@ -2612,7 +2612,7 @@ class ServerList(th.Thread):
 
 
 	def create_socket(self, server):
-		"""TODO"""
+		
 		host = server[0]
 		port = server[1]
 		try:
@@ -2625,14 +2625,14 @@ class ServerList(th.Thread):
 
 	
 	def request_server_id(self, server):
-		"""TODO"""
+		
 		s = self.create_socket(server)
 		s.sendall(b"server_id")
 		return s.recv(SC4MP_BUFFER_SIZE).decode()
 
 
 	def ping(self, server):
-		"""TODO"""
+		
 		s = self.create_socket(server)
 		try:
 			start = time.time()
@@ -2646,13 +2646,13 @@ class ServerList(th.Thread):
 
 
 	def add_server(self, server):
-		"""TODO"""
+		
 		s = self.create_socket(server)
 		s.sendall(b"add_server " + str(SC4MP_PORT).encode())
 
 
 	def server_list(self, server):
-		"""TODO"""
+		
 		s = self.create_socket(server)
 		s.sendall(b"server_list")
 		servers = recv_json(s)
@@ -2666,28 +2666,28 @@ class ServerList(th.Thread):
 # Exceptions
 
 class ServerException(Exception):
-	"""TODO"""
+	
 
 
 	def __init__(self, message, *args):
-		"""TODO"""
+		
 		super().__init__(args)
 		self.message = message
 	
 
 	def __str__(self):
-		"""TODO"""
+		
 		return self.message
 
 
 # Logger
 
 class Logger():
-	"""TODO"""
+	
 	
 
 	def __init__(self):
-		"""TODO"""
+		
 		self.terminal = sys.stdout
 		self.log = SC4MP_LOG_PATH if sc4mp_server_path == "_SC4MP" else os.path.join(sc4mp_server_path, SC4MP_LOG_PATH)
 		if os.path.exists(self.log):
@@ -2695,7 +2695,7 @@ class Logger():
    
 
 	def write(self, message):
-		"""TODO"""
+		
 
 		output = message
 
@@ -2746,7 +2746,7 @@ class Logger():
 
 
 	def flush(self):
-		"""TODO"""
+		
 		self.terminal.flush()
 
 
