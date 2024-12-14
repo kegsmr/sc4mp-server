@@ -234,20 +234,19 @@ def get_sc4mp_path(filename):
 	return os.path.join(SC4MP_RESOURCES_PATH, filename)
 
 
-def md5(filename):
-	"""TODO Creates the hashcode for a given file.
-
-	Arguments:
-		filename (str)
-
-	Returns:
-		TODO type: hashcode
-	"""
-	hash_md5 = hashlib.md5()
-	with open(filename, "rb") as f:
-		for chunk in iter(lambda: f.read(4096), b""):
-			hash_md5.update(chunk)
-	return hash_md5.hexdigest()
+#def md5(filename):
+#	"""TODO Creates the hashcode for a given file.
+#
+#		filename (str)
+#
+#	Returns:
+#		TODO type: hashcode
+#	"""
+#	hash_md5 = hashlib.md5()
+#	with open(filename, "rb") as f:
+#		for chunk in iter(lambda: f.read(4096), b""):
+#			hash_md5.update(chunk)
+#	return hash_md5.hexdigest()
 
 
 def file_md5(file):
@@ -2153,24 +2152,24 @@ class RequestHandler(th.Thread):
 		#send_tree(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
 
 
-	'''def delete(self, c):
-		"""TODO"""
-
-		c.sendall(SC4MP_SEPARATOR)
-
-		user_id = self.log_user(c)
-		c.sendall(SC4MP_SEPARATOR)
-		region = c.recv(SC4MP_BUFFER_SIZE).decode()
-		c.sendall(SC4MP_SEPARATOR)
-		city = c.recv(SC4MP_BUFFER_SIZE).decode()
-
-		c.sendall(SC4MP_SEPARATOR) #TODO verify that the user can make the deletion
-
-		#TODO only delete file if user is authorized
-
-		filename = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, city)))
-
-		os.remove(filename)'''
+	#def delete(self, c):
+	#	"""TODO"""
+	#
+	#	c.sendall(SC4MP_SEPARATOR)
+	#
+	#	user_id = self.log_user(c)
+	#	c.sendall(SC4MP_SEPARATOR)
+	#	region = c.recv(SC4MP_BUFFER_SIZE).decode()
+	#	c.sendall(SC4MP_SEPARATOR)
+	#	city = c.recv(SC4MP_BUFFER_SIZE).decode()
+	#
+	#	c.sendall(SC4MP_SEPARATOR) #TODO verify that the user can make the deletion
+	#
+	#	#TODO only delete file if user is authorized
+	#
+	#	filename = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, city)))
+	#
+	#	os.remove(filename)
 
 
 	def save(self, c):
