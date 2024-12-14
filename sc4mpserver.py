@@ -2014,6 +2014,8 @@ class RequestHandler(th.Thread):
 						"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
 						"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
 					})
+				else:
+					print(f"[WARNING] Invalid request!") # (\"{request}\")!")
 
 				c.close()
 			
