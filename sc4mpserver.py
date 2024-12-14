@@ -45,7 +45,7 @@ SC4MP_WEBSITE_NAME = "www.sc4mp.org"
 SC4MP_LICENSE_NAME = "MIT-0"
 
 SC4MP_CONFIG_PATH = None
-SC4MP_LOG_PATH = "sc4mpserver-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
+SC4MP_LOG_PATH = "sc4mpserver.log" #-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
 SC4MP_README_PATH = "readme.html"
 SC4MP_RESOURCES_PATH = "resources"
 
@@ -112,10 +112,10 @@ sc4mp_server_running = False
 sc4mp_request_threads = 0
 
 
-# Methods
+# Functions
 
 def main():
-	"""The main method."""
+	"""The main function."""
 
 	try:
 
@@ -1698,6 +1698,9 @@ class RegionsManager(th.Thread):
 											expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + timedelta(days=sc4mp_config["RULES"]["claim_duration"])
 											if expires > datetime.now():
 												self.outputs[save_id] = "City already claimed."
+										reclaimed = True
+									else:
+										reclaimed = False
 
 								# Filter out cliams of users who have exhausted their region claims
 								if ("owner" not in entry or entry["owner"] != user_id):
@@ -1752,6 +1755,7 @@ class RegionsManager(th.Thread):
 									entry["filename"] = new_filename
 									entry["owner"] = user_id
 									entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+									entry["reclaimed"] = reclaimed
 									set_savegame_data(entry, savegame)
 
 									# Update database
