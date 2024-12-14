@@ -1689,6 +1689,7 @@ class RegionsManager(th.Thread):
 										self.outputs[save_id] = "Invalid city size."
 
 								# Filter out claims on tiles with unexpired claims of other users
+								reclaimed = False
 								if "owner" in entry:
 									owner = entry["owner"]
 									if (owner is not None and owner != user_id):
@@ -1699,8 +1700,6 @@ class RegionsManager(th.Thread):
 											if expires > datetime.now():
 												self.outputs[save_id] = "City already claimed."
 										reclaimed = True
-									else:
-										reclaimed = False
 
 								# Filter out cliams of users who have exhausted their region claims
 								if ("owner" not in entry or entry["owner"] != user_id):
