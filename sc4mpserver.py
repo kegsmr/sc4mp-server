@@ -312,6 +312,15 @@ def set_savegame_data(entry, savegame):
 	entry["population_density"] = round(entry["population"] / (entry["size"] * entry["size"]))
 	entry["residential_population_density"] = round(entry["residential_population"] / (entry["size"] * entry["size"]))
 
+	# Log mayor name
+	if sc4mp_server_running:
+		owner = entry["owner"]
+		if owner is not None and not entry.get("reclaimed", False):
+			mayor_name = entry["mayor_name"]
+			mayor_names = sc4mp_users_database_manager.data[owner]["mayors"]
+			if mayor_name not in mayor_names:
+				mayor_names.append(mayor_name)
+
 
 def update_json(filename, data):
 	"""TODO"""
@@ -2383,6 +2392,7 @@ class RequestHandler(th.Thread):
 
 		# Set default values if missing
 		user_entry.setdefault("clients", [])
+		user_entry.setdefault("mayors", [])
 		user_entry.setdefault("ban", False)
 		user_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
