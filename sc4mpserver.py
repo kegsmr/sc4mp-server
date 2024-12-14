@@ -1249,7 +1249,7 @@ class Server(th.Thread):
 
 				# Rename savegame file to match correct format
 				new_filename = set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag)
-				if entry["filename"] != new_filename:
+				if entry["filename"] is not None and entry["filename"] != new_filename:
 					print(f"- renaming \"{entry['filename']}\" to \"{new_filename}\"...")
 					try:
 						os.rename(os.path.join(region_directory, entry["filename"]), os.path.join(region_directory, new_filename))
@@ -1730,7 +1730,7 @@ class RegionsManager(th.Thread):
 								if save_id not in self.outputs:
 
 									# Delete previous save file if it exists
-									if "filename" in entry:
+									if "filename" in entry and entry["filename"] is not None:
 										previous_filename = os.path.join(sc4mp_server_path, "Regions", region, entry["filename"])
 										if os.path.exists(previous_filename):
 											os.remove(previous_filename)
