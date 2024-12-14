@@ -813,7 +813,7 @@ class Server(th.Thread):
 							c.settimeout(sc4mp_config["PERFORMANCE"]["connection_timeout"])
 
 							if (sc4mp_config["PERFORMANCE"]["request_limit"] is not None and host in client_requests and client_requests[host] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
-								report("[WARNING] Connection blocked from " + str(host) + ":" + str(port) + ".")
+								print("[WARNING] Connection blocked from " + str(host) + ":" + str(port) + ".")
 								c.close()
 								continue
 							else:
