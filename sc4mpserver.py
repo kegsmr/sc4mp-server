@@ -289,6 +289,7 @@ def set_savegame_data(entry, savegame):
 	entry.setdefault("filename", os.path.basename(os.path.normpath(savegame.filename)))
 	entry.setdefault("reset_filename", None)
 	entry.setdefault("date_subfile_hashes", [])
+	entry.setdefault("last_mayor_name", None)
 
 	# Append
 	date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
@@ -313,12 +314,15 @@ def set_savegame_data(entry, savegame):
 
 	# Log mayor name
 	if sc4mp_server_running:
-		owner = entry["owner"]
-		if owner is not None and not entry.get("reclaimed", False):
-			mayor_name = entry["mayor_name"]
-			mayor_names = sc4mp_users_database_manager.data[owner]["mayors"]
-			if mayor_name not in mayor_names:
-				mayor_names.append(mayor_name)
+		owner = entry.get("owner", None)
+		if owner is not None:
+			mayor_name = entry.get("mayor_name", None)
+			if mayor_name is not None:
+				last_mayor_name = entry.get("last_mayor_name", None)
+				if mayor_name != last_mayor_name:
+					mayor_names = sc4mp_users_database_manager.data[owner]["mayors"]
+					if mayor_name not in mayor_names:
+						mayor_names.append(mayor_name)
 
 
 def update_json(filename, data):
@@ -1768,7 +1772,9 @@ class RegionsManager(th.Thread):
 									entry["filename"] = new_filename
 									entry["owner"] = user_id
 									entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-									entry["reclaimed"] = reclaimed
+									entry["reclaimed"] = reclaimed or entry.get("reclaimed", False)
+									if reclaimed:
+										entry["last_mayor_name"] = entry.get("mayor_name", None)
 									set_savegame_data(entry, savegame)
 
 									# Update database
