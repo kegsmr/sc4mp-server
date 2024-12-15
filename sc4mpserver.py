@@ -234,19 +234,19 @@ def get_sc4mp_path(filename):
 	return os.path.join(SC4MP_RESOURCES_PATH, filename)
 
 
-#def md5(filename):
-#	"""TODO Creates the hashcode for a given file.
-#
-#		filename (str)
-#
-#	Returns:
-#		TODO type: hashcode
-#	"""
-#	hash_md5 = hashlib.md5()
-#	with open(filename, "rb") as f:
-#		for chunk in iter(lambda: f.read(4096), b""):
-#			hash_md5.update(chunk)
-#	return hash_md5.hexdigest()
+def md5(filename):
+	"""TODO Creates the hashcode for a given file.
+
+		filename (str)
+
+	Returns:
+		TODO type: hashcode
+	"""
+	hash_md5 = hashlib.md5()
+	with open(filename, "rb") as f:
+		for chunk in iter(lambda: f.read(4096), b""):
+			hash_md5.update(chunk)
+	return hash_md5.hexdigest()
 
 
 def file_md5(file):
