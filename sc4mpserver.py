@@ -2190,6 +2190,10 @@ class RequestHandler(th.Thread):
 		region, file_sizes = recv_json(c)
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
+		# Enforce max file count and file sizes
+		if len(file_sizes) > 17 or max(file_sizes) > 500000000:
+			return
+
 		# Separator
 		c.sendall(b"ok")
 
