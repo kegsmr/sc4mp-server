@@ -621,7 +621,7 @@ def report(message, obj=None, msg_type="INFO", ): #TODO do this in the logger to
 			break
 		try:
 			obj = item[0].f_locals["self"]
-		except:
+		except Exception:
 			pass
 	if (obj != None):
 		output += "/" + obj.__class__.__name__
@@ -860,7 +860,7 @@ class Server(th.Thread):
 					report("Shutting down...")
 					sc4mp_server_running = False
 					break
-				except:
+				except Exception:
 					time.sleep(SC4MP_DELAY)
 
 		except Exception as e:
@@ -881,7 +881,7 @@ class Server(th.Thread):
 		client_entry = None
 		try:
 			client_entry = clients_data[ip]
-		except:
+		except Exception:
 			client_entry = {}
 			clients_data[ip] = client_entry
 
@@ -977,7 +977,7 @@ class Server(th.Thread):
 			SC4MP_SERVER_NAME = config.get('server', "server_name")
 			SC4MP_SERVER_DESCRIPTION = config.get('server', "server_description")
 
-		except:
+		except Exception:
 
 			config.remove_section('server')
 			config.add_section('server')
@@ -1050,7 +1050,7 @@ class Server(th.Thread):
 								try:
 									if os.path.exists("update"):
 										purge_directory(Path("update"))
-								except:
+								except Exception:
 									pass
 
 								# Delete uninstaller if exists
@@ -1058,7 +1058,7 @@ class Server(th.Thread):
 									for filename in ["unins000.dat", "unins000.exe"]:
 										if os.path.exists(filename):
 											os.unlink(filename)
-								except:
+								except Exception:
 									pass
 
 								# Report
@@ -1188,7 +1188,7 @@ class Server(th.Thread):
 			data = None
 			try:
 				data = load_json(filename)
-			except:
+			except Exception:
 				data = {}
 			
 			# Get savegame paths
@@ -1407,7 +1407,7 @@ class BackupsManager(th.Thread):
 		try:
 			with open(filename, 'r') as file:
 				return json.load(file)
-		except:
+		except Exception:
 			return {}
 
 
@@ -1589,7 +1589,7 @@ class DatabaseManager(th.Thread):
 		try:
 			with open(filename, 'r') as file:
 				return json.load(file)
-		except:
+		except Exception:
 			return {}
 
 	
@@ -1749,7 +1749,7 @@ class RegionsManager(th.Thread):
 										if os.path.exists(destination):
 											os.remove(destination)
 										shutil.copy(filename, destination)
-									except:
+									except Exception:
 										destination = os.path.join(destination_directory, new_filename_oldscheme)
 										if os.path.exists(destination):
 											os.remove(destination)
@@ -1832,7 +1832,7 @@ class RegionsManager(th.Thread):
 		try:
 			with open(filename, 'r') as file:
 				return json.load(file)
-		except:
+		except Exception:
 			return {}
 
 	
@@ -2104,7 +2104,7 @@ class RequestHandler(th.Thread):
 				if hashlib.sha256((user_id + token).encode()).hexdigest() == in_hash:
 					c.sendall(user_id.encode())
 					break
-			except:
+			except Exception:
 				pass
 
 
@@ -2340,7 +2340,7 @@ class RequestHandler(th.Thread):
 		# Try to delete temporary files
 		#try:
 		#	shutil.rmtree(path)
-		#except:
+		#except Exception:
 		#	pass
 
 
@@ -2518,7 +2518,7 @@ class ServerList(th.Thread):
 
 		try:
 			self.servers = load_json(os.path.join(sc4mp_server_path, "_Database", "servers.json"))
-		except:
+		except Exception:
 			self.servers = {}
 
 		self.servers["root"] = {"host": SC4MP_SERVERS[0][0], "port": SC4MP_SERVERS[0][1]}
@@ -2582,7 +2582,7 @@ class ServerList(th.Thread):
 								
 								try:
 									old_server_id = self.request_server_id(old_server)
-								except:
+								except Exception:
 									old_server_id = None
 
 								if old_server_id == server_id:
@@ -2630,7 +2630,7 @@ class ServerList(th.Thread):
 			s.settimeout(10)
 			s.connect((host, port))
 			return s
-		except:
+		except Exception:
 			raise ServerException("Server not found.")
 
 	
@@ -2720,7 +2720,7 @@ class Logger():
 				try:
 					label += "(" + item[0].f_locals["self"].__class__.__name__ + ") "
 					break
-				except:
+				except Exception:
 					pass
 			
 
