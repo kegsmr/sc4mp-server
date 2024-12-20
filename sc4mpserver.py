@@ -453,7 +453,7 @@ def purge_directory(directory):
 			elif os.path.isdir(file_path):
 				shutil.rmtree(file_path)
 		except PermissionError as e:
-			raise ServerException('Failed to delete "' + file_path + '" because the file is being used by another process.') #\n\n' + str(e)
+			raise ServerException('Failed to delete "' + file_path + '" because the file is being used by another process.') from e #\n\n' + str(e)
 
 
 def send_filestream(c, rootpath):
@@ -1009,8 +1009,8 @@ class Server(th.Thread):
 					try:
 						with urllib.request.urlopen(f"https://api.github.com/repos/kegsmr/sc4mp-server/releases/latest", timeout=10) as url:
 							latest_release_info = json.load(url)
-					except urllib.error.URLError:
-						raise ServerException("GitHub API call timed out.")
+					except urllib.error.URLError as e:
+						raise ServerException("GitHub API call timed out.") from e
 
 					# Download the update if the version doesn't match
 					if sc4mp_force_update or latest_release_info["tag_name"] != f"v{SC4MP_VERSION}":
@@ -2618,8 +2618,8 @@ class ServerList(th.Thread):
 			s.settimeout(10)
 			s.connect((host, port))
 			return s
-		except Exception:
-			raise ServerException("Server not found.")
+		except Exception as e:
+			raise ServerException("Server not found.") from e
 
 	
 	def request_server_id(self, server):
@@ -2658,7 +2658,7 @@ class ServerList(th.Thread):
 			for host, port in servers:
 				self.server_queue.enqueue((host, port))
 		except TypeError as e:
-			raise ServerException("Unable to receive server list from outdated server")
+			raise ServerException("Unable to receive server list from outdated server") from e
 
 
 # Exceptions
