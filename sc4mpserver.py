@@ -762,25 +762,22 @@ class Server(th.Thread):
 
 		self.BIND_RETRY_DELAY = 5
 
-		#self.check_version() #TODO
-		#TODO lock server directory
-		self.create_subdirectories()
-		self.load_config()
-		self.check_updates()
-		self.prep_database()
-		self.clear_temp()
-		self.prep_filetables()
-		self.prep_regions() 
-		self.prep_backups()
-		self.prep_server_list()
-
 	
 	def run(self):
 		
-
 		try:
 
 			global sc4mp_server_running, sc4mp_request_threads
+
+			self.create_subdirectories()
+			self.load_config()
+			self.check_updates()
+			self.prep_database()
+			self.clear_temp()
+			self.prep_filetables()
+			self.prep_regions() 
+			self.prep_backups()
+			self.prep_server_list()
 
 			report("Starting server...")
 
@@ -802,66 +799,57 @@ class Server(th.Thread):
 			
 			sc4mp_server_running = True
 
-			try:
+			max_request_threads = sc4mp_config["PERFORMANCE"]["max_request_threads"]
 
-				max_request_threads = sc4mp_config["PERFORMANCE"]["max_request_threads"]
+			client_requests = {}
+			client_requests_cleared = datetime.now()
 
-				client_requests = {}
-				client_requests_cleared = datetime.now()
+			while sc4mp_server_running:
 
-				while sc4mp_server_running:
+				if datetime.now() >= client_requests_cleared + timedelta(seconds=60):
 
-					if datetime.now() >= client_requests_cleared + timedelta(seconds=60):
-
-						client_requests = {}
-						client_requests_cleared = datetime.now()
-					
-					if max_request_threads is None or sc4mp_request_threads < max_request_threads:
-
-						try:
-
-							c, (host, port) = s.accept()
-
-							c.settimeout(sc4mp_config["PERFORMANCE"]["connection_timeout"])
-
-							if (sc4mp_config["PERFORMANCE"]["request_limit"] is not None and host in client_requests and client_requests[host] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
-								print("[WARNING] Connection blocked from " + str(host) + ":" + str(port) + ".")
-								c.close()
-								continue
-							else:
-								client_requests.setdefault(host, 0)
-								client_requests[host] += 1
-
-							report("Connection accepted with " + str(host) + ":" + str(port) + ".")
-
-							self.log_client(c)
-
-							sc4mp_request_threads += 1
-
-							RequestHandler(c).start()	
-
-						except Exception as e: #socket.error as e:
-
-							show_error(e)
+					client_requests = {}
+					client_requests_cleared = datetime.now()
 				
-					else:
+				if max_request_threads is None or sc4mp_request_threads < max_request_threads:
 
-						print("[WARNING] Request thread limit reached!")
+					try:
 
-						while not (sc4mp_request_threads < max_request_threads):
-							time.sleep(SC4MP_DELAY)
+						c, (host, port) = s.accept()
+
+						c.settimeout(sc4mp_config["PERFORMANCE"]["connection_timeout"])
+
+						if (sc4mp_config["PERFORMANCE"]["request_limit"] is not None and host in client_requests and client_requests[host] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
+							print("[WARNING] Connection blocked from " + str(host) + ":" + str(port) + ".")
+							c.close()
+							continue
+						else:
+							client_requests.setdefault(host, 0)
+							client_requests[host] += 1
+
+						report("Connection accepted with " + str(host) + ":" + str(port) + ".")
+
+						self.log_client(c)
+
+						sc4mp_request_threads += 1
+
+						RequestHandler(c).start()	
+
+					except Exception as e: #socket.error as e:
+
+						show_error(e)
+			
+				else:
+
+					print("[WARNING] Request thread limit reached!")
+
+					while not (sc4mp_request_threads < max_request_threads):
+						time.sleep(SC4MP_DELAY)
 				
-			except (SystemExit, KeyboardInterrupt) as e:
+		except (SystemExit, KeyboardInterrupt) as e:
 
-				pass
-
-			while True:
-				try:
-					report("Shutting down...")
-					sc4mp_server_running = False
-					break
-				except Exception:
-					time.sleep(SC4MP_DELAY)
+			report("Shutting down...")
+			sc4mp_server_running = False
 
 		except Exception as e:
 
