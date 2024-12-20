@@ -747,10 +747,6 @@ def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorN
 		return f"{prefix} - {city_name} - {mayor_name}"[:252] + ".sc4"
 
 
-def filter_non_alpha_numeric(text):
-	return " ".join(re.sub('[^0-9a-zA-Z ]+', " ", text).split())
-
-
 # Workers
 
 class Server(th.Thread):
@@ -2178,6 +2174,7 @@ class RequestHandler(th.Thread):
 
 		# Receive region name, file sizes
 		region, file_sizes = recv_json(c)
+		region = sanitize_directory_name(region)
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Enforce max file count and file sizes
@@ -2188,7 +2185,7 @@ class RequestHandler(th.Thread):
 		c.sendall(b"ok")
 
 		# Set save id
-		save_id = datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id
+		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id)
 
 		# Receive files
 		count = 0
