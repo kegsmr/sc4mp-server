@@ -23,6 +23,8 @@ from typing import Iterable
 import re
 import urllib.request
 
+#pylint: disable=wildcard-import
+#pylint: disable=unused-wildcard-import
 from core.config import *
 from core.dbpf import *
 from core.networking import *
@@ -413,7 +415,7 @@ def export(export_type):
 											print(f"[WARNING] - cannot replace with \"{reset_filename}\", since the file does not exist.")
 									else:
 										entry["filename"] = None
-									print(f"[WARNING] - resetting claim...")
+									print("[WARNING] - resetting claim...")
 									entry["owner"] = None
 									update_database = True
 					if update_database:
@@ -907,27 +909,27 @@ class Server(th.Thread):
 			if exec_file == "sc4mpserver.exe":
 				with open("logs.bat" if sc4mp_server_path == "_SC4MP" else os.path.join(sc4mp_server_path, "logs.bat"), "w") as batch_file:
 					batch_file.writelines([
-						f"@echo off\n",
+						"@echo off\n",
 						(f"title {SC4MP_TITLE}\n" if sc4mp_server_path == "_SC4MP" else f"title {SC4MP_TITLE} - {sc4mp_server_path}\n"),
-						f"PowerShell -NoProfile -ExecutionPolicy Bypass -Command \"gc sc4mpserver.log -wait -tail 1000\"\n",
+						"PowerShell -NoProfile -ExecutionPolicy Bypass -Command \"gc sc4mpserver.log -wait -tail 1000\"\n",
 					])
 				with open(os.path.join(sc4mp_server_path, "run.bat"), "w") as batch_file:
 					batch_file.writelines([
-						f"@echo off\n",
+						"@echo off\n",
 						f"cd \"{exec_dir}\"\n",
 						f"sc4mpserver.exe -s \"{sc4mp_server_path}\"\n",
 					])
 				with open(os.path.join(sc4mp_server_path, "prep.bat"), "w") as batch_file:
 					batch_file.writelines([
-						f"@echo off\n",
+						"@echo off\n",
 						f"cd \"{exec_dir}\"\n",
 						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --prep\n",
 					])
 				with open(os.path.join(sc4mp_server_path, "restore.bat"), "w") as batch_file:
 					batch_file.writelines([
-						f"@echo off\n",
+						"@echo off\n",
 						f"cd \"{exec_dir}\"\n",
-						f"set /p backup=\"Enter a backup to restore...\"\n",
+						"set /p backup=\"Enter a backup to restore...\"\n",
 						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --restore %backup%\n",
 					])
 		except Exception as e:
@@ -1007,7 +1009,7 @@ class Server(th.Thread):
 
 					# Get latest release info
 					try:
-						with urllib.request.urlopen(f"https://api.github.com/repos/kegsmr/sc4mp-server/releases/latest", timeout=10) as url:
+						with urllib.request.urlopen("https://api.github.com/repos/kegsmr/sc4mp-server/releases/latest", timeout=10) as url:
 							latest_release_info = json.load(url)
 					except urllib.error.URLError as e:
 						raise ServerException("GitHub API call timed out.") from e
@@ -1095,13 +1097,13 @@ class Server(th.Thread):
 									args.remove("--force-update")
 								with open("updater.bat", "w") as batch_file:
 									batch_file.writelines([
-										f"@echo off\n",
+										"@echo off\n",
 										f"cd \"{os.getcwd()}\"\n",
-										f"echo Running installer...\n",
+										"echo Running installer...\n",
 										f"cd {destination.parent}\n",
 										f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",
-										f"cd ..\n",
-										f"echo Relaunching server...\n",
+										"cd ..\n",
+										"echo Relaunching server...\n",
 										f"{PROCESS_NAME} {' '.join(args)}\n"
 									])
 
@@ -1917,7 +1919,7 @@ class FileTablesManager(th.Thread):
 
 		#print(self.filetables[path])
 
-		print(f"- done.")
+		print("- done.")
 
 
 	def erase(self, rootpath):
@@ -1926,7 +1928,7 @@ class FileTablesManager(th.Thread):
 
 		self.filetables.pop(rootpath)
 
-		print(f"- done.")
+		print("- done.")
 
 
 class RequestHandler(th.Thread):
@@ -2017,7 +2019,7 @@ class RequestHandler(th.Thread):
 						"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
 					})
 				else:
-					print(f"[WARNING] Invalid request!") # (\"{request}\")!")
+					print("[WARNING] Invalid request!") # (\"{request}\")!")
 
 				c.close()
 			
