@@ -281,8 +281,11 @@ def load_json(filename):
 		return {}
 
 
-def set_savegame_data(entry, savegame):
+def set_savegame_data(entry, savegame: SC4Savegame):
 	"""TODO entry values"""
+
+	# Get budget subfile
+	savegame.get_cSC4BudgetSimulator()
 
 	# No overwrite
 	entry.setdefault("owner", None)
@@ -313,6 +316,7 @@ def set_savegame_data(entry, savegame):
 	entry["population"] = entry["residential_population"] + entry["commercial_population"] + entry["industrial_population"]
 	entry["population_density"] = round(entry["population"] / (entry["size"] * entry["size"]))
 	entry["residential_population_density"] = round(entry["residential_population"] / (entry["size"] * entry["size"]))
+	entry["total_funds"] = savegame.cSC4BudgetSimulator["totalFunds"]
 
 	# Log mayor name
 	if sc4mp_server_running:
@@ -1186,14 +1190,14 @@ class Server(th.Thread):
 					savegame_paths.append(path)
 
 			# Open savegames as DBPF objects
-			savegames = []
+			savegames: list[SC4Savegame] = []
 			for savegame_path in savegame_paths:
 				savegames.append(SC4Savegame(savegame_path, error_callback=show_error))
 
 			# Get the region subfile of each DBPF object and update the database
 			for savegame in savegames:
 
-				# Get region subfile
+				# Get region, budget subfiles
 				savegame.get_SC4ReadRegionalCity()
 
 				# Get values from region subfile
