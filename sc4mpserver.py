@@ -2017,9 +2017,10 @@ class RequestHandler(th.Thread):
 						"private": sc4mp_config["SECURITY"]["private"],
 						"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
 						"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
+						"claim_duration": sc4mp_config["RULES"]["claim_duration"],
+						"max_region_claims": sc4mp_config["RULES"]["max_region_claims"],
+						"godmode_filter": sc4mp_config["RULES"]["godmode_filter"],
 					})
-				elif request == "rules":
-					send_json(c, sc4mp_config["RULES"])
 				else:
 					print("[WARNING] Invalid request!") # (\"{request}\")!")
 
