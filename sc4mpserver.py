@@ -2018,6 +2018,8 @@ class RequestHandler(th.Thread):
 						"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
 						"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
 					})
+				elif request == "rules":
+					send_json(c, sc4mp_config["RULES"])
 				else:
 					print("[WARNING] Invalid request!") # (\"{request}\")!")
 
