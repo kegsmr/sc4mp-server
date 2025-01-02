@@ -2022,7 +2022,9 @@ class RequestHandler(th.Thread):
 						"godmode_filter": sc4mp_config["RULES"]["godmode_filter"],
 					})
 				elif request == "background":
-					c.sendall(open(os.path.join(sc4mp_server_path, "background.png"), "rb").read())
+					background_image_filename = os.path.join(sc4mp_server_path, "background.png")
+					if os.path.exists(background_image_filename):
+						c.sendall(open(background_image_filename, "rb").read())
 				else:
 					print("[WARNING] Invalid request!") # (\"{request}\")!")
 
