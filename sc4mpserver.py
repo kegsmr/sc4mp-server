@@ -2022,9 +2022,7 @@ class RequestHandler(th.Thread):
 						"godmode_filter": sc4mp_config["RULES"]["godmode_filter"],
 					})
 				elif request == "background":
-					background_image_filename = os.path.join(sc4mp_server_path, "background.png")
-					if os.path.exists(background_image_filename):
-						c.sendall(open(background_image_filename, "rb").read())
+					self.send_background(c)
 				else:
 					print("[WARNING] Invalid request!") # (\"{request}\")!")
 
@@ -2472,6 +2470,14 @@ class RequestHandler(th.Thread):
 							send_file(c, os.path.join(sc4mp_server_path, "Regions", region, city_entry["filename"]))
 							c.recv(SC4MP_BUFFER_SIZE)
 		c.sendall(b'done')
+
+
+	def send_background(self, c):
+
+		background_image_filename = os.path.join(sc4mp_server_path, "background.png")
+
+		if os.path.exists(background_image_filename):
+			c.sendall(open(background_image_filename, "rb").read())
 
 
 class ServerQueue:
