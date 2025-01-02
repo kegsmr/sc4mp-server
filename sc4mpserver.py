@@ -2021,6 +2021,8 @@ class RequestHandler(th.Thread):
 						"max_region_claims": sc4mp_config["RULES"]["max_region_claims"],
 						"godmode_filter": sc4mp_config["RULES"]["godmode_filter"],
 					})
+				elif request == "background":
+					c.send(open(os.path.join(sc4mp_server_path, "background.png"), "rb").read())
 				else:
 					print("[WARNING] Invalid request!") # (\"{request}\")!")
 
