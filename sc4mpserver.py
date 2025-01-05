@@ -23,6 +23,8 @@ from typing import Iterable
 import re
 import urllib.request
 
+#pylint: disable=wildcard-import
+#pylint: disable=unused-wildcard-import
 from core.config import *
 from core.dbpf import *
 from core.networking import *
@@ -31,7 +33,7 @@ from core.util import *
 
 # Header
 
-SC4MP_VERSION = "0.6.1"
+SC4MP_VERSION = "0.7.3"
 
 SC4MP_SERVERS = [("servers.sc4mp.org", port) for port in range(7240, 7250)]
 
@@ -45,7 +47,7 @@ SC4MP_WEBSITE_NAME = "www.sc4mp.org"
 SC4MP_LICENSE_NAME = "MIT-0"
 
 SC4MP_CONFIG_PATH = None
-SC4MP_LOG_PATH = "sc4mpserver-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
+SC4MP_LOG_PATH = "sc4mpserver.log" #-" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
 SC4MP_README_PATH = "readme.html"
 SC4MP_RESOURCES_PATH = "resources"
 
@@ -112,10 +114,10 @@ sc4mp_server_running = False
 sc4mp_request_threads = 0
 
 
-# Methods
+# Functions
 
 def main():
-	"""The main method."""
+	"""The main function."""
 
 	try:
 
@@ -237,7 +239,6 @@ def get_sc4mp_path(filename):
 def md5(filename):
 	"""TODO Creates the hashcode for a given file.
 
-	Arguments:
 		filename (str)
 
 	Returns:
@@ -251,7 +252,7 @@ def md5(filename):
 
 
 def file_md5(file):
-	"""TODO"""
+	
 	hash_md5 = hashlib.md5()
 	for chunk in iter(lambda: file.read(4096), b""):
 		hash_md5.update(chunk)
@@ -259,7 +260,7 @@ def file_md5(file):
 
 
 def create_empty_json(filename):
-	"""TODO"""
+	
 	with open(filename, 'w') as file:
 		data = {}
 		file.seek(0)
@@ -280,8 +281,11 @@ def load_json(filename):
 		return {}
 
 
-def set_savegame_data(entry, savegame):
+def set_savegame_data(entry, savegame: SC4Savegame):
 	"""TODO entry values"""
+
+	# Get budget subfile
+	savegame.get_cSC4BudgetSimulator()
 
 	# No overwrite
 	entry.setdefault("owner", None)
@@ -290,6 +294,7 @@ def set_savegame_data(entry, savegame):
 	entry.setdefault("filename", os.path.basename(os.path.normpath(savegame.filename)))
 	entry.setdefault("reset_filename", None)
 	entry.setdefault("date_subfile_hashes", [])
+	entry.setdefault("last_mayor_name", None)
 
 	# Append
 	date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
@@ -311,10 +316,23 @@ def set_savegame_data(entry, savegame):
 	entry["population"] = entry["residential_population"] + entry["commercial_population"] + entry["industrial_population"]
 	entry["population_density"] = round(entry["population"] / (entry["size"] * entry["size"]))
 	entry["residential_population_density"] = round(entry["residential_population"] / (entry["size"] * entry["size"]))
+	entry["total_funds"] = savegame.cSC4BudgetSimulator["totalFunds"]
+
+	# Log mayor name
+	if sc4mp_server_running:
+		owner = entry.get("owner", None)
+		if owner is not None:
+			mayor_name = entry.get("mayor_name", None)
+			if mayor_name is not None:
+				last_mayor_name = entry.get("last_mayor_name", None)
+				if mayor_name != last_mayor_name:
+					mayor_names = sc4mp_users_database_manager.data[owner]["mayors"]
+					if mayor_name not in mayor_names:
+						mayor_names.append(mayor_name)
 
 
 def update_json(filename, data):
-	"""TODO"""
+	
 	with open(filename, 'w') as file:
 		file.seek(0)
 		json.dump(data, file, indent=4)
@@ -322,7 +340,7 @@ def update_json(filename, data):
 
 
 def package_plugins_and_regions():
-	"""TODO"""
+	
 
 	report("Packaging plugins and regions...")
 
@@ -339,7 +357,7 @@ def package_plugins_and_regions():
 
 
 def package(package_type):
-	"""TODO"""
+	
 
 	directory = None
 	if package_type == "plugins":
@@ -357,7 +375,7 @@ def package(package_type):
 
 
 def export(export_type):
-	"""TODO"""
+	
 
 	# Select directory name from input
 	directory = None
@@ -401,7 +419,7 @@ def export(export_type):
 											print(f"[WARNING] - cannot replace with \"{reset_filename}\", since the file does not exist.")
 									else:
 										entry["filename"] = None
-									print(f"[WARNING] - resetting claim...")
+									print("[WARNING] - resetting claim...")
 									entry["owner"] = None
 									update_database = True
 					if update_database:
@@ -441,11 +459,11 @@ def purge_directory(directory):
 			elif os.path.isdir(file_path):
 				shutil.rmtree(file_path)
 		except PermissionError as e:
-			raise ServerException('Failed to delete "' + file_path + '" because the file is being used by another process.') #\n\n' + str(e)
+			raise ServerException('Failed to delete "' + file_path + '" because the file is being used by another process.') from e #\n\n' + str(e)
 
 
 def send_filestream(c, rootpath):
-	"""TODO"""
+	
 
 	# Loop through all files in path and append them to a list
 	#fullpaths = []
@@ -492,7 +510,7 @@ def send_filestream(c, rootpath):
 
 
 def send_tree(c, rootpath):
-	"""TODO"""
+	
 
 	# Loop through all files in path and append them to a list
 	fullpaths = []
@@ -547,7 +565,7 @@ def send_tree(c, rootpath):
 
 
 def send_or_cached(c, filename):
-	"""TODO"""
+	
 	c.sendall(md5(filename).encode())
 	if c.recv(SC4MP_BUFFER_SIZE).decode() == "n":
 		send_file(c, filename)
@@ -556,7 +574,7 @@ def send_or_cached(c, filename):
 
 
 def send_file(c, filename):
-	"""TODO"""
+	
 
 	report("Sending file " + filename + "...")
 
@@ -572,7 +590,7 @@ def send_file(c, filename):
 
 
 def receive_file(c, filename, filesize):
-	"""TODO"""
+	
 
 	#if (filesize is None):
 	#
@@ -600,7 +618,7 @@ def receive_file(c, filename, filesize):
 
 
 def report(message, obj=None, msg_type="INFO", ): #TODO do this in the logger to make sure output prints correctly
-	"""TODO"""
+	
 	'''color = '\033[94m '
 	output = datetime.now().strftime("[%H:%M:%S] [SC4MP")
 	obj = None
@@ -609,7 +627,7 @@ def report(message, obj=None, msg_type="INFO", ): #TODO do this in the logger to
 			break
 		try:
 			obj = item[0].f_locals["self"]
-		except:
+		except Exception:
 			pass
 	if (obj != None):
 		output += "/" + obj.__class__.__name__
@@ -624,7 +642,7 @@ def report(message, obj=None, msg_type="INFO", ): #TODO do this in the logger to
 
 
 def update_config_constants(config):
-	"""TODO"""
+	
 
 	global SC4MP_HOST
 	global SC4MP_PORT
@@ -640,7 +658,7 @@ def update_config_constants(config):
 
 
 def restore(filename):
-	"""TODO"""
+	
 	possible_paths = [
 		os.path.join(sc4mp_server_path, "_Backups", filename),
 		os.path.join(sc4mp_server_path, "_Backups", filename + ".json"),
@@ -675,7 +693,7 @@ def restore(filename):
 
 
 def show_error(e, no_ui=False):
-	"""TODO"""
+	
 	message = None
 	if isinstance(e, str):
 		message = e
@@ -692,7 +710,7 @@ def show_error(e, no_ui=False):
 
 
 def fatal_error(e):
-	"""TODO"""
+	
 
 	message = None
 	if isinstance(e, str):
@@ -733,42 +751,35 @@ def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorN
 		return f"{prefix} - {city_name} - {mayor_name}"[:252] + ".sc4"
 
 
-def filter_non_alpha_numeric(text):
-	return " ".join(re.sub('[^0-9a-zA-Z ]+', " ", text).split())
-
-
 # Workers
 
 class Server(th.Thread):
-	"""TODO"""
+	
 
 
 	def __init__(self):
-		"""TODO"""
+		
 
 		super().__init__()
 
 		self.BIND_RETRY_DELAY = 5
 
-		#self.check_version() #TODO
-		#TODO lock server directory
-		self.create_subdirectories()
-		self.load_config()
-		self.check_updates()
-		self.prep_database()
-		self.clear_temp()
-		self.prep_filetables()
-		self.prep_regions() 
-		self.prep_backups()
-		self.prep_server_list()
-
 	
 	def run(self):
-		"""TODO"""
-
+		
 		try:
 
 			global sc4mp_server_running, sc4mp_request_threads
+
+			self.create_subdirectories()
+			self.load_config()
+			self.check_updates()
+			self.prep_database()
+			self.clear_temp()
+			self.prep_filetables()
+			self.prep_regions() 
+			self.prep_backups()
+			self.prep_server_list()
 
 			report("Starting server...")
 
@@ -790,66 +801,57 @@ class Server(th.Thread):
 			
 			sc4mp_server_running = True
 
-			try:
+			max_request_threads = sc4mp_config["PERFORMANCE"]["max_request_threads"]
 
-				max_request_threads = sc4mp_config["PERFORMANCE"]["max_request_threads"]
+			client_requests = {}
+			client_requests_cleared = datetime.now()
 
-				client_requests = {}
-				client_requests_cleared = datetime.now()
+			while sc4mp_server_running:
 
-				while sc4mp_server_running:
+				if datetime.now() >= client_requests_cleared + timedelta(seconds=60):
 
-					if datetime.now() >= client_requests_cleared + timedelta(seconds=60):
-
-						client_requests = {}
-						client_requests_cleared = datetime.now()
-					
-					if max_request_threads is None or sc4mp_request_threads < max_request_threads:
-
-						try:
-
-							c, (host, port) = s.accept()
-
-							c.settimeout(sc4mp_config["PERFORMANCE"]["connection_timeout"])
-
-							if (sc4mp_config["PERFORMANCE"]["request_limit"] is not None and host in client_requests and client_requests[host] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
-								report("[WARNING] Connection blocked from " + str(host) + ":" + str(port) + ".")
-								c.close()
-								continue
-							else:
-								client_requests.setdefault(host, 0)
-								client_requests[host] += 1
-
-							report("Connection accepted with " + str(host) + ":" + str(port) + ".")
-
-							self.log_client(c)
-
-							sc4mp_request_threads += 1
-
-							RequestHandler(c).start()	
-
-						except Exception as e: #socket.error as e:
-
-							show_error(e)
+					client_requests = {}
+					client_requests_cleared = datetime.now()
 				
-					else:
+				if max_request_threads is None or sc4mp_request_threads < max_request_threads:
 
-						print("[WARNING] Request thread limit reached!")
+					try:
 
-						while not (sc4mp_request_threads < max_request_threads):
-							time.sleep(SC4MP_DELAY)
+						c, (host, port) = s.accept()
+
+						c.settimeout(sc4mp_config["PERFORMANCE"]["connection_timeout"])
+
+						if (sc4mp_config["PERFORMANCE"]["request_limit"] is not None and host in client_requests and client_requests[host] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
+							print("[WARNING] Connection blocked from " + str(host) + ":" + str(port) + ".")
+							c.close()
+							continue
+						else:
+							client_requests.setdefault(host, 0)
+							client_requests[host] += 1
+
+						report("Connection accepted with " + str(host) + ":" + str(port) + ".")
+
+						self.log_client(c)
+
+						sc4mp_request_threads += 1
+
+						RequestHandler(c).start()	
+
+					except Exception as e: #socket.error as e:
+
+						show_error(e)
+			
+				else:
+
+					print("[WARNING] Request thread limit reached!")
+
+					while not (sc4mp_request_threads < max_request_threads):
+						time.sleep(SC4MP_DELAY)
 				
-			except (SystemExit, KeyboardInterrupt) as e:
+		except (SystemExit, KeyboardInterrupt) as e:
 
-				pass
-
-			while True:
-				try:
-					report("Shutting down...")
-					sc4mp_server_running = False
-					break
-				except:
-					time.sleep(SC4MP_DELAY)
+			report("Shutting down...")
+			sc4mp_server_running = False
 
 		except Exception as e:
 
@@ -857,7 +859,7 @@ class Server(th.Thread):
 
 
 	def log_client(self, c):
-		"""TODO"""
+		
 
 		# Get ip
 		ip = c.getpeername()[0]
@@ -869,7 +871,7 @@ class Server(th.Thread):
 		client_entry = None
 		try:
 			client_entry = clients_data[ip]
-		except:
+		except Exception:
 			client_entry = {}
 			clients_data[ip] = client_entry
 
@@ -881,7 +883,7 @@ class Server(th.Thread):
 
 
 	def create_subdirectories(self):
-		"""TODO"""
+		
 
 		report("Creating subdirectories...")
 
@@ -905,23 +907,29 @@ class Server(th.Thread):
 			exec_file = exec_path.name
 			exec_dir = exec_path.parent
 			if exec_file == "sc4mpserver.exe":
+				with open("logs.bat" if sc4mp_server_path == "_SC4MP" else os.path.join(sc4mp_server_path, "logs.bat"), "w") as batch_file:
+					batch_file.writelines([
+						"@echo off\n",
+						(f"title {SC4MP_TITLE}\n" if sc4mp_server_path == "_SC4MP" else f"title {SC4MP_TITLE} - {sc4mp_server_path}\n"),
+						"PowerShell -NoProfile -ExecutionPolicy Bypass -Command \"gc sc4mpserver.log -wait -tail 1000\"\n",
+					])
 				with open(os.path.join(sc4mp_server_path, "run.bat"), "w") as batch_file:
 					batch_file.writelines([
-						f"@echo off\n",
+						"@echo off\n",
 						f"cd \"{exec_dir}\"\n",
 						f"sc4mpserver.exe -s \"{sc4mp_server_path}\"\n",
 					])
 				with open(os.path.join(sc4mp_server_path, "prep.bat"), "w") as batch_file:
 					batch_file.writelines([
-						f"@echo off\n",
+						"@echo off\n",
 						f"cd \"{exec_dir}\"\n",
 						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --prep\n",
 					])
 				with open(os.path.join(sc4mp_server_path, "restore.bat"), "w") as batch_file:
 					batch_file.writelines([
-						f"@echo off\n",
+						"@echo off\n",
 						f"cd \"{exec_dir}\"\n",
-						f"set /p backup=\"Enter a backup to restore...\"\n",
+						"set /p backup=\"Enter a backup to restore...\"\n",
 						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --restore %backup%\n",
 					])
 		except Exception as e:
@@ -929,7 +937,7 @@ class Server(th.Thread):
 
 
 	def load_config(self):
-		"""TODO"""
+		
 
 		global sc4mp_config, SC4MP_CONFIG_PATH
 		SC4MP_CONFIG_PATH = os.path.join(sc4mp_server_path, "serverconfig.ini")
@@ -959,7 +967,7 @@ class Server(th.Thread):
 			SC4MP_SERVER_NAME = config.get('server', "server_name")
 			SC4MP_SERVER_DESCRIPTION = config.get('server', "server_description")
 
-		except:
+		except Exception:
 
 			config.remove_section('server')
 			config.add_section('server')
@@ -1001,10 +1009,10 @@ class Server(th.Thread):
 
 					# Get latest release info
 					try:
-						with urllib.request.urlopen(f"https://api.github.com/repos/kegsmr/sc4mp-server/releases/latest", timeout=10) as url:
+						with urllib.request.urlopen("https://api.github.com/repos/kegsmr/sc4mp-server/releases/latest", timeout=10) as url:
 							latest_release_info = json.load(url)
-					except urllib.error.URLError:
-						raise ServerException("GitHub API call timed out.")
+					except urllib.error.URLError as e:
+						raise ServerException("GitHub API call timed out.") from e
 
 					# Download the update if the version doesn't match
 					if sc4mp_force_update or latest_release_info["tag_name"] != f"v{SC4MP_VERSION}":
@@ -1032,7 +1040,7 @@ class Server(th.Thread):
 								try:
 									if os.path.exists("update"):
 										purge_directory(Path("update"))
-								except:
+								except Exception:
 									pass
 
 								# Delete uninstaller if exists
@@ -1040,7 +1048,7 @@ class Server(th.Thread):
 									for filename in ["unins000.dat", "unins000.exe"]:
 										if os.path.exists(filename):
 											os.unlink(filename)
-								except:
+								except Exception:
 									pass
 
 								# Report
@@ -1089,13 +1097,13 @@ class Server(th.Thread):
 									args.remove("--force-update")
 								with open("updater.bat", "w") as batch_file:
 									batch_file.writelines([
-										f"@echo off\n",
+										"@echo off\n",
 										f"cd \"{os.getcwd()}\"\n",
-										f"echo Running installer...\n",
+										"echo Running installer...\n",
 										f"cd {destination.parent}\n",
 										f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",
-										f"cd ..\n",
-										f"echo Relaunching server...\n",
+										"cd ..\n",
+										"echo Relaunching server...\n",
 										f"{PROCESS_NAME} {' '.join(args)}\n"
 									])
 
@@ -1119,7 +1127,7 @@ class Server(th.Thread):
 
 
 	def prep_database(self):
-		"""TODO"""
+		
 
 		report("Preparing database...")
 
@@ -1170,7 +1178,7 @@ class Server(th.Thread):
 			data = None
 			try:
 				data = load_json(filename)
-			except:
+			except Exception:
 				data = {}
 			
 			# Get savegame paths
@@ -1182,14 +1190,14 @@ class Server(th.Thread):
 					savegame_paths.append(path)
 
 			# Open savegames as DBPF objects
-			savegames = []
+			savegames: list[SC4Savegame] = []
 			for savegame_path in savegame_paths:
 				savegames.append(SC4Savegame(savegame_path, error_callback=show_error))
 
 			# Get the region subfile of each DBPF object and update the database
 			for savegame in savegames:
 
-				# Get region subfile
+				# Get region, budget subfiles
 				savegame.get_SC4ReadRegionalCity()
 
 				# Get values from region subfile
@@ -1234,7 +1242,7 @@ class Server(th.Thread):
 
 				# Rename savegame file to match correct format
 				new_filename = set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag)
-				if entry["filename"] != new_filename:
+				if entry["filename"] is not None and entry["filename"] != new_filename:
 					print(f"- renaming \"{entry['filename']}\" to \"{new_filename}\"...")
 					try:
 						os.rename(os.path.join(region_directory, entry["filename"]), os.path.join(region_directory, new_filename))
@@ -1262,7 +1270,7 @@ class Server(th.Thread):
 
 
 	def clear_temp(self):
-		"""TODO"""
+		
 
 		report("Clearing temporary files...")
 
@@ -1273,7 +1281,7 @@ class Server(th.Thread):
 
 
 	def prep_regions(self):
-		"""TODO"""
+		
 
 		if sc4mp_nostart:
 			return
@@ -1289,7 +1297,7 @@ class Server(th.Thread):
 
 
 	def prep_backups(self):
-		"""TODO"""
+		
 
 		report("Preparing backups...")
 
@@ -1317,7 +1325,7 @@ class Server(th.Thread):
 
 
 	def prep_server_list(self):
-		"""TODO"""
+		
 
 		if sc4mp_nostart:
 			return
@@ -1333,18 +1341,18 @@ class Server(th.Thread):
 
 
 class BackupsManager(th.Thread):
-	"""TODO"""
+	
 
 
 	def __init__(self):
-		"""TODO"""
+		
 
 		self.backup_dir = Path(sc4mp_server_path) / "_Backups"
 		super().__init__()
 
 
 	def run(self):
-		"""TODO"""
+		
 
 		try:
 
@@ -1385,16 +1393,16 @@ class BackupsManager(th.Thread):
 
 
 	def load_json(self, filename):
-		"""TODO"""
+		
 		try:
 			with open(filename, 'r') as file:
 				return json.load(file)
-		except:
+		except Exception:
 			return {}
 
 
 	def update_json(self, filename, data):
-		"""TODO"""
+		
 		with open(filename, 'w') as file:
 			file.seek(0)
 			json.dump(data, file, indent=4)
@@ -1402,7 +1410,7 @@ class BackupsManager(th.Thread):
 
 
 	def backup(self): #TODO stop backing up the backups subdirectory
-		"""TODO"""
+		
 
 		# Prune backups
 		try:
@@ -1520,11 +1528,11 @@ class BackupsManager(th.Thread):
 
 
 class DatabaseManager(th.Thread):
-	"""TODO"""
+	
 
 	
 	def __init__(self, filename):
-		"""TODO"""
+		
 
 		super().__init__()
 	
@@ -1533,7 +1541,7 @@ class DatabaseManager(th.Thread):
 
 
 	def run(self):
-		"""TODO"""
+		
 	
 		try:
 
@@ -1567,16 +1575,16 @@ class DatabaseManager(th.Thread):
 
 
 	def load_json(self, filename):
-		"""TODO"""
+		
 		try:
 			with open(filename, 'r') as file:
 				return json.load(file)
-		except:
+		except Exception:
 			return {}
 
 	
 	def update_json(self, filename, data):
-		"""TODO"""
+		
 		with open(filename, 'w') as file:
 			file.seek(0)
 			json.dump(data, file, indent=4)
@@ -1584,11 +1592,11 @@ class DatabaseManager(th.Thread):
 
 
 class RegionsManager(th.Thread):
-	"""TODO"""
+	
 
 	
 	def __init__(self):
-		"""TODO"""
+		
 
 		super().__init__()
 
@@ -1600,7 +1608,7 @@ class RegionsManager(th.Thread):
 
 
 	def run(self):
-		"""TODO"""
+		
 
 		try:
 
@@ -1689,6 +1697,7 @@ class RegionsManager(th.Thread):
 										self.outputs[save_id] = "Invalid city size."
 
 								# Filter out claims on tiles with unexpired claims of other users
+								reclaimed = False
 								if "owner" in entry:
 									owner = entry["owner"]
 									if (owner is not None and owner != user_id):
@@ -1698,6 +1707,7 @@ class RegionsManager(th.Thread):
 											expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + timedelta(days=sc4mp_config["RULES"]["claim_duration"])
 											if expires > datetime.now():
 												self.outputs[save_id] = "City already claimed."
+										reclaimed = True
 
 								# Filter out cliams of users who have exhausted their region claims
 								if ("owner" not in entry or entry["owner"] != user_id):
@@ -1713,7 +1723,7 @@ class RegionsManager(th.Thread):
 								if save_id not in self.outputs:
 
 									# Delete previous save file if it exists
-									if "filename" in entry:
+									if "filename" in entry and entry["filename"] is not None:
 										previous_filename = os.path.join(sc4mp_server_path, "Regions", region, entry["filename"])
 										if os.path.exists(previous_filename):
 											os.remove(previous_filename)
@@ -1729,7 +1739,7 @@ class RegionsManager(th.Thread):
 										if os.path.exists(destination):
 											os.remove(destination)
 										shutil.copy(filename, destination)
-									except:
+									except Exception:
 										destination = os.path.join(destination_directory, new_filename_oldscheme)
 										if os.path.exists(destination):
 											os.remove(destination)
@@ -1752,6 +1762,9 @@ class RegionsManager(th.Thread):
 									entry["filename"] = new_filename
 									entry["owner"] = user_id
 									entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+									entry["reclaimed"] = reclaimed or entry.get("reclaimed", False)
+									if reclaimed:
+										entry["last_mayor_name"] = entry.get("mayor_name", None)
 									set_savegame_data(entry, savegame)
 
 									# Update database
@@ -1805,16 +1818,16 @@ class RegionsManager(th.Thread):
 
 
 	def load_json(self, filename):
-		"""TODO"""
+		
 		try:
 			with open(filename, 'r') as file:
 				return json.load(file)
-		except:
+		except Exception:
 			return {}
 
 	
 	def update_json(self, filename, data):
-		"""TODO"""
+		
 		with open(filename, 'w') as file:
 			file.seek(0)
 			json.dump(data, file, indent=4)
@@ -1906,7 +1919,7 @@ class FileTablesManager(th.Thread):
 
 		#print(self.filetables[path])
 
-		print(f"- done.")
+		print("- done.")
 
 
 	def erase(self, rootpath):
@@ -1915,15 +1928,15 @@ class FileTablesManager(th.Thread):
 
 		self.filetables.pop(rootpath)
 
-		print(f"- done.")
+		print("- done.")
 
 
 class RequestHandler(th.Thread):
-	"""TODO"""
+	
 
 
 	def __init__(self, c):
-		"""TODO"""
+		
 
 		super().__init__()
 		
@@ -1931,7 +1944,7 @@ class RequestHandler(th.Thread):
 
 
 	def run(self):
-		"""TODO"""
+		
 
 		try:
 
@@ -2004,7 +2017,14 @@ class RequestHandler(th.Thread):
 						"private": sc4mp_config["SECURITY"]["private"],
 						"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
 						"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
+						"claim_duration": sc4mp_config["RULES"]["claim_duration"],
+						"max_region_claims": sc4mp_config["RULES"]["max_region_claims"],
+						"godmode_filter": sc4mp_config["RULES"]["godmode_filter"],
 					})
+				elif request == "background":
+					self.send_background(c)
+				else:
+					print("[WARNING] Invalid request!") # (\"{request}\")!")
 
 				c.close()
 			
@@ -2022,7 +2042,7 @@ class RequestHandler(th.Thread):
 
 
 	def request_header(self, c, args):
-		"""TODO"""
+		
 
 		if unformat_version(args[1])[:2] < unformat_version(SC4MP_VERSION)[:2]:
 			c.close()
@@ -2037,37 +2057,37 @@ class RequestHandler(th.Thread):
 
 
 	def ping(self, c):
-		"""TODO"""
+		
 		c.sendall(b"pong")
 
 
 	def send_server_id(self, c):
-		"""TODO"""
+		
 		c.sendall(SC4MP_SERVER_ID.encode())
 
 
 	def send_server_name(self, c):
-		"""TODO"""
+		
 		c.sendall(SC4MP_SERVER_NAME.encode())
 
 
 	def send_server_description(self, c):
-		"""TODO"""
+		
 		c.sendall(SC4MP_SERVER_DESCRIPTION.encode())
 
 
 	def send_server_url(self, c):
-		"""TODO"""
+		
 		c.sendall(sc4mp_config["INFO"]["server_url"].encode())
 
 
 	def send_server_version(self, c):
-		"""TODO"""
+		
 		c.sendall(SC4MP_VERSION.encode())
 
 
 	def send_user_id(self, c, in_hash):
-		"""TODO"""
+		
 
 		# Get database
 		data = sc4mp_users_database_manager.data
@@ -2079,12 +2099,12 @@ class RequestHandler(th.Thread):
 				if hashlib.sha256((user_id + token).encode()).hexdigest() == in_hash:
 					c.sendall(user_id.encode())
 					break
-			except:
+			except Exception:
 				pass
 
 
 	def send_token(self, c):
-		"""TODO"""
+		
 		
 		user_id = self.user_id
 
@@ -2108,7 +2128,7 @@ class RequestHandler(th.Thread):
 
 
 	def send_plugins(self, c):
-		"""TODO"""
+		
 
 		#filename = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", "Plugins.zip")))
 		#send_or_cached(c, filename)
@@ -2118,7 +2138,7 @@ class RequestHandler(th.Thread):
 
 
 	def send_regions(self, c):
-		"""TODO"""
+		
 
 		if sc4mp_regions_manager.regions_modified:
 			sc4mp_regions_manager.export_regions = True
@@ -2133,28 +2153,28 @@ class RequestHandler(th.Thread):
 		#send_tree(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
 
 
-	'''def delete(self, c):
-		"""TODO"""
-
-		c.sendall(SC4MP_SEPARATOR)
-
-		user_id = self.log_user(c)
-		c.sendall(SC4MP_SEPARATOR)
-		region = c.recv(SC4MP_BUFFER_SIZE).decode()
-		c.sendall(SC4MP_SEPARATOR)
-		city = c.recv(SC4MP_BUFFER_SIZE).decode()
-
-		c.sendall(SC4MP_SEPARATOR) #TODO verify that the user can make the deletion
-
-		#TODO only delete file if user is authorized
-
-		filename = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, city)))
-
-		os.remove(filename)'''
+	#def delete(self, c):
+	#	
+	#
+	#	c.sendall(SC4MP_SEPARATOR)
+	#
+	#	user_id = self.log_user(c)
+	#	c.sendall(SC4MP_SEPARATOR)
+	#	region = c.recv(SC4MP_BUFFER_SIZE).decode()
+	#	c.sendall(SC4MP_SEPARATOR)
+	#	city = c.recv(SC4MP_BUFFER_SIZE).decode()
+	#
+	#	c.sendall(SC4MP_SEPARATOR) #TODO verify that the user can make the deletion
+	#
+	#	#TODO only delete file if user is authorized
+	#
+	#	filename = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, city)))
+	#
+	#	os.remove(filename)
 
 
 	def save(self, c):
-		"""TODO"""
+		
 		
 		user_id = self.user_id
 
@@ -2163,13 +2183,18 @@ class RequestHandler(th.Thread):
 
 		# Receive region name, file sizes
 		region, file_sizes = recv_json(c)
+		region = sanitize_directory_name(region)
 		file_sizes = [int(file_size) for file_size in file_sizes]
+
+		# Enforce max file count and file sizes
+		if len(file_sizes) > 17 or max(file_sizes) > 500000000:
+			return
 
 		# Separator
 		c.sendall(b"ok")
 
 		# Set save id
-		save_id = datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id
+		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id)
 
 		# Receive files
 		count = 0
@@ -2311,12 +2336,12 @@ class RequestHandler(th.Thread):
 		# Try to delete temporary files
 		#try:
 		#	shutil.rmtree(path)
-		#except:
+		#except Exception:
 		#	pass
 
 
 	def add_server(self, c, port):
-		"""TODO"""
+		
 		if not sc4mp_config["NETWORK"]["discoverable"]:
 			return
 		host = c.getpeername()[0]
@@ -2327,7 +2352,7 @@ class RequestHandler(th.Thread):
 
 
 	def server_list(self, c):
-		"""TODO"""
+		
 
 		if not sc4mp_config["NETWORK"]["discoverable"]:
 			return
@@ -2342,7 +2367,7 @@ class RequestHandler(th.Thread):
 
 
 	def log_user(self, c, user_id):
-		"""TODO"""
+		
 
 		# Use a hashcode of the user id for extra security
 		user_id = hashlib.sha256(user_id.encode()).hexdigest()[:32]
@@ -2372,6 +2397,7 @@ class RequestHandler(th.Thread):
 
 		# Set default values if missing
 		user_entry.setdefault("clients", [])
+		user_entry.setdefault("mayors", [])
 		user_entry.setdefault("ban", False)
 		user_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
@@ -2393,7 +2419,7 @@ class RequestHandler(th.Thread):
 
 
 	def password_enabled(self, c):
-		"""TODO"""
+		
 		if sc4mp_config['SECURITY']['password_enabled']:
 			c.sendall(b"y")
 		else:
@@ -2401,7 +2427,7 @@ class RequestHandler(th.Thread):
 
 
 	def check_password(self, c, password):
-		"""TODO"""
+		
 		if password == sc4mp_config["SECURITY"]["password"]:
 			c.sendall(b'y')
 		else:
@@ -2409,7 +2435,7 @@ class RequestHandler(th.Thread):
 
 
 	def user_plugins_enabled(self, c):
-		"""TODO"""
+		
 		if sc4mp_config['RULES']['user_plugins']:
 			c.sendall(b"y")
 		else:
@@ -2417,7 +2443,7 @@ class RequestHandler(th.Thread):
 
 
 	def private(self, c):
-		"""TODO"""
+		
 		if sc4mp_config['SECURITY']['private']:
 			c.sendall(b"y")
 		else:
@@ -2425,7 +2451,7 @@ class RequestHandler(th.Thread):
 
 
 	def refresh(self, c):
-		"""TODO"""
+		
 
 		user_id = self.user_id
 
@@ -2444,6 +2470,14 @@ class RequestHandler(th.Thread):
 							send_file(c, os.path.join(sc4mp_server_path, "Regions", region, city_entry["filename"]))
 							c.recv(SC4MP_BUFFER_SIZE)
 		c.sendall(b'done')
+
+
+	def send_background(self, c):
+
+		background_image_filename = os.path.join(sc4mp_server_path, "background.png")
+
+		if os.path.exists(background_image_filename):
+			c.sendall(open(background_image_filename, "rb").read())
 
 
 class ServerQueue:
@@ -2488,7 +2522,7 @@ class ServerList(th.Thread):
 
 		try:
 			self.servers = load_json(os.path.join(sc4mp_server_path, "_Database", "servers.json"))
-		except:
+		except Exception:
 			self.servers = {}
 
 		self.servers["root"] = {"host": SC4MP_SERVERS[0][0], "port": SC4MP_SERVERS[0][1]}
@@ -2552,7 +2586,7 @@ class ServerList(th.Thread):
 								
 								try:
 									old_server_id = self.request_server_id(old_server)
-								except:
+								except Exception:
 									old_server_id = None
 
 								if old_server_id == server_id:
@@ -2592,7 +2626,7 @@ class ServerList(th.Thread):
 
 
 	def create_socket(self, server):
-		"""TODO"""
+		
 		host = server[0]
 		port = server[1]
 		try:
@@ -2600,19 +2634,19 @@ class ServerList(th.Thread):
 			s.settimeout(10)
 			s.connect((host, port))
 			return s
-		except:
-			raise ServerException("Server not found.")
+		except Exception as e:
+			raise ServerException("Server not found.") from e
 
 	
 	def request_server_id(self, server):
-		"""TODO"""
+		
 		s = self.create_socket(server)
 		s.sendall(b"server_id")
 		return s.recv(SC4MP_BUFFER_SIZE).decode()
 
 
 	def ping(self, server):
-		"""TODO"""
+		
 		s = self.create_socket(server)
 		try:
 			start = time.time()
@@ -2626,13 +2660,13 @@ class ServerList(th.Thread):
 
 
 	def add_server(self, server):
-		"""TODO"""
+		
 		s = self.create_socket(server)
 		s.sendall(b"add_server " + str(SC4MP_PORT).encode())
 
 
 	def server_list(self, server):
-		"""TODO"""
+		
 		s = self.create_socket(server)
 		s.sendall(b"server_list")
 		servers = recv_json(s)
@@ -2640,34 +2674,34 @@ class ServerList(th.Thread):
 			for host, port in servers:
 				self.server_queue.enqueue((host, port))
 		except TypeError as e:
-			raise ServerException("Unable to receive server list from outdated server")
+			raise ServerException("Unable to receive server list from outdated server") from e
 
 
 # Exceptions
 
 class ServerException(Exception):
-	"""TODO"""
+	
 
 
 	def __init__(self, message, *args):
-		"""TODO"""
+		
 		super().__init__(args)
 		self.message = message
 	
 
 	def __str__(self):
-		"""TODO"""
+		
 		return self.message
 
 
 # Logger
 
 class Logger():
-	"""TODO"""
+	
 	
 
 	def __init__(self):
-		"""TODO"""
+		
 		self.terminal = sys.stdout
 		self.log = SC4MP_LOG_PATH if sc4mp_server_path == "_SC4MP" else os.path.join(sc4mp_server_path, SC4MP_LOG_PATH)
 		if os.path.exists(self.log):
@@ -2675,7 +2709,7 @@ class Logger():
    
 
 	def write(self, message):
-		"""TODO"""
+		
 
 		output = message
 
@@ -2690,7 +2724,7 @@ class Logger():
 				try:
 					label += "(" + item[0].f_locals["self"].__class__.__name__ + ") "
 					break
-				except:
+				except Exception:
 					pass
 			
 
@@ -2726,7 +2760,7 @@ class Logger():
 
 
 	def flush(self):
-		"""TODO"""
+		
 		self.terminal.flush()
 
 
