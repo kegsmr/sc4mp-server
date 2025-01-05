@@ -15,13 +15,12 @@ import sys
 import threading as th
 import time
 import traceback
+import urllib.request
 from argparse import ArgumentParser, Namespace
 from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
-import re
-import urllib.request
 
 #pylint: disable=wildcard-import
 #pylint: disable=unused-wildcard-import
