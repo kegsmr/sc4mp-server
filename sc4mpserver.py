@@ -37,10 +37,12 @@ SC4MP_VERSION = "0.7.3"
 
 SC4MP_SERVERS = get_server_list()
 
+SC4MP_GITHUB_REPO = "kegsmr/sc4mp-server"
+
 SC4MP_URL = "www.sc4mp.org"
-SC4MP_CONTRIBUTORS_URL = "https://github.com/kegsmr/sc4mp-client/contributors/"
-SC4MP_ISSUES_URL = "https://github.com/kegsmr/sc4mp-client/issues/"
-SC4MP_RELEASES_URL = "https://github.com/kegsmr/sc4mp-client/releases/"
+SC4MP_CONTRIBUTORS_URL = f"https://github.com/{SC4MP_GITHUB_REPO}/contributors/"
+SC4MP_ISSUES_URL = f"https://github.com/{SC4MP_GITHUB_REPO}/issues/"
+SC4MP_RELEASES_URL = f"https://github.com/{SC4MP_GITHUB_REPO}/releases/"
 
 SC4MP_AUTHOR_NAME = "SimCity 4 Multiplayer Project"
 SC4MP_WEBSITE_NAME = "www.sc4mp.org"
@@ -1009,7 +1011,7 @@ class Server(th.Thread):
 
 					# Get latest release info
 					try:
-						with urllib.request.urlopen("https://api.github.com/repos/kegsmr/sc4mp-server/releases/latest", timeout=10) as url:
+						with urllib.request.urlopen(f"https://api.github.com/repos/{SC4MP_GITHUB_REPO}/releases/latest", timeout=10) as url:
 							latest_release_info = json.load(url)
 					except urllib.error.URLError as e:
 						raise ServerException("GitHub API call timed out.") from e
