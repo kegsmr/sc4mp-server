@@ -735,13 +735,19 @@ def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorN
 	
 	else:
 
-		city_name = filter_non_alpha_numeric(savegameCityName)
-		if len(city_name) < 1:
-			city_name = "New City"
+		if savegameCityName:
+			city_name = filter_non_alpha_numeric(savegameCityName)
+			if len(city_name) < 1:
+				city_name = "New City"
+		else:
+			city_name = "(Error)"
 
-		mayor_name = filter_non_alpha_numeric(savegameMayorName)
-		if len(mayor_name) < 1:
-			mayor_name = "Defacto"
+		if savegameMayorName:
+			mayor_name = filter_non_alpha_numeric(savegameMayorName)
+			if len(mayor_name) < 1:
+				mayor_name = "Defacto"
+		else:
+			mayor_name = "(Error)"
 		
 		return f"{prefix} - {city_name} - {mayor_name}"[:252] + ".sc4"
 
