@@ -71,6 +71,7 @@ def main():
 		f"--noconfirm",
 		f"--noupx",
         f"--console",
+		f"--hide-console",
         f"-i",
 		f"{os.path.abspath(os.path.join('resources', 'icon.ico'))}",
 		f"--version-file",
