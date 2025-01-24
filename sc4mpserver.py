@@ -981,6 +981,16 @@ class Server(th.Thread):
 						"PowerShell -NoProfile -ExecutionPolicy Bypass -Command \"gc sc4mpserver.log -wait -tail 1000\"\n",
 					])
 
+				if sc4mp_server_path == "_SC4MP":
+					with open(os.path.join(path, "new.bat"), "w") as batch_file:
+						batch_file.writelines([
+							"@echo off\n",
+							f"cd /d \"{exec_dir}\"\n",
+							"set /p name=\"Enter the name of the new server configuration...\"\n",
+							f"sc4mpserver.exe -s \"{sc4mp_server_path}\" -s %name% --prep\n",
+							f"C:\Windows\explorer.exe \"{exec_dir}\\%name%\"\n"
+						])
+
 				with open(os.path.join(path, "run.bat"), "w") as batch_file:
 					batch_file.writelines([
 						"@echo off\n",
