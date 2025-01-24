@@ -32,6 +32,7 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
+Name: "startupicon"; Description: "Create a startup folder shortcut"; GroupDescription: "{cm:AdditionalIcons}";
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
@@ -52,6 +53,7 @@ Source: "Readme.html"; DestDir: "{app}"; Flags: isreadme
 ; Name: "{autoprograms}\{#MyAppPublisher}\{#MyAppName} - View logs"; Filename: "{app}\logs.bat"
 ; Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 Name: "{autoprograms}\{#MyAppPublisher}\{#MyAppName}"; Filename: "C:\Windows\explorer.exe"; Parameters: "{app}"
+Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: startupicon
 Name: "{autodesktop}\{#MyAppName}"; Filename: "C:\Windows\explorer.exe"; Parameters: "{app}"; Tasks: desktopicon
 
 [Run]
