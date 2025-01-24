@@ -9,7 +9,6 @@ import random
 import shutil
 import socket
 import string
-import struct
 import subprocess
 import sys
 import threading as th
@@ -171,6 +170,13 @@ def main():
 			# TODO: use this flag to set logger level to debug once the logger PR is merged
 			pass
 
+		# If there's another server running from the same directory, kill it
+		prevent_multiple()
+
+		# Exit if --stop argument is provided
+		if args.stop:
+			return
+
 		# Output
 		sys.stdout = Logger()
 		set_thread_name("Main", enumerate=False)
@@ -197,9 +203,11 @@ def parse_args() -> Namespace:
 
 	parser.add_argument("-s", "--server-path", help="specify server directory relative path")
 
+	parser.add_argument("-t", "--stop", help="terminate the server currectly running from the specified server path (Windows-only)", action="store_true")
+
 	parser.add_argument("-k", "--skip-update", help="skip the update check at startup", action="store_true")
 
-	parser.add_argument("-u", "--force-update", help="force update at startup", action="store_true")
+	parser.add_argument("-u", "--force-update", help="force update at startup (Windows-only)", action="store_true")
 
 	parser.add_argument("-r", "--restore", help="restore the server to the specified backup")
 
@@ -215,6 +223,49 @@ def parse_args() -> Namespace:
                     version=f"{parser.prog} {SC4MP_VERSION}")
 
 	return parser.parse_args()
+
+
+def prevent_multiple():
+
+	if is_windows():
+
+		try:
+
+			DATETIME_FORMAT = "%Y%m%d%H%M%S"
+
+			process_info_path = os.path.join(sc4mp_server_path, "process.json")
+
+			if os.path.exists(process_info_path):
+
+				process_info = load_json(process_info_path)
+
+				if "pid" in process_info.keys() and "creation" in process_info.keys():
+
+					other_process_pid = process_info["pid"]
+					other_process_creation = process_info["creation"]
+
+					try:
+						o_p_c = datetime.strftime(get_process_creation_time(other_process_pid), DATETIME_FORMAT)
+					except Exception:
+						o_p_c = None
+
+					if other_process_creation == o_p_c:
+						if subprocess.call(f"TASKKILL /PID {other_process_pid}", shell=True) != 0:
+							raise ServerException("`TASKKILL` did not return exit code 0.")
+
+			this_process_pid = os.getpid()
+			this_process_creation = datetime.strftime(get_process_creation_time(this_process_pid), DATETIME_FORMAT)
+
+			os.makedirs(sc4mp_server_path, exist_ok=True)
+
+			update_json(process_info_path, {
+				"pid": this_process_pid,
+				"creation": this_process_creation
+			})
+
+		except Exception as e:
+
+			raise ServerException(f"Failed to terminate the server process already running.\n\n{e}") from e
 
 
 def prep():
@@ -771,22 +822,22 @@ class Server(th.Thread):
 
 		self.BIND_RETRY_DELAY = 5
 
+		self.load_config()
+		self.create_subdirectories()
+		self.check_updates()
+		self.prep_database()
+		self.clear_temp()
+		self.prep_filetables()
+		self.prep_regions() 
+		self.prep_backups()
+		self.prep_server_list()
+
 	
 	def run(self):
 		
 		try:
 
 			global sc4mp_server_running, sc4mp_request_threads
-
-			self.create_subdirectories()
-			self.load_config()
-			self.check_updates()
-			self.prep_database()
-			self.clear_temp()
-			self.prep_filetables()
-			self.prep_regions() 
-			self.prep_backups()
-			self.prep_server_list()
 
 			report("Starting server...")
 
@@ -855,14 +906,18 @@ class Server(th.Thread):
 					while not (sc4mp_request_threads < max_request_threads):
 						time.sleep(SC4MP_DELAY)
 				
-		except (SystemExit, KeyboardInterrupt) as e:
+		except (SystemExit, KeyboardInterrupt):
 
-			report("Shutting down...")
-			sc4mp_server_running = False
+			pass
 
 		except Exception as e:
 
 			fatal_error(e)
+
+		finally:
+
+			report("Shutting down...")
+			sc4mp_server_running = False
 
 
 	def log_client(self, c):
@@ -910,36 +965,61 @@ class Server(th.Thread):
 
 		# Create helper batch files on Windows
 		try:
+
 			exec_path = Path(sys.executable)
 			exec_file = exec_path.name
 			exec_dir = exec_path.parent
+
+			path = exec_dir if sc4mp_server_path == "_SC4MP" else sc4mp_server_path
+
 			if exec_file == "sc4mpserver.exe":
-				with open("logs.bat" if sc4mp_server_path == "_SC4MP" else os.path.join(sc4mp_server_path, "logs.bat"), "w") as batch_file:
+
+				with open(os.path.join(path, "logs.bat"), "w") as batch_file:
 					batch_file.writelines([
 						"@echo off\n",
 						(f"title {SC4MP_TITLE}\n" if sc4mp_server_path == "_SC4MP" else f"title {SC4MP_TITLE} - {sc4mp_server_path}\n"),
 						"PowerShell -NoProfile -ExecutionPolicy Bypass -Command \"gc sc4mpserver.log -wait -tail 1000\"\n",
 					])
-				with open(os.path.join(sc4mp_server_path, "run.bat"), "w") as batch_file:
+
+				with open(os.path.join(path, "run.bat"), "w") as batch_file:
 					batch_file.writelines([
 						"@echo off\n",
-						f"cd \"{exec_dir}\"\n",
+						f"cd /d \"{exec_dir}\"\n",
 						f"sc4mpserver.exe -s \"{sc4mp_server_path}\"\n",
 					])
-				with open(os.path.join(sc4mp_server_path, "prep.bat"), "w") as batch_file:
+
+				with open(os.path.join(path, "start.bat"), "w") as batch_file:
 					batch_file.writelines([
 						"@echo off\n",
-						f"cd \"{exec_dir}\"\n",
+						f"cd /d \"{exec_dir}\"\n",
+						f"start \"\" sc4mpserver.exe -s \"{sc4mp_server_path}\"\n",
+					])
+
+				with open(os.path.join(path, "stop.bat"), "w") as batch_file:
+					batch_file.writelines([
+						"@echo off\n",
+						f"cd /d \"{exec_dir}\"\n",
+						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --stop\n",
+					])
+
+				with open(os.path.join(path, "prep.bat"), "w") as batch_file:
+					batch_file.writelines([
+						"@echo off\n",
+						f"cd /d \"{exec_dir}\"\n",
 						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --prep\n",
 					])
-				with open(os.path.join(sc4mp_server_path, "restore.bat"), "w") as batch_file:
+
+				with open(os.path.join(path, "restore.bat"), "w") as batch_file:
 					batch_file.writelines([
 						"@echo off\n",
-						f"cd \"{exec_dir}\"\n",
+						f"cd /d \"{exec_dir}\"\n",
 						"set /p backup=\"Enter a backup to restore...\"\n",
 						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --restore %backup%\n",
+						"pause\n",
 					])
+
 		except Exception as e:
+
 			show_error(f"Failed to create helper batch files.\n\n{e}")
 
 
@@ -1105,7 +1185,7 @@ class Server(th.Thread):
 								with open("updater.bat", "w") as batch_file:
 									batch_file.writelines([
 										"@echo off\n",
-										f"cd \"{os.getcwd()}\"\n",
+										f"cd /d \"{os.getcwd()}\"\n",
 										"echo Running installer...\n",
 										f"cd {destination.parent}\n",
 										f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",

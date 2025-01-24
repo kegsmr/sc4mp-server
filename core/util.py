@@ -372,3 +372,91 @@ def parse_filesize(filesize_str) -> int:
         raise ValueError(f"Unsupported unit '{unit}'. Supported units are: {', '.join(size_multipliers.keys())}.")
 
     return int(size * size_multipliers[unit])
+
+
+def is_socket_listening(host: str, port: int) -> bool:
+	"""
+	Check if a socket is in use on the specified host and port.
+
+	Parameters:
+	- host (str): The hostname or IP address to check.
+	- port (int): The port number to check.
+
+	Returns:
+	- bool: True if the socket is in use, False otherwise.
+	"""
+
+	import socket
+
+	s = socket.socket()
+
+	try:
+
+		s.settimeout(1)  # Set timeout to avoid hanging
+		s.connect((host, port))
+
+		return True  # Connection succeeded, so the socket is in use
+	
+	except (socket.error, socket.timeout):
+
+		return False  # Connection failed, so the socket is not in use
+	
+	finally:
+
+		s.close()  # Ensure the socket is closed
+
+
+def get_process_creation_time(pid):
+	"""
+	Gets the creation date of a process from its PID on Windows.
+	
+	Parameters:
+		pid (int): The process ID.
+	
+	Returns:
+		datetime: The creation date and time of the process.
+	"""
+
+	import ctypes
+	import ctypes.wintypes
+	from datetime import datetime, timedelta
+
+	# Constants
+	PROCESS_QUERY_INFORMATION = 0x0400
+	PROCESS_VM_READ = 0x0010
+
+	# Open the process
+	h_process = ctypes.windll.kernel32.OpenProcess(
+		PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, False, pid
+	)
+	if not h_process:
+		raise Exception(f"Failed to open process with PID {pid}. Error code: {ctypes.GetLastError()}")
+
+	# Create a FILETIME structure to store creation time
+	creation_time = ctypes.wintypes.FILETIME()
+	exit_time = ctypes.wintypes.FILETIME()
+	kernel_time = ctypes.wintypes.FILETIME()
+	user_time = ctypes.wintypes.FILETIME()
+
+	# Get process times
+	success = ctypes.windll.kernel32.GetProcessTimes(
+		h_process,
+		ctypes.byref(creation_time),
+		ctypes.byref(exit_time),
+		ctypes.byref(kernel_time),
+		ctypes.byref(user_time),
+	)
+	if not success:
+		ctypes.windll.kernel32.CloseHandle(h_process)
+		raise Exception(f"Failed to get process times for PID {pid}. Error code: {ctypes.GetLastError()}")
+
+	# Close the process handle
+	ctypes.windll.kernel32.CloseHandle(h_process)
+
+	# Convert FILETIME to a Python datetime
+	def filetime_to_datetime(ft):
+		# FILETIME is a 64-bit value representing the number of 100-nanosecond intervals since January 1, 1601 (UTC)
+		time = (ft.dwHighDateTime << 32) + ft.dwLowDateTime
+		return datetime(1601, 1, 1) + timedelta(microseconds=time // 10)
+
+	return filetime_to_datetime(creation_time)

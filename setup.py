@@ -72,6 +72,7 @@ def main():
 		f"--noupx",
         f"--console",
 		f"--hide-console",
+		f"hide-early",
         f"-i",
 		f"{os.path.abspath(os.path.join('resources', 'icon.ico'))}",
 		f"--version-file",
