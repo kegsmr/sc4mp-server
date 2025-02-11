@@ -794,6 +794,10 @@ def fatal_error(e):
 
 	global sc4mp_server_running
 	sc4mp_server_running = False
+
+	if sc4mp_system_tray_icon_manager:
+		sc4mp_system_tray_icon_manager.status("Stopped", "A fatal error has occurred. Please check the logs at \"Documents\\SimCity 4\\SC4MP Server\\sc4mpserver.log\" for more details.")
+
 	#sys.exit()
 
 
@@ -870,7 +874,7 @@ class Server(th.Thread):
 					time.sleep(self.BIND_RETRY_DELAY)
 
 			if sc4mp_system_tray_icon_manager:
-				sc4mp_system_tray_icon_manager.status(f"Running, port {SC4MP_PORT}")
+				sc4mp_system_tray_icon_manager.status("Running", f"Listening on port {SC4MP_PORT}. You may now use the SC4MP Launcher to join.")
 
 			report("- listening for connections...")
 			s.listen(5)
@@ -1074,6 +1078,9 @@ class Server(th.Thread):
 		if is_windows() and sc4mp_has_pystray and sc4mp_has_pil:
 			sc4mp_system_tray_icon_manager = SystemTrayIconManager()
 			sc4mp_system_tray_icon_manager.start()
+			while not sc4mp_system_tray_icon_manager.icon.visible:
+				time.sleep(SC4MP_DELAY)
+			sc4mp_system_tray_icon_manager.status("Preparing", "Running in the background. Click on the system tray icon to manage your sever.")
 		else:
 			sc4mp_system_tray_icon_manager = None
 
@@ -2851,10 +2858,12 @@ class SystemTrayIconManager(th.Thread):
 
 		name = "system_tray_icon"
 		icon = Image.open(SC4MP_ICON)
+		title = self.server_name
 		menu = Menu(
 			# Item("Details...", Menu(*details)),
 			Item("Actions...", Menu(
 				connect,
+				Item("Trigger FATAL ERROR", lambda: fatal_error(Exception())),
 				Item("Update", self.update),
 				Item("Restart", self.restart),
 				Item("Stop", self.stop),
@@ -2876,18 +2885,30 @@ class SystemTrayIconManager(th.Thread):
 			# )),
 		)
 
-		self.icon = Icon(name, icon, menu=menu)
-
-		self.status("Preparing")
+		self.icon = Icon(name, icon, title, menu)
 
 
-	def status(self, status):
+	def status(self, status="", notification=""):
 
-		self.icon.title = self.server_name
+		title = self.icon.title
 
+		if notification and self.icon.HAS_NOTIFICATION:
+			self.icon.title = self.server_name
+			self.icon.notify(notification)
 		if status:
-			self.icon.notify(status)
 			self.icon.title = f"{self.server_name} ({status})"
+		else:
+			self.icon.title = title
+
+
+	def error(self, e, notification=""):
+
+		show_error(e)
+
+		if not notification:
+			notification = "An error occurred. Please check the logs at \"Documents\\SimCity 4\\SC4MP Server\\sc4mpserver.log\" for more details."
+
+		self.status(notification=notification)
 
 
 	def run(self):
@@ -2911,7 +2932,7 @@ class SystemTrayIconManager(th.Thread):
 
 		except Exception as e:
 
-			show_error(e)
+			self.error(e)
 	
 
 	def stop(self, icon, item):
@@ -2922,7 +2943,7 @@ class SystemTrayIconManager(th.Thread):
 
 		except Exception as e:
 
-			show_error(e)
+			fatal_error(e)
 
 	
 	def connect(self, address="localhost"):
@@ -2933,7 +2954,7 @@ class SystemTrayIconManager(th.Thread):
 
 		except Exception as e:
 
-			show_error(e)
+			self.error(e, notification="Unable to connect. Ensure the SC4MP Launcher is installed, then try again.")
 
 
 	def logs(self, icon, item):
@@ -2949,40 +2970,46 @@ class SystemTrayIconManager(th.Thread):
 
 		except Exception as e:
 
-			show_error(e)
+			self.error(e)
 
 
 	def plugins(self, icon, item):
 
 		try:
 
+			self.status(notification="Install plugins by pasting the plugin files here.")
+
 			os.startfile(os.path.join(sc4mp_server_path, "Plugins"))
 
 		except Exception as e:
 
-			show_error(e)
+			self.error(e)
 
 
 	def regions(self, icon, item):
 
 		try:
 
+			self.status(notification="Add regions by pasting the region folders here. When you're done, restart the server for the changes to take effect.")
+
 			os.startfile(os.path.join(sc4mp_server_path, "Regions"))
 
 		except Exception as e:
 
-			show_error(e)
+			self.error(e)
 
 
 	def config(self, icon, item):
 
 		try:
 
+			self.status(notification="Edit the server configuration settings here, then restart the server for the changes to take effect.")
+
 			os.startfile(os.path.join(sc4mp_server_path, "serverconfig.ini"))
 
 		except Exception as e:
 
-			show_error(e)
+			self.error(e)
 
 
 	def invite(self, icon, item):
@@ -2993,7 +3020,7 @@ class SystemTrayIconManager(th.Thread):
 
 		except Exception as e:
 
-			show_error(e)
+			self.error(e)
 
 
 	def readme(self, icon, item):
@@ -3004,7 +3031,7 @@ class SystemTrayIconManager(th.Thread):
 
 		except Exception as e:
 
-			show_error(e)
+			self.error(e)
 
 
 	def update(self, icon, item):
@@ -3015,7 +3042,7 @@ class SystemTrayIconManager(th.Thread):
 
 		except Exception as e:
 
-			show_error(e)
+			self.error(e)
 
 
 # Exceptions
