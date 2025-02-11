@@ -999,16 +999,6 @@ class Server(th.Thread):
 						"PowerShell -NoProfile -ExecutionPolicy Bypass -Command \"gc sc4mpserver.log -wait -tail 1000\"\n",
 					])
 
-				if sc4mp_server_path == "_SC4MP":
-					with open(os.path.join(path, "new.bat"), "w") as batch_file:
-						batch_file.writelines([
-							"@echo off\n",
-							f"cd /d \"{exec_dir}\"\n",
-							"set /p name=\"Enter the name of the new server configuration...\"\n",
-							f"sc4mpserver.exe -s \"{sc4mp_server_path}\" -s %name% --prep\n",
-							f"C:\Windows\explorer.exe \"{exec_dir}\\%name%\"\n"
-						])
-
 				with open(os.path.join(path, "run.bat"), "w") as batch_file:
 					batch_file.writelines([
 						"@echo off\n",
@@ -1045,6 +1035,24 @@ class Server(th.Thread):
 						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --restore %backup%\n",
 						"pause\n",
 					])
+
+				if sc4mp_server_path == "_SC4MP":
+
+					with open(os.path.join(path, "new.bat"), "w") as batch_file:
+						batch_file.writelines([
+							"@echo off\n",
+							f"cd /d \"{exec_dir}\"\n",
+							"set /p name=\"Enter the name of the new server configuration...\"\n",
+							f"sc4mpserver.exe -s \"{sc4mp_server_path}\" -s %name% --prep\n",
+							f"C:\Windows\explorer.exe \"{exec_dir}\\%name%\"\n"
+						])
+
+					with open(os.path.join(path, "update.bat"), "w") as batch_file:
+						batch_file.writelines([
+							"@echo off\n",
+							f"cd /d \"{exec_dir}\"\n",
+							f"sc4mpserver.exe -s \"{sc4mp_server_path}\" -u\n",
+						])
 
 		except Exception as e:
 
@@ -1204,7 +1212,6 @@ class Server(th.Thread):
 											download_size_downloaded += len(bytes_read)
 											wfile.write(bytes_read)
 
-								
 								# Convert destination to path object
 								destination = Path(destination)
 
@@ -2848,6 +2855,7 @@ class SystemTrayIconManager(th.Thread):
 			# Item("Details...", Menu(*details)),
 			Item("Actions...", Menu(
 				connect,
+				Item("Update", self.update),
 				Item("Restart", self.restart),
 				Item("Stop", self.stop),
 			)),
@@ -2860,8 +2868,8 @@ class SystemTrayIconManager(th.Thread):
 			)),
 			Item("View...", Menu(
 				Item("Logs", self.logs),
-				Item("Readme", self.readme),
 				Item("Invite", self.invite),
+				Item("Readme", self.readme),
 			)),
 			# Item("Help...", Menu(
 			# 	Item("Readme", self.readme),
@@ -2993,6 +3001,17 @@ class SystemTrayIconManager(th.Thread):
 		try:
 
 			os.startfile("Readme.html")
+
+		except Exception as e:
+
+			show_error(e)
+
+
+	def update(self, icon, item):
+
+		try:
+
+			os.startfile(os.path.join(self.helper_batch_directory, "update.bat"))
 
 		except Exception as e:
 

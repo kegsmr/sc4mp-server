@@ -1,1 +1,1 @@
-sc4mpserver -u -p
+sc4mpserver.exe -u
