@@ -870,7 +870,7 @@ class Server(th.Thread):
 					time.sleep(self.BIND_RETRY_DELAY)
 
 			if sc4mp_system_tray_icon_manager:
-				sc4mp_system_tray_icon_manager.status("Running", f"Running on port {SC4MP_PORT}.")
+				sc4mp_system_tray_icon_manager.status(f"Running, port {SC4MP_PORT}")
 
 			report("- listening for connections...")
 			s.listen(5)
@@ -2859,9 +2859,9 @@ class SystemTrayIconManager(th.Thread):
 				Item("Config", self.config),
 			)),
 			Item("View...", Menu(
+				Item("Logs", self.logs),
 				Item("Readme", self.readme),
 				Item("Invite", self.invite),
-				Item("Logs", self.logs),
 			)),
 			# Item("Help...", Menu(
 			# 	Item("Readme", self.readme),
@@ -2873,16 +2873,13 @@ class SystemTrayIconManager(th.Thread):
 		self.status("Preparing")
 
 
-	def status(self, status, notification=""):
+	def status(self, status):
 
-		if notification:
-			self.status("")
-			self.icon.notify(notification)
+		self.icon.title = self.server_name
 
 		if status:
+			self.icon.notify(status)
 			self.icon.title = f"{self.server_name} ({status})"
-		else:
-			self.icon.title = self.server_name
 
 
 	def run(self):
