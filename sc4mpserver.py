@@ -2907,7 +2907,7 @@ class SystemTrayIconManager(th.Thread):
 
 		try:
 
-			os.startfile(os.path.join(self.helper_batch_directory, "start.bat"))
+			subprocess.Popen([os.path.join(self.helper_batch_directory, "start.bat")])
 
 		except Exception as e:
 
@@ -2918,7 +2918,7 @@ class SystemTrayIconManager(th.Thread):
 
 		try:
 
-			os.startfile(os.path.join(self.helper_batch_directory, "stop.bat"))
+			subprocess.Popen([os.path.join(self.helper_batch_directory, "stop.bat")])
 
 		except Exception as e:
 
@@ -3011,7 +3011,7 @@ class SystemTrayIconManager(th.Thread):
 
 		try:
 
-			os.startfile(os.path.join(self.helper_batch_directory, "update.bat"))
+			subprocess.Popen(["update.bat"])
 
 		except Exception as e:
 
