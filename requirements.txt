@@ -4,6 +4,9 @@
 
 # Runtime Dependencies (Used by the application at runtime)
 # ---------------------------------------------------------
+# Pystray: Used for creating system tray icons.
+
+pystray
 
 
 # Build Dependencies (Only required when building Windows executables)
