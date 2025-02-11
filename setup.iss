@@ -44,18 +44,9 @@ Source: "Readme.html"; DestDir: "{app}"; Flags: isreadme
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
-; Name: "{autoprograms}\{#MyAppPublisher}\{#MyAppName} - Add plugins"; Filename: "C:\Windows\explorer.exe"; Parameters: "{app}\_SC4MP\Plugins"
-; Name: "{autoprograms}\{#MyAppPublisher}\{#MyAppName} - Add regions"; Filename: "C:\Windows\explorer.exe"; Parameters: "{app}\_SC4MP\Regions"
-; Name: "{autoprograms}\{#MyAppPublisher}\{#MyAppName} - Prepare"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--prep"
-; Name: "{autoprograms}\{#MyAppPublisher}\{#MyAppName} - Start"; Filename: "{app}\{#MyAppExeName}"
-; Name: "{autoprograms}\{#MyAppPublisher}\{#MyAppName} - Stop"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--stop"
-; Name: "{autoprograms}\{#MyAppPublisher}\{#MyAppName} - View config"; Filename: "{app}\_SC4MP\serverconfig.ini"
-; Name: "{autoprograms}\{#MyAppPublisher}\{#MyAppName} - View logs"; Filename: "{app}\logs.bat"
-; Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-Name: "{autoprograms}\{#MyAppPublisher}\{#MyAppName}"; Filename: "C:\Windows\explorer.exe"; Parameters: "{app}"
+Name: "{autoprograms}\{#MyAppPublisher}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: startupicon
-Name: "{autodesktop}\{#MyAppName}"; Filename: "C:\Windows\explorer.exe"; Parameters: "{app}"; Tasks: desktopicon
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "C:\Windows\explorer.exe"; Parameters: "{app}"; Description: "View files"; Flags: nowait postinstall skipifsilent
-Filename: "{app}\{#MyAppExeName}"; Description: "Start SC4MP Server"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent

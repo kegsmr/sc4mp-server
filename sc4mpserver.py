@@ -6,6 +6,7 @@ import inspect
 import json
 import os
 import random
+import re
 import shutil
 import socket
 import string
@@ -14,12 +15,25 @@ import sys
 import threading as th
 import time
 import traceback
+import platform
 import urllib.request
 from argparse import ArgumentParser, Namespace
 from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
+
+try:
+	from PIL import Image
+	sc4mp_has_pil = True
+except ImportError:
+	sc4mp_has_pil = False
+
+try:
+	import pystray
+	sc4mp_has_pystray = True
+except ImportError:
+	sc4mp_has_pystray = False
 
 #pylint: disable=wildcard-import
 #pylint: disable=unused-wildcard-import
@@ -106,6 +120,8 @@ SC4MP_CONFIG_DEFAULTS = [
 SC4MP_SERVER_ID = None
 SC4MP_SERVER_NAME = None
 SC4MP_SERVER_DESCRIPTION = None
+
+SC4MP_INVITES_DOMAIN = "invite.sc4mp.org"
 
 sc4mp_server_path = "_SC4MP"
 
@@ -227,7 +243,7 @@ def parse_args() -> Namespace:
 
 def prevent_multiple():
 
-	if is_windows():
+	if is_windows() and is_frozen():
 
 		try:
 
@@ -779,6 +795,10 @@ def fatal_error(e):
 
 	global sc4mp_server_running
 	sc4mp_server_running = False
+
+	if sc4mp_system_tray_icon_manager:
+		sc4mp_system_tray_icon_manager.status("Stopped", "A fatal error has occurred. Please check the logs at \"Documents\\SimCity 4\\SC4MP Server\\sc4mpserver.log\" for more details.")
+
 	#sys.exit()
 
 
@@ -853,6 +873,9 @@ class Server(th.Thread):
 					show_error(e)
 					print(f"[WARNING] - failed to bind socket, retrying in {self.BIND_RETRY_DELAY} seconds...")
 					time.sleep(self.BIND_RETRY_DELAY)
+
+			if sc4mp_system_tray_icon_manager:
+				sc4mp_system_tray_icon_manager.status("Running", f"Listening on port {SC4MP_PORT}. You may now use the SC4MP Launcher to join.")
 
 			report("- listening for connections...")
 			s.listen(5)
@@ -981,16 +1004,6 @@ class Server(th.Thread):
 						"PowerShell -NoProfile -ExecutionPolicy Bypass -Command \"gc sc4mpserver.log -wait -tail 1000\"\n",
 					])
 
-				if sc4mp_server_path == "_SC4MP":
-					with open(os.path.join(path, "new.bat"), "w") as batch_file:
-						batch_file.writelines([
-							"@echo off\n",
-							f"cd /d \"{exec_dir}\"\n",
-							"set /p name=\"Enter the name of the new server configuration...\"\n",
-							f"sc4mpserver.exe -s \"{sc4mp_server_path}\" -s %name% --prep\n",
-							f"C:\Windows\explorer.exe \"{exec_dir}\\%name%\"\n"
-						])
-
 				with open(os.path.join(path, "run.bat"), "w") as batch_file:
 					batch_file.writelines([
 						"@echo off\n",
@@ -1028,6 +1041,24 @@ class Server(th.Thread):
 						"pause\n",
 					])
 
+				if sc4mp_server_path == "_SC4MP":
+
+					with open(os.path.join(path, "new.bat"), "w") as batch_file:
+						batch_file.writelines([
+							"@echo off\n",
+							f"cd /d \"{exec_dir}\"\n",
+							"set /p name=\"Enter the name of the new server configuration...\"\n",
+							f"sc4mpserver.exe -s \"{sc4mp_server_path}\" -s %name% --prep\n",
+							f"C:\Windows\explorer.exe \"{exec_dir}\\%name%\"\n"
+						])
+
+					with open(os.path.join(path, "update.bat"), "w") as batch_file:
+						batch_file.writelines([
+							"@echo off\n",
+							f"cd /d \"{exec_dir}\"\n",
+							f"sc4mpserver.exe -s \"{sc4mp_server_path}\" -u\n",
+						])
+
 		except Exception as e:
 
 			show_error(f"Failed to create helper batch files.\n\n{e}")
@@ -1042,6 +1073,17 @@ class Server(th.Thread):
 		report("Loading config...")
 		
 		sc4mp_config = Config(SC4MP_CONFIG_PATH, SC4MP_CONFIG_DEFAULTS, error_callback=show_error, update_constants_callback=update_config_constants)
+
+		# System tray icon
+		global sc4mp_system_tray_icon_manager
+		if is_windows() and sc4mp_has_pystray and sc4mp_has_pil:
+			sc4mp_system_tray_icon_manager = SystemTrayIconManager()
+			sc4mp_system_tray_icon_manager.start()
+			while not sc4mp_system_tray_icon_manager.icon.visible:
+				time.sleep(SC4MP_DELAY)
+			sc4mp_system_tray_icon_manager.status("Preparing", "Running in the background. Click on the system tray icon to manage your sever.")
+		else:
+			sc4mp_system_tray_icon_manager = None
 
 		'''global SC4MP_HOST
 		global SC4MP_PORT
@@ -1178,7 +1220,6 @@ class Server(th.Thread):
 											download_size_downloaded += len(bytes_read)
 											wfile.write(bytes_read)
 
-								
 								# Convert destination to path object
 								destination = Path(destination)
 
@@ -2772,6 +2813,269 @@ class ServerList(th.Thread):
 				self.server_queue.enqueue((host, port))
 		except TypeError as e:
 			raise ServerException("Unable to receive server list from outdated server") from e
+
+
+class SystemTrayIconManager(th.Thread):
+
+
+	def __init__(self):
+		
+		super().__init__()
+
+		if sc4mp_server_path == "_SC4MP":
+			self.helper_batch_directory = os.getcwd()
+		else:
+			self.helper_batch_directory = sc4mp_server_path
+
+		Menu = pystray.Menu
+		Item = pystray.MenuItem
+		Icon = pystray.Icon
+
+		# details = []
+		# for section in sc4mp_config.data.keys():
+		# 	details += [Item(section, None, enabled=False)]
+		# 	for key, value in sc4mp_config.data[section].items():
+		# 		details += [Item(f"{key}: {value}", None, enabled=False)]
+		# 	details += [Item("", None, enabled=False)]
+		# details.pop(-1)
+
+		self.server_name = sc4mp_config['INFO']['server_name']
+
+		address = "localhost"
+		if sc4mp_config['NETWORK']['host'] != "127.0.0.1":
+			public_address = get_public_ip_address()
+			if public_address:
+				address = public_address
+
+		port = sc4mp_config["NETWORK"]['port']
+
+		if address == "localhost":
+			connect = Item("Connect", lambda: self.connect("localhost"))
+		else:
+			connect = Item("Connect...", Menu(
+				Item("Via LAN", lambda: self.connect("localhost")),
+				Item("Via internet", lambda: self.connect(address)),
+			))
+
+		name = "system_tray_icon"
+		icon = Image.open(SC4MP_ICON)
+		title = self.server_name
+		menu = Menu(
+			# Item("Details...", Menu(*details)),
+			Item("Actions...", Menu(
+				connect,
+				# Item("Trigger FATAL ERROR", lambda: fatal_error(Exception())),
+				Item("Update", self.update),
+				Item("Restart", self.restart),
+				Item("Stop", self.stop),
+			)),
+			Item("Manage...", Menu(
+				Item("Plugins", self.plugins),
+				Item("Regions", self.regions),
+			)),
+			Item("Edit...", Menu(
+				Item("Config", self.config),
+				Item("Router settings", self.router),
+				Item("Firewall settings", self.firewall),
+			)),
+			Item("View...", Menu(
+				Item("Logs", self.logs),
+				Item("Invite", self.invite),
+				Item("Readme", self.readme),
+			)),
+			# Item("Help...", Menu(
+			# 	Item("Readme", self.readme),
+			# )),
+		)
+
+		self.icon = Icon(name, icon, title, menu)
+
+
+	def status(self, status="", notification=""):
+
+		title = self.icon.title
+
+		if notification and self.icon.HAS_NOTIFICATION:
+			self.icon.title = self.server_name
+			self.icon.notify(notification)
+		if status:
+			self.icon.title = f"{self.server_name} ({status})"
+		else:
+			self.icon.title = title
+
+
+	def error(self, e, notification=""):
+
+		show_error(e)
+
+		if not notification:
+			notification = "An error occurred. Please check the logs at \"Documents\\SimCity 4\\SC4MP Server\\sc4mpserver.log\" for more details."
+
+		self.status(notification=notification)
+
+
+	def run(self):
+
+		try:
+
+			set_thread_name("TrayThread")
+
+			self.icon.run()
+
+		except Exception as e:
+
+			fatal_error(e)
+
+
+	def restart(self, icon, item):
+
+		try:
+
+			subprocess.Popen([os.path.join(self.helper_batch_directory, "start.bat")])
+
+		except Exception as e:
+
+			self.error(e)
+	
+
+	def stop(self, icon, item):
+
+		try:
+
+			subprocess.Popen([os.path.join(self.helper_batch_directory, "stop.bat")])
+
+		except Exception as e:
+
+			fatal_error(e)
+
+	
+	def connect(self, address="localhost"):
+
+		try:
+
+			os.startfile(f"sc4mp://{address}:{sc4mp_config['NETWORK']['port']}")
+
+		except Exception as e:
+
+			self.error(e, notification="Unable to connect. Ensure the SC4MP Launcher is installed, then try again.")
+
+
+	def logs(self, icon, item):
+
+		try:
+
+			logs_bat = os.path.join(self.helper_batch_directory, "logs.bat")
+
+			if int(platform.version().split('.')[0]) >= 10 and os.path.exists(logs_bat):
+				os.startfile(logs_bat)
+			else:
+				os.startfile(SC4MP_LOG_PATH)
+
+		except Exception as e:
+
+			self.error(e)
+
+
+	def plugins(self, icon, item):
+
+		try:
+
+			self.status(notification="Add plugins by pasting the plugin files here.")
+
+			os.startfile(os.path.join(sc4mp_server_path, "Plugins"))
+
+		except Exception as e:
+
+			self.error(e)
+
+
+	def regions(self, icon, item):
+
+		try:
+
+			self.status(notification="Add regions by pasting the region folders here. When you're done, restart the server for the changes to take effect.")
+
+			os.startfile(os.path.join(sc4mp_server_path, "Regions"))
+
+		except Exception as e:
+
+			self.error(e)
+
+
+	def config(self, icon, item):
+
+		try:
+
+			self.status(notification="Edit the server configuration settings here, then restart the server for the changes to take effect.")
+
+			os.startfile(os.path.join(sc4mp_server_path, "serverconfig.ini"))
+
+		except Exception as e:
+
+			self.error(e)
+
+
+	def invite(self, icon, item):
+
+		try:
+
+			os.startfile(f"https://{SC4MP_INVITES_DOMAIN}/{sc4mp_config['INFO']['server_id']}")
+
+		except Exception as e:
+
+			self.error(e)
+
+
+	def readme(self, icon, item):
+
+		try:
+
+			os.startfile("Readme.html")
+
+		except Exception as e:
+
+			self.error(e)
+
+
+	def update(self, icon, item):
+
+		try:
+
+			subprocess.Popen(["update.bat"])
+
+		except Exception as e:
+
+			self.error(e)
+
+
+	def router(self):
+
+		try:
+
+			# Run 'ipconfig' and capture the output
+			output = subprocess.run("ipconfig", capture_output=True, text=True, check=True)
+
+			# Search for 'Default Gateway' in the output
+			match = re.search(r"Default Gateway[ .:]+([\d.]+)", output.stdout)
+			
+			if match:
+				router_ip = match.group(1)
+				os.startfile(f"http://{router_ip}")
+			
+		except Exception as e:
+			
+			self.error(e)
+	
+
+	def firewall(self):
+
+		try:
+
+			os.startfile("C:\Windows\system32\WF.msc")
+	
+		except Exception as e:
+
+			self.error(e)
 
 
 # Exceptions
