@@ -6,6 +6,7 @@ import inspect
 import json
 import os
 import random
+import re
 import shutil
 import socket
 import string
@@ -2863,7 +2864,7 @@ class SystemTrayIconManager(th.Thread):
 			# Item("Details...", Menu(*details)),
 			Item("Actions...", Menu(
 				connect,
-				Item("Trigger FATAL ERROR", lambda: fatal_error(Exception())),
+				# Item("Trigger FATAL ERROR", lambda: fatal_error(Exception())),
 				Item("Update", self.update),
 				Item("Restart", self.restart),
 				Item("Stop", self.stop),
@@ -2874,6 +2875,8 @@ class SystemTrayIconManager(th.Thread):
 			)),
 			Item("Edit...", Menu(
 				Item("Config", self.config),
+				Item("Router settings", self.router),
+				Item("Firewall settings", self.firewall),
 			)),
 			Item("View...", Menu(
 				Item("Logs", self.logs),
@@ -2977,7 +2980,7 @@ class SystemTrayIconManager(th.Thread):
 
 		try:
 
-			self.status(notification="Install plugins by pasting the plugin files here.")
+			self.status(notification="Add plugins by pasting the plugin files here.")
 
 			os.startfile(os.path.join(sc4mp_server_path, "Plugins"))
 
@@ -3040,6 +3043,36 @@ class SystemTrayIconManager(th.Thread):
 
 			subprocess.Popen(["update.bat"])
 
+		except Exception as e:
+
+			self.error(e)
+
+
+	def router(self):
+
+		try:
+
+			# Run 'ipconfig' and capture the output
+			output = subprocess.run("ipconfig", capture_output=True, text=True, check=True)
+
+			# Search for 'Default Gateway' in the output
+			match = re.search(r"Default Gateway[ .:]+([\d.]+)", output.stdout)
+			
+			if match:
+				router_ip = match.group(1)
+				os.startfile(f"http://{router_ip}")
+			
+		except Exception as e:
+			
+			self.error(e)
+	
+
+	def firewall(self):
+
+		try:
+
+			os.startfile("C:\Windows\system32\WF.msc")
+	
 		except Exception as e:
 
 			self.error(e)
