@@ -4,8 +4,10 @@
 
 # Runtime Dependencies (Used by the application at runtime)
 # ---------------------------------------------------------
+# Pillow: Used for rendering system tray icons.
 # Pystray: Used for creating system tray icons.
 
+pillow
 pystray
 
 
