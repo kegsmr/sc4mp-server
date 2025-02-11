@@ -1,0 +1,15 @@
+# NOTE: The SC4MP Server can run without the modules listed in this file; however, 
+# certain non-essential features will be disabled without them.
+
+
+# Runtime Dependencies (Used by the application at runtime)
+# ---------------------------------------------------------
+
+
+# Build Dependencies (Only required when building Windows executables)
+# --------------------------------------------------------------------
+# PyInstaller: Required for packaging the application into a Windows executable.
+# Requests: Used for fetching an updated server list when building executables.
+
+PyInstaller
+requests
