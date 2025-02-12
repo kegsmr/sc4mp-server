@@ -2941,7 +2941,7 @@ class SystemTrayIconManager(th.Thread):
 			Item("Actions...", Menu(
 				connect,
 				# Item("Trigger FATAL ERROR", lambda: fatal_error(Exception())),
-				Item("Update", self.update),
+				# Item("Update", self.update),
 				Item("Restart", self.restart),
 				Item("Stop", self.stop),
 			)),
@@ -2951,12 +2951,12 @@ class SystemTrayIconManager(th.Thread):
 			)),
 			Item("Edit...", Menu(
 				Item("Config", self.config),
-				Item("Router settings", self.router),
-				Item("Firewall settings", self.firewall),
+				# Item("Router settings", self.router),
+				# Item("Firewall settings", self.firewall),
 			)),
 			Item("View...", Menu(
 				Item("Logs", self.logs),
-				Item("Invite", self.invite),
+				# Item("Invite", self.invite),
 				Item("Readme", self.readme),
 			)),
 			# Item("Help...", Menu(
