@@ -2694,38 +2694,38 @@ class RequestHandler(th.Thread):
 			c.sendall(open(background_image_filename, "rb").read())
 
 
-class ServerQueue:
-	"""
-	Queue for server scanning that implements membership check before enqueuing.
-	Can optionally enqueue to the front (left) of the queue.
-	The queue contains (host, port) tuples.
-	"""
-
-	def __init__(self, servers: Iterable[tuple[str,int]]) -> None:
-		self._queue = deque(servers)
-
-	def __len__(self):
-		return len(self._queue)
-
-	def enqueue(self, server: tuple[str,int], left=False) -> None:
-		"""
-		Adds a server to the queue, defaulting to the tail end (right).
-		left=True adds the server to the front of the queue.
-		Servers are only enqueued if they are not already in queue.
-		"""
-		if server in self._queue:
-			return
-		if left:
-			self._queue.appendleft(server)
-			return
-		self._queue.append(server)
-
-	def dequeue(self) -> tuple[str,int]:
-		"""Gets the server at the front of the queue"""
-		return self._queue.popleft()
-
-
 class ServerList(th.Thread):
+
+
+	class ServerQueue:
+		"""
+		Queue for server scanning that implements membership check before enqueuing.
+		Can optionally enqueue to the front (left) of the queue.
+		The queue contains (host, port) tuples.
+		"""
+
+		def __init__(self, servers: Iterable[tuple[str,int]]) -> None:
+			self._queue = deque(servers)
+
+		def __len__(self):
+			return len(self._queue)
+
+		def enqueue(self, server: tuple[str,int], left=False) -> None:
+			"""
+			Adds a server to the queue, defaulting to the tail end (right).
+			left=True adds the server to the front of the queue.
+			Servers are only enqueued if they are not already in queue.
+			"""
+			if server in self._queue:
+				return
+			if left:
+				self._queue.appendleft(server)
+				return
+			self._queue.append(server)
+
+		def dequeue(self) -> tuple[str,int]:
+			"""Gets the server at the front of the queue"""
+			return self._queue.popleft()
 
 
 	def __init__(self):
@@ -2741,7 +2741,7 @@ class ServerList(th.Thread):
 
 		self.servers["root"] = {"host": SC4MP_SERVERS[0][0], "port": SC4MP_SERVERS[0][1]}
 
-		self.server_queue = ServerQueue(SC4MP_SERVERS.copy())
+		self.server_queue = self.ServerQueue(SC4MP_SERVERS.copy())
 
 
 	def run(self):
