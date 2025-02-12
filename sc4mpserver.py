@@ -23,6 +23,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
+# try:
+# 	import upnpclient
+# 	sc4mp_has_upnpclient = True
+# except ImportError:
+# 	sc4mp_has_upnpclient = False
+
 try:
 	from PIL import Image
 	sc4mp_has_pil = True
@@ -79,7 +85,8 @@ SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
 		("host", "0.0.0.0"),
 		("port", 7240),
-		#("domain", None),					#TODO for servers hosted on a DDNS or other specific domain
+		# ("upnp", False),	#TODO
+		# ("domain", None),	#TODO for servers hosted on a DDNS or other specific domain
 		("discoverable", True),
 	]),
 	("INFO", [
@@ -116,6 +123,13 @@ SC4MP_CONFIG_DEFAULTS = [
 		("max_savegame_backups", 20),
 	])
 ]
+
+if is_windows():
+	SC4MP_CONFIG_DEFAULTS += [
+		("UI", [
+			("enabled", True)
+		])
+	]
 
 SC4MP_SERVER_ID = None
 SC4MP_SERVER_NAME = None
@@ -829,6 +843,47 @@ def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorN
 		return f"{prefix} - {city_name} - {mayor_name}"[:252] + ".sc4"
 
 
+def open_upnp_port(port, protocol="TCP", description="Port Forwarding via UPnP"):
+
+	def get_gateway():
+
+		devices = upnpclient.discover()
+		
+		print([device for device in devices])
+
+		for device in devices:
+			print(device.services)
+			for service in device.services:
+				if "WANIPConnection" in service.service_type or "WANPPPConnection" in service.service_type:
+					return device
+		
+		raise ServerException("No UPnP-enabled gateway found.")
+
+	gateway = get_gateway()
+	address = socket.gethostbyname(socket.gethostname())
+
+	if address == "127.0.0.1":
+		raise ServerException("Unable to determine LAN IP address.")
+
+	for mapping in gateway.WANIPConnection.GetPortMapping():
+		if mapping['NewExternalPort'] == str(port) and mapping['NewProtocol'] == protocol:
+			print(f"Port {port} ({protocol}) is already mapped to {mapping['NewInternalClient']}.")
+			return
+
+	print(f"Opening port {port} ({protocol}) on \"{gateway.friendly_name}\"...")
+
+	gateway.AddPortMapping(
+            NewRemoteHost="",
+            NewExternalPort=port,
+            NewProtocol=protocol,
+            NewInternalPort=port,
+            NewInternalClient=address,
+            NewEnabled=1,
+            NewPortMappingDescription=description,
+            NewLeaseDuration=0,
+        )
+
+
 # Workers
 
 class Server(th.Thread):
@@ -851,6 +906,7 @@ class Server(th.Thread):
 		self.prep_regions() 
 		self.prep_backups()
 		self.prep_server_list()
+		# self.prep_upnp()
 
 	
 	def run(self):
@@ -1076,7 +1132,7 @@ class Server(th.Thread):
 
 		# System tray icon
 		global sc4mp_system_tray_icon_manager
-		if is_windows() and sc4mp_has_pystray and sc4mp_has_pil:
+		if is_windows() and sc4mp_config["UI"]['enabled'] and sc4mp_has_pystray and sc4mp_has_pil:
 			sc4mp_system_tray_icon_manager = SystemTrayIconManager()
 			sc4mp_system_tray_icon_manager.start()
 			while not sc4mp_system_tray_icon_manager.icon.visible:
@@ -1476,6 +1532,26 @@ class Server(th.Thread):
 		global sc4mp_server_list
 		sc4mp_server_list = ServerList()
 		sc4mp_server_list.start()
+
+
+	def prep_upnp(self):
+
+		if sc4mp_config['NETWORK']['upnp']:
+
+			print("Preparing UPnP port...")
+
+			if not sc4mp_has_upnpclient:
+				raise ServerException("UPnP requires the `upnpclient` module. Install the module or disable UPnP in `serverconfig.ini`, then restart the server.")
+
+			port = sc4mp_config['NETWORK']['port']
+
+			try:
+
+				open_upnp_port(port, "TCP", "Created by SimCity 4 Multiplayer Project Server.")
+
+			except Exception as e:
+
+				raise ServerException(f"An error occurred while opening a port with UPnP. Disable UPnP in `serverconfig.ini`, forward port {port} manually, then restart the server.\n\n{e}") from e
 
 
 class BackupsManager(th.Thread):
