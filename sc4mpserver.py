@@ -2843,7 +2843,7 @@ class SystemTrayIconManager(th.Thread):
 
 		address = "localhost"
 		if sc4mp_config['NETWORK']['host'] != "127.0.0.1":
-			public_address = get_public_ip_address()
+			public_address = get_public_ip_address(timeout=5)
 			if public_address:
 				address = public_address
 
