@@ -20,7 +20,7 @@ from core.util import update_server_list
 
 TITLE = "SC4MP Server"
 NAME = "sc4mpserver.exe"
-VERSION = sc4mpserver.SC4MP_VERSION
+VERSION = sc4mpserver.SC4MP_VERSION + "." + datetime.now().strftime("%Y%m%d%H%M%S")
 PUBLISHER = "SimCity 4 Multiplayer Project"
 DESCRIPTION = "Multiplayer gameserver for SimCity 4"
 LICENSE = "MIT-0"
@@ -97,7 +97,7 @@ def main():
 	shutil.copy("Readme.html", DIST)
 
 	# Create a zip archive of the distribution
-	destination = os.path.join(os.path.join("builds", "sc4mp-server-" + platform.system().lower() + "-" + str(8 * struct.calcsize("P")) + "-v" + VERSION + "." + datetime.now().strftime("%Y%m%d%H%M%S")))
+	destination = os.path.join(os.path.join("builds", "sc4mp-server-" + platform.system().lower() + "-" + str(8 * struct.calcsize("P")) + "-v" + VERSION))
 	print('Creating zip archive of "' + DIST + '" at "' + destination + '"')
 	shutil.make_archive(destination, "zip", DIST)
 
