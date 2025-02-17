@@ -2116,7 +2116,7 @@ class FileTablesManager(th.Thread):
 			for fullpath in fullpaths:
 				relpath = os.path.relpath(fullpath, rootpath)
 				if not relpath in relpaths:
-					filetable.append((md5(fullpath), os.path.getsize(fullpath), relpath))
+					filetable.append((md5(fullpath), os.path.getsize(fullpath), Path(relpath).as_posix()))
 					print(f"Added new file \"{fullpath}\" to file table.")
 				
 
