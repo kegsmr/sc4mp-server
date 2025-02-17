@@ -124,7 +124,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	])
 ]
 
-if is_windows():
+if is_windows() and is_frozen():
 	SC4MP_CONFIG_DEFAULTS += [
 		("UI", [
 			("enabled", True)
@@ -1132,7 +1132,7 @@ class Server(th.Thread):
 
 		# System tray icon
 		global sc4mp_system_tray_icon_manager
-		if is_windows() and sc4mp_config["UI"]['enabled'] and sc4mp_has_pystray and sc4mp_has_pil:
+		if is_windows() and is_frozen() and sc4mp_config["UI"]['enabled'] and sc4mp_has_pystray and sc4mp_has_pil:
 			sc4mp_system_tray_icon_manager = SystemTrayIconManager()
 			sc4mp_system_tray_icon_manager.start()
 			while not sc4mp_system_tray_icon_manager.icon.visible:
