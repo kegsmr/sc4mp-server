@@ -3,11 +3,16 @@
 A multiplayer gameserver for the PC videogame [SimCity 4](https://en.wikipedia.org/wiki/SimCity_4). Uses [python 3.8.10](https://www.python.org/downloads/release/python-3810/), [pyinstaller](https://pyinstaller.org/) and [Inno Setup](https://jrsoftware.org/isinfo.php) script. Built to work with the [SC4MP Client](https://github.com/kegsmr/sc4mp-client).
 
 
-# Installation and Usage
+# Installation
 
-Download the [latest release](https://github.com/kegsmr/sc4mp-server/releases/latest) and follow the instructions included in the `Readme.html` file.
+Download and run the installer from the [latest release](https://github.com/kegsmr/sc4mp-server/releases/latest).
 
 Alternatively, use the [SC4MP Server Dockerizer](https://github.com/andreRBarata/sc4mp-server-docker) by [andreRBarata](https://github.com/andreRBarata) and deploy your server as a [Docker](https://www.docker.com/) container.
+
+
+# Usage
+
+Follow the instructions included in the `Readme.html` file.
 
 
 # Compiling
@@ -18,6 +23,8 @@ To compile the source code, run the `setup.py` script.
 # Protocol
 
 This section is meant for developers using the SC4MP protocol. Here you can find examples of requests and responses from the server, useful for creating a server scanner or client appplication for the SC4MP network.
+
+**WARNING**: This protocol is slated to be completely rewritten in v0.9.
 
 ## Add server
 Adds the requesting server to the requested server's server list queue.
