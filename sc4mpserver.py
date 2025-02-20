@@ -90,7 +90,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		("discoverable", True),
 	]),
 	("INFO", [
-		("server_id", ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))),
+		("server_id", generate_server_id()),
 		("server_name", getpass.getuser() + " on " + socket.gethostname()),
 		("server_description", "Join and build your city.\n\nRules:\n- Feed the llamas\n- Balance your budget\n- Do uncle Vinny some favors"),
 		("server_url", SC4MP_URL),
