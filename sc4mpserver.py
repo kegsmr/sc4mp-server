@@ -91,7 +91,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	]),
 	("INFO", [
 		("server_id", generate_server_id()),
-		("server_name", getpass.getuser() + " on " + socket.gethostname()),
+		("server_name", generate_server_name()),
 		("server_description", "Join and build your city.\n\nRules:\n- Feed the llamas\n- Balance your budget\n- Do uncle Vinny some favors"),
 		("server_url", SC4MP_URL),
 	]),
