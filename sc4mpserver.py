@@ -1210,7 +1210,7 @@ class Server(th.Thread):
 						raise ServerException("GitHub API call timed out.") from e
 
 					# Download the update if the version doesn't match
-					if sc4mp_force_update or latest_release_info["tag_name"] != f"v{SC4MP_VERSION}":
+					if sc4mp_force_update or unformat_version(latest_release_info["tag_name"]) > unformat_version(SC4MP_VERSION):
 
 						# Local function for update thread
 						def update():
