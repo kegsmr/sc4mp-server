@@ -84,10 +84,8 @@ def main():
 		f"{os.path.abspath(os.path.join('resources', 'icon.ico'))}",
 		f"--version-file",
 		f"{os.path.abspath('version.rc')}",
-		f"--exclude=pil",
 		f"--exclude=numpy",
 		f"--exclude=cryptography",
-		f"--exclude=psutil",
 	])
 
 	# Copy binary files to distribution directory
