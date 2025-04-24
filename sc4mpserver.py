@@ -6,22 +6,40 @@ import inspect
 import json
 import os
 import random
+import re
 import shutil
 import socket
 import string
-import struct
 import subprocess
 import sys
 import threading as th
 import time
 import traceback
+import platform
+import urllib.request
 from argparse import ArgumentParser, Namespace
 from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
-import re
-import urllib.request
+
+# try:
+# 	import upnpclient
+# 	sc4mp_has_upnpclient = True
+# except ImportError:
+# 	sc4mp_has_upnpclient = False
+
+try:
+	from PIL import Image
+	sc4mp_has_pil = True
+except ImportError:
+	sc4mp_has_pil = False
+
+try:
+	import pystray
+	sc4mp_has_pystray = True
+except ImportError:
+	sc4mp_has_pystray = False
 
 #pylint: disable=wildcard-import
 #pylint: disable=unused-wildcard-import
@@ -33,14 +51,16 @@ from core.util import *
 
 # Header
 
-SC4MP_VERSION = "0.7.3"
+SC4MP_VERSION = "0.8.1"
 
-SC4MP_SERVERS = [("servers.sc4mp.org", port) for port in range(7240, 7250)]
+SC4MP_SERVERS = get_server_list()
+
+SC4MP_GITHUB_REPO = "kegsmr/sc4mp-server"
 
 SC4MP_URL = "www.sc4mp.org"
-SC4MP_CONTRIBUTORS_URL = "https://github.com/kegsmr/sc4mp-client/contributors/"
-SC4MP_ISSUES_URL = "https://github.com/kegsmr/sc4mp-client/issues/"
-SC4MP_RELEASES_URL = "https://github.com/kegsmr/sc4mp-client/releases/"
+SC4MP_CONTRIBUTORS_URL = f"https://github.com/{SC4MP_GITHUB_REPO}/contributors/"
+SC4MP_ISSUES_URL = f"https://github.com/{SC4MP_GITHUB_REPO}/issues/"
+SC4MP_RELEASES_URL = f"https://github.com/{SC4MP_GITHUB_REPO}/releases/"
 
 SC4MP_AUTHOR_NAME = "SimCity 4 Multiplayer Project"
 SC4MP_WEBSITE_NAME = "www.sc4mp.org"
@@ -51,7 +71,7 @@ SC4MP_LOG_PATH = "sc4mpserver.log" #-" + datetime.now().strftime("%Y%m%d%H%M%S")
 SC4MP_README_PATH = "readme.html"
 SC4MP_RESOURCES_PATH = "resources"
 
-SC4MP_TITLE = "SC4MP Server v" + SC4MP_VERSION + (" (x86)" if 8 * struct.calcsize('P') == 32 else "")
+SC4MP_TITLE = format_title("SC4MP Server", version=SC4MP_VERSION)
 SC4MP_ICON = os.path.join(SC4MP_RESOURCES_PATH, "icon.ico")
 
 SC4MP_HOST = None
@@ -65,12 +85,13 @@ SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
 		("host", "0.0.0.0"),
 		("port", 7240),
-		#("domain", None),					#TODO for servers hosted on a DDNS or other specific domain
+		# ("upnp", False),	#TODO
+		# ("domain", None),	#TODO for servers hosted on a DDNS or other specific domain
 		("discoverable", True),
 	]),
 	("INFO", [
-		("server_id", ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))),
-		("server_name", getpass.getuser() + " on " + socket.gethostname()),
+		("server_id", generate_server_id()),
+		("server_name", generate_server_name()),
 		("server_description", "Join and build your city.\n\nRules:\n- Feed the llamas\n- Balance your budget\n- Do uncle Vinny some favors"),
 		("server_url", SC4MP_URL),
 	]),
@@ -103,9 +124,18 @@ SC4MP_CONFIG_DEFAULTS = [
 	])
 ]
 
+if is_windows() and is_frozen():
+	SC4MP_CONFIG_DEFAULTS += [
+		("UI", [
+			("enabled", True)
+		])
+	]
+
 SC4MP_SERVER_ID = None
 SC4MP_SERVER_NAME = None
 SC4MP_SERVER_DESCRIPTION = None
+
+SC4MP_INVITES_DOMAIN = "invite.sc4mp.org"
 
 sc4mp_server_path = "_SC4MP"
 
@@ -170,6 +200,13 @@ def main():
 			# TODO: use this flag to set logger level to debug once the logger PR is merged
 			pass
 
+		# If there's another server running from the same directory, kill it
+		prevent_multiple()
+
+		# Exit if --stop argument is provided
+		if args.stop:
+			return
+
 		# Output
 		sys.stdout = Logger()
 		set_thread_name("Main", enumerate=False)
@@ -196,9 +233,11 @@ def parse_args() -> Namespace:
 
 	parser.add_argument("-s", "--server-path", help="specify server directory relative path")
 
+	parser.add_argument("-t", "--stop", help="terminate the server currectly running from the specified server path (Windows-only)", action="store_true")
+
 	parser.add_argument("-k", "--skip-update", help="skip the update check at startup", action="store_true")
 
-	parser.add_argument("-u", "--force-update", help="force update at startup", action="store_true")
+	parser.add_argument("-u", "--force-update", help="force update at startup (Windows-only)", action="store_true")
 
 	parser.add_argument("-r", "--restore", help="restore the server to the specified backup")
 
@@ -214,6 +253,49 @@ def parse_args() -> Namespace:
                     version=f"{parser.prog} {SC4MP_VERSION}")
 
 	return parser.parse_args()
+
+
+def prevent_multiple():
+
+	if is_windows() and is_frozen():
+
+		try:
+
+			DATETIME_FORMAT = "%Y%m%d%H%M%S"
+
+			process_info_path = os.path.join(sc4mp_server_path, "process.json")
+
+			if os.path.exists(process_info_path):
+
+				process_info = load_json(process_info_path)
+
+				if "pid" in process_info.keys() and "creation" in process_info.keys():
+
+					other_process_pid = process_info["pid"]
+					other_process_creation = process_info["creation"]
+
+					try:
+						o_p_c = datetime.strftime(get_process_creation_time(other_process_pid), DATETIME_FORMAT)
+					except Exception:
+						o_p_c = None
+
+					if other_process_creation == o_p_c:
+						if subprocess.call(f"TASKKILL /F /PID {other_process_pid}", shell=True) != 0:
+							raise ServerException("`TASKKILL` did not return exit code 0.")
+
+			this_process_pid = os.getpid()
+			this_process_creation = datetime.strftime(get_process_creation_time(this_process_pid), DATETIME_FORMAT)
+
+			os.makedirs(sc4mp_server_path, exist_ok=True)
+
+			update_json(process_info_path, {
+				"pid": this_process_pid,
+				"creation": this_process_creation
+			})
+
+		except Exception as e:
+
+			raise ServerException(f"Failed to terminate the server process already running.\n\n{e}") from e
 
 
 def prep():
@@ -727,6 +809,10 @@ def fatal_error(e):
 
 	global sc4mp_server_running
 	sc4mp_server_running = False
+
+	if sc4mp_system_tray_icon_manager:
+		sc4mp_system_tray_icon_manager.status("Stopped", "A fatal error has occurred. Please check the logs at \"Documents\\SimCity 4\\SC4MP Server\\sc4mpserver.log\" for more details.")
+
 	#sys.exit()
 
 
@@ -740,15 +826,62 @@ def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorN
 	
 	else:
 
-		city_name = filter_non_alpha_numeric(savegameCityName)
-		if len(city_name) < 1:
-			city_name = "New City"
+		if savegameCityName:
+			city_name = filter_non_alpha_numeric(savegameCityName)
+			if len(city_name) < 1:
+				city_name = "New City"
+		else:
+			city_name = "(Error)"
 
-		mayor_name = filter_non_alpha_numeric(savegameMayorName)
-		if len(mayor_name) < 1:
-			mayor_name = "Defacto"
+		if savegameMayorName:
+			mayor_name = filter_non_alpha_numeric(savegameMayorName)
+			if len(mayor_name) < 1:
+				mayor_name = "Defacto"
+		else:
+			mayor_name = "(Error)"
 		
 		return f"{prefix} - {city_name} - {mayor_name}"[:252] + ".sc4"
+
+
+def open_upnp_port(port, protocol="TCP", description="Port Forwarding via UPnP"):
+
+	def get_gateway():
+
+		devices = upnpclient.discover()
+		
+		print([device for device in devices])
+
+		for device in devices:
+			print(device.services)
+			for service in device.services:
+				if "WANIPConnection" in service.service_type or "WANPPPConnection" in service.service_type:
+					return device
+		
+		raise ServerException("No UPnP-enabled gateway found.")
+
+	gateway = get_gateway()
+	address = socket.gethostbyname(socket.gethostname())
+
+	if address == "127.0.0.1":
+		raise ServerException("Unable to determine LAN IP address.")
+
+	for mapping in gateway.WANIPConnection.GetPortMapping():
+		if mapping['NewExternalPort'] == str(port) and mapping['NewProtocol'] == protocol:
+			print(f"Port {port} ({protocol}) is already mapped to {mapping['NewInternalClient']}.")
+			return
+
+	print(f"Opening port {port} ({protocol}) on \"{gateway.friendly_name}\"...")
+
+	gateway.AddPortMapping(
+            NewRemoteHost="",
+            NewExternalPort=port,
+            NewProtocol=protocol,
+            NewInternalPort=port,
+            NewInternalClient=address,
+            NewEnabled=1,
+            NewPortMappingDescription=description,
+            NewLeaseDuration=0,
+        )
 
 
 # Workers
@@ -764,22 +897,23 @@ class Server(th.Thread):
 
 		self.BIND_RETRY_DELAY = 5
 
+		self.load_config()
+		self.create_subdirectories()
+		self.check_updates()
+		self.prep_database()
+		self.clear_temp()
+		self.prep_filetables()
+		self.prep_regions() 
+		self.prep_backups()
+		self.prep_server_list()
+		# self.prep_upnp()
+
 	
 	def run(self):
 		
 		try:
 
 			global sc4mp_server_running, sc4mp_request_threads
-
-			self.create_subdirectories()
-			self.load_config()
-			self.check_updates()
-			self.prep_database()
-			self.clear_temp()
-			self.prep_filetables()
-			self.prep_regions() 
-			self.prep_backups()
-			self.prep_server_list()
 
 			report("Starting server...")
 
@@ -795,6 +929,9 @@ class Server(th.Thread):
 					show_error(e)
 					print(f"[WARNING] - failed to bind socket, retrying in {self.BIND_RETRY_DELAY} seconds...")
 					time.sleep(self.BIND_RETRY_DELAY)
+
+			if sc4mp_system_tray_icon_manager:
+				sc4mp_system_tray_icon_manager.status("Running", f"Listening on port {SC4MP_PORT}. You may now use the SC4MP Launcher to join.")
 
 			report("- listening for connections...")
 			s.listen(5)
@@ -848,14 +985,18 @@ class Server(th.Thread):
 					while not (sc4mp_request_threads < max_request_threads):
 						time.sleep(SC4MP_DELAY)
 				
-		except (SystemExit, KeyboardInterrupt) as e:
+		except (SystemExit, KeyboardInterrupt):
 
-			report("Shutting down...")
-			sc4mp_server_running = False
+			pass
 
 		except Exception as e:
 
 			fatal_error(e)
+
+		finally:
+
+			report("Shutting down...")
+			sc4mp_server_running = False
 
 
 	def log_client(self, c):
@@ -903,36 +1044,79 @@ class Server(th.Thread):
 
 		# Create helper batch files on Windows
 		try:
+
 			exec_path = Path(sys.executable)
 			exec_file = exec_path.name
 			exec_dir = exec_path.parent
+
+			path = exec_dir if sc4mp_server_path == "_SC4MP" else sc4mp_server_path
+
 			if exec_file == "sc4mpserver.exe":
-				with open("logs.bat" if sc4mp_server_path == "_SC4MP" else os.path.join(sc4mp_server_path, "logs.bat"), "w") as batch_file:
+
+				with open(os.path.join(path, "logs.bat"), "w") as batch_file:
 					batch_file.writelines([
 						"@echo off\n",
 						(f"title {SC4MP_TITLE}\n" if sc4mp_server_path == "_SC4MP" else f"title {SC4MP_TITLE} - {sc4mp_server_path}\n"),
 						"PowerShell -NoProfile -ExecutionPolicy Bypass -Command \"gc sc4mpserver.log -wait -tail 1000\"\n",
 					])
-				with open(os.path.join(sc4mp_server_path, "run.bat"), "w") as batch_file:
+
+				with open(os.path.join(path, "run.bat"), "w") as batch_file:
 					batch_file.writelines([
 						"@echo off\n",
-						f"cd \"{exec_dir}\"\n",
+						f"cd /d \"{exec_dir}\"\n",
 						f"sc4mpserver.exe -s \"{sc4mp_server_path}\"\n",
 					])
-				with open(os.path.join(sc4mp_server_path, "prep.bat"), "w") as batch_file:
+
+				with open(os.path.join(path, "start.bat"), "w") as batch_file:
 					batch_file.writelines([
 						"@echo off\n",
-						f"cd \"{exec_dir}\"\n",
+						f"cd /d \"{exec_dir}\"\n",
+						f"start \"\" sc4mpserver.exe -s \"{sc4mp_server_path}\"\n",
+					])
+
+				with open(os.path.join(path, "stop.bat"), "w") as batch_file:
+					batch_file.writelines([
+						"@echo off\n",
+						f"cd /d \"{exec_dir}\"\n",
+						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --stop\n",
+					])
+
+				with open(os.path.join(path, "prep.bat"), "w") as batch_file:
+					batch_file.writelines([
+						"@echo off\n",
+						f"cd /d \"{exec_dir}\"\n",
 						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --prep\n",
 					])
-				with open(os.path.join(sc4mp_server_path, "restore.bat"), "w") as batch_file:
+
+				with open(os.path.join(path, "restore.bat"), "w") as batch_file:
 					batch_file.writelines([
 						"@echo off\n",
-						f"cd \"{exec_dir}\"\n",
+						f"cd /d \"{exec_dir}\"\n",
 						"set /p backup=\"Enter a backup to restore...\"\n",
 						f"sc4mpserver.exe -s \"{sc4mp_server_path}\" --restore %backup%\n",
+						"pause\n",
 					])
+
+				if sc4mp_server_path == "_SC4MP":
+
+					with open(os.path.join(path, "new.bat"), "w") as batch_file:
+						batch_file.writelines([
+							"@echo off\n",
+							f"cd /d \"{exec_dir}\"\n",
+							"set /p name=\"Enter the name of the new server configuration...\"\n",
+							f"sc4mpserver.exe -s \"{sc4mp_server_path}\" -s %name% --prep\n",
+							f"C:\Windows\explorer.exe \"{exec_dir}\\%name%\"\n"
+						])
+
+					with open(os.path.join(path, "update.bat"), "w") as batch_file:
+						batch_file.writelines([
+							"@echo off\n",
+							f"cd /d \"{exec_dir}\"\n",
+							f"sc4mpserver.exe -s \"{sc4mp_server_path}\" -u\n",
+						])
+
 		except Exception as e:
+
 			show_error(f"Failed to create helper batch files.\n\n{e}")
 
 
@@ -945,6 +1129,17 @@ class Server(th.Thread):
 		report("Loading config...")
 		
 		sc4mp_config = Config(SC4MP_CONFIG_PATH, SC4MP_CONFIG_DEFAULTS, error_callback=show_error, update_constants_callback=update_config_constants)
+
+		# System tray icon
+		global sc4mp_system_tray_icon_manager
+		if is_windows() and is_frozen() and sc4mp_config["UI"]['enabled'] and sc4mp_has_pystray and sc4mp_has_pil:
+			sc4mp_system_tray_icon_manager = SystemTrayIconManager()
+			sc4mp_system_tray_icon_manager.start()
+			while not sc4mp_system_tray_icon_manager.icon.visible:
+				time.sleep(SC4MP_DELAY)
+			sc4mp_system_tray_icon_manager.status("Preparing", "Running in the background. Click on the system tray icon to manage your sever.")
+		else:
+			sc4mp_system_tray_icon_manager = None
 
 		'''global SC4MP_HOST
 		global SC4MP_PORT
@@ -1009,13 +1204,13 @@ class Server(th.Thread):
 
 					# Get latest release info
 					try:
-						with urllib.request.urlopen("https://api.github.com/repos/kegsmr/sc4mp-server/releases/latest", timeout=10) as url:
+						with urllib.request.urlopen(f"https://api.github.com/repos/{SC4MP_GITHUB_REPO}/releases/latest", timeout=10) as url:
 							latest_release_info = json.load(url)
 					except urllib.error.URLError as e:
 						raise ServerException("GitHub API call timed out.") from e
 
 					# Download the update if the version doesn't match
-					if sc4mp_force_update or latest_release_info["tag_name"] != f"v{SC4MP_VERSION}":
+					if sc4mp_force_update or unformat_version(latest_release_info["tag_name"]) > unformat_version(SC4MP_VERSION):
 
 						# Local function for update thread
 						def update():
@@ -1081,7 +1276,6 @@ class Server(th.Thread):
 											download_size_downloaded += len(bytes_read)
 											wfile.write(bytes_read)
 
-								
 								# Convert destination to path object
 								destination = Path(destination)
 
@@ -1098,7 +1292,7 @@ class Server(th.Thread):
 								with open("updater.bat", "w") as batch_file:
 									batch_file.writelines([
 										"@echo off\n",
-										f"cd \"{os.getcwd()}\"\n",
+										f"cd /d \"{os.getcwd()}\"\n",
 										"echo Running installer...\n",
 										f"cd {destination.parent}\n",
 										f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",
@@ -1338,6 +1532,26 @@ class Server(th.Thread):
 		global sc4mp_server_list
 		sc4mp_server_list = ServerList()
 		sc4mp_server_list.start()
+
+
+	def prep_upnp(self):
+
+		if sc4mp_config['NETWORK']['upnp']:
+
+			print("Preparing UPnP port...")
+
+			if not sc4mp_has_upnpclient:
+				raise ServerException("UPnP requires the `upnpclient` module. Install the module or disable UPnP in `serverconfig.ini`, then restart the server.")
+
+			port = sc4mp_config['NETWORK']['port']
+
+			try:
+
+				open_upnp_port(port, "TCP", "Created by SimCity 4 Multiplayer Project Server.")
+
+			except Exception as e:
+
+				raise ServerException(f"An error occurred while opening a port with UPnP. Disable UPnP in `serverconfig.ini`, forward port {port} manually, then restart the server.\n\n{e}") from e
 
 
 class BackupsManager(th.Thread):
@@ -1902,7 +2116,7 @@ class FileTablesManager(th.Thread):
 			for fullpath in fullpaths:
 				relpath = os.path.relpath(fullpath, rootpath)
 				if not relpath in relpaths:
-					filetable.append((md5(fullpath), os.path.getsize(fullpath), relpath))
+					filetable.append((md5(fullpath), os.path.getsize(fullpath), Path(relpath).as_posix()))
 					print(f"Added new file \"{fullpath}\" to file table.")
 				
 
@@ -2480,38 +2694,38 @@ class RequestHandler(th.Thread):
 			c.sendall(open(background_image_filename, "rb").read())
 
 
-class ServerQueue:
-	"""
-	Queue for server scanning that implements membership check before enqueuing.
-	Can optionally enqueue to the front (left) of the queue.
-	The queue contains (host, port) tuples.
-	"""
-
-	def __init__(self, servers: Iterable[tuple[str,int]]) -> None:
-		self._queue = deque(servers)
-
-	def __len__(self):
-		return len(self._queue)
-
-	def enqueue(self, server: tuple[str,int], left=False) -> None:
-		"""
-		Adds a server to the queue, defaulting to the tail end (right).
-		left=True adds the server to the front of the queue.
-		Servers are only enqueued if they are not already in queue.
-		"""
-		if server in self._queue:
-			return
-		if left:
-			self._queue.appendleft(server)
-			return
-		self._queue.append(server)
-
-	def dequeue(self) -> tuple[str,int]:
-		"""Gets the server at the front of the queue"""
-		return self._queue.popleft()
-
-
 class ServerList(th.Thread):
+
+
+	class ServerQueue:
+		"""
+		Queue for server scanning that implements membership check before enqueuing.
+		Can optionally enqueue to the front (left) of the queue.
+		The queue contains (host, port) tuples.
+		"""
+
+		def __init__(self, servers: Iterable[tuple[str,int]]) -> None:
+			self._queue = deque(servers)
+
+		def __len__(self):
+			return len(self._queue)
+
+		def enqueue(self, server: tuple[str,int], left=False) -> None:
+			"""
+			Adds a server to the queue, defaulting to the tail end (right).
+			left=True adds the server to the front of the queue.
+			Servers are only enqueued if they are not already in queue.
+			"""
+			if server in self._queue:
+				return
+			if left:
+				self._queue.appendleft(server)
+				return
+			self._queue.append(server)
+
+		def dequeue(self) -> tuple[str,int]:
+			"""Gets the server at the front of the queue"""
+			return self._queue.popleft()
 
 
 	def __init__(self):
@@ -2527,7 +2741,7 @@ class ServerList(th.Thread):
 
 		self.servers["root"] = {"host": SC4MP_SERVERS[0][0], "port": SC4MP_SERVERS[0][1]}
 
-		self.server_queue = ServerQueue(SC4MP_SERVERS.copy())
+		self.server_queue = self.ServerQueue(SC4MP_SERVERS.copy())
 
 
 	def run(self):
@@ -2675,6 +2889,269 @@ class ServerList(th.Thread):
 				self.server_queue.enqueue((host, port))
 		except TypeError as e:
 			raise ServerException("Unable to receive server list from outdated server") from e
+
+
+class SystemTrayIconManager(th.Thread):
+
+
+	def __init__(self):
+		
+		super().__init__()
+
+		if sc4mp_server_path == "_SC4MP":
+			self.helper_batch_directory = os.getcwd()
+		else:
+			self.helper_batch_directory = sc4mp_server_path
+
+		Menu = pystray.Menu
+		Item = pystray.MenuItem
+		Icon = pystray.Icon
+
+		# details = []
+		# for section in sc4mp_config.data.keys():
+		# 	details += [Item(section, None, enabled=False)]
+		# 	for key, value in sc4mp_config.data[section].items():
+		# 		details += [Item(f"{key}: {value}", None, enabled=False)]
+		# 	details += [Item("", None, enabled=False)]
+		# details.pop(-1)
+
+		self.server_name = sc4mp_config['INFO']['server_name']
+
+		address = "localhost"
+		if sc4mp_config['NETWORK']['host'] != "127.0.0.1":
+			public_address = get_public_ip_address(timeout=5)
+			if public_address:
+				address = public_address
+
+		port = sc4mp_config["NETWORK"]['port']
+
+		if address == "localhost":
+			connect = Item("Connect", lambda: self.connect("localhost"))
+		else:
+			connect = Item("Connect...", Menu(
+				Item("Via LAN", lambda: self.connect("localhost")),
+				Item("Via internet", lambda: self.connect(address)),
+			))
+
+		name = "system_tray_icon"
+		icon = Image.open(SC4MP_ICON)
+		title = self.server_name
+		menu = Menu(
+			# Item("Details...", Menu(*details)),
+			Item("Actions...", Menu(
+				connect,
+				# Item("Trigger FATAL ERROR", lambda: fatal_error(Exception())),
+				# Item("Update", self.update),
+				Item("Restart", self.restart),
+				Item("Stop", self.stop),
+			)),
+			Item("Manage...", Menu(
+				Item("Plugins", self.plugins),
+				Item("Regions", self.regions),
+			)),
+			Item("Edit...", Menu(
+				Item("Config", self.config),
+				# Item("Router settings", self.router),
+				# Item("Firewall settings", self.firewall),
+			)),
+			Item("View...", Menu(
+				Item("Logs", self.logs),
+				# Item("Invite", self.invite),
+				Item("Readme", self.readme),
+			)),
+			# Item("Help...", Menu(
+			# 	Item("Readme", self.readme),
+			# )),
+		)
+
+		self.icon = Icon(name, icon, title, menu)
+
+
+	def status(self, status="", notification=""):
+
+		title = self.icon.title
+
+		if notification and self.icon.HAS_NOTIFICATION:
+			self.icon.title = self.server_name
+			self.icon.notify(notification)
+		if status:
+			self.icon.title = f"{self.server_name} ({status})"
+		else:
+			self.icon.title = title
+
+
+	def error(self, e, notification=""):
+
+		show_error(e)
+
+		if not notification:
+			notification = "An error occurred. Please check the logs at \"Documents\\SimCity 4\\SC4MP Server\\sc4mpserver.log\" for more details."
+
+		self.status(notification=notification)
+
+
+	def run(self):
+
+		try:
+
+			set_thread_name("TrayThread")
+
+			self.icon.run()
+
+		except Exception as e:
+
+			fatal_error(e)
+
+
+	def restart(self, icon, item):
+
+		try:
+
+			subprocess.Popen([os.path.join(self.helper_batch_directory, "start.bat")])
+
+		except Exception as e:
+
+			self.error(e)
+	
+
+	def stop(self, icon, item):
+
+		try:
+
+			subprocess.Popen([os.path.join(self.helper_batch_directory, "stop.bat")])
+
+		except Exception as e:
+
+			fatal_error(e)
+
+	
+	def connect(self, address="localhost"):
+
+		try:
+
+			os.startfile(f"sc4mp://{address}:{sc4mp_config['NETWORK']['port']}")
+
+		except Exception as e:
+
+			self.error(e, notification="Unable to connect. Ensure the SC4MP Launcher is installed, then try again.")
+
+
+	def logs(self, icon, item):
+
+		try:
+
+			logs_bat = os.path.join(self.helper_batch_directory, "logs.bat")
+
+			if int(platform.version().split('.')[0]) >= 10 and os.path.exists(logs_bat):
+				os.startfile(logs_bat)
+			else:
+				os.startfile(SC4MP_LOG_PATH)
+
+		except Exception as e:
+
+			self.error(e)
+
+
+	def plugins(self, icon, item):
+
+		try:
+
+			self.status(notification="Add plugins by pasting the plugin files here.")
+
+			os.startfile(os.path.join(sc4mp_server_path, "Plugins"))
+
+		except Exception as e:
+
+			self.error(e)
+
+
+	def regions(self, icon, item):
+
+		try:
+
+			self.status(notification="Add regions by pasting the region folders here. When you're done, restart the server for the changes to take effect.")
+
+			os.startfile(os.path.join(sc4mp_server_path, "Regions"))
+
+		except Exception as e:
+
+			self.error(e)
+
+
+	def config(self, icon, item):
+
+		try:
+
+			self.status(notification="Edit the server configuration settings here, then restart the server for the changes to take effect.")
+
+			os.startfile(os.path.join(sc4mp_server_path, "serverconfig.ini"))
+
+		except Exception as e:
+
+			self.error(e)
+
+
+	def invite(self, icon, item):
+
+		try:
+
+			os.startfile(f"https://{SC4MP_INVITES_DOMAIN}/{sc4mp_config['INFO']['server_id']}")
+
+		except Exception as e:
+
+			self.error(e)
+
+
+	def readme(self, icon, item):
+
+		try:
+
+			os.startfile("Readme.html")
+
+		except Exception as e:
+
+			self.error(e)
+
+
+	def update(self, icon, item):
+
+		try:
+
+			subprocess.Popen(["update.bat"])
+
+		except Exception as e:
+
+			self.error(e)
+
+
+	def router(self):
+
+		try:
+
+			# Run 'ipconfig' and capture the output
+			output = subprocess.run("ipconfig", capture_output=True, text=True, check=True)
+
+			# Search for 'Default Gateway' in the output
+			match = re.search(r"Default Gateway[ .:]+([\d.]+)", output.stdout)
+			
+			if match:
+				router_ip = match.group(1)
+				os.startfile(f"http://{router_ip}")
+			
+		except Exception as e:
+			
+			self.error(e)
+	
+
+	def firewall(self):
+
+		try:
+
+			os.startfile("C:\Windows\system32\WF.msc")
+	
+		except Exception as e:
+
+			self.error(e)
 
 
 # Exceptions
