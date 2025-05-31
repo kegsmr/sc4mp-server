@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import getpass
 import hashlib
 import inspect
 import json
@@ -23,12 +22,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
-# try:
-# 	import upnpclient
-# 	sc4mp_has_upnpclient = True
-# except ImportError:
-# 	sc4mp_has_upnpclient = False
-
 try:
 	from PIL import Image
 	sc4mp_has_pil = True
@@ -41,15 +34,13 @@ try:
 except ImportError:
 	sc4mp_has_pystray = False
 
-#pylint: disable=wildcard-import
-#pylint: disable=unused-wildcard-import
 from core.config import *
 from core.dbpf import *
 from core.networking import *
 from core.util import *
 
 
-# Header
+# Globals
 
 SC4MP_VERSION = "0.8.2"
 
