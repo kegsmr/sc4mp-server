@@ -42,7 +42,7 @@ from core.util import *
 
 # Globals
 
-SC4MP_VERSION = "0.8.2"
+SC4MP_VERSION = "0.8.3"
 
 SC4MP_SERVERS = get_server_list()
 
