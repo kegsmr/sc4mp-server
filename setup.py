@@ -15,8 +15,7 @@ import PyInstaller.__main__ as pyinstaller
 from pyinstaller_versionfile import create_versionfile
 
 import sc4mpserver
-from core.util import update_server_list, update_readme_version, update_inno_setup_version
-
+import core.util as utils
 
 TITLE = "SC4MP Server"
 NAME = "sc4mpserver.exe"
@@ -30,13 +29,13 @@ DIST = "dist" + str(8 * struct.calcsize("P"))
 def main():
 
 	# Update readme & installer version
-	update_readme_version("Readme.html", sc4mpserver.SC4MP_VERSION)
-	update_inno_setup_version("setup.iss", sc4mpserver.SC4MP_VERSION)
+	utils.update_readme_version("Readme.html", sc4mpserver.SC4MP_VERSION)
+	utils.update_inno_setup_version("setup.iss", sc4mpserver.SC4MP_VERSION)
 
 	# Update server list
 	print("Updating server list...")
 	try:
-		update_server_list()
+		utils.update_server_list()
 	except Exception as e:
 		print(f"- failed to update server list {e}!")
 
