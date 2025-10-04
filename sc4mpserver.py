@@ -3222,7 +3222,7 @@ class Logger():
 
 		# Print
 		self.terminal.write(output)
-		with open(self.log, "a") as log:
+		with open(self.log, "a", encoding='utf-8') as log:
 			log.write(output)
 			log.close()  
 
