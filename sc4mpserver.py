@@ -15,7 +15,6 @@ import threading as th
 import time
 import traceback
 import platform
-import urllib.request
 from argparse import ArgumentParser, Namespace
 from collections import deque
 from datetime import datetime, timedelta
@@ -34,9 +33,9 @@ try:
 except ImportError:
 	sc4mp_has_pystray = False
 
-from core.config import *
-from core.dbpf import *
-from core.networking import *
+from core.config import Config
+from core.dbpf import DBPF, SC4Savegame, SC4Config
+from core.networking import ClientSocket, ServerSocket, send_json, recv_json
 from core.util import *
 
 
@@ -2835,7 +2834,7 @@ class ServerList(th.Thread):
 		host = server[0]
 		port = server[1]
 		try:
-			s = socket.socket()
+			s = ClientSocket()
 			s.settimeout(10)
 			s.connect((host, port))
 			return s
