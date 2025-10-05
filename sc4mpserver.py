@@ -35,7 +35,7 @@ except ImportError:
 
 from core.config import Config
 from core.dbpf import DBPF, SC4Savegame, SC4Config
-from core.networking import ClientSocket, ServerSocket, BaseRequestHandler,
+from core.networking import ClientSocket, ServerSocket, BaseRequestHandler, \
 	send_json, recv_json
 from core.util import *
 
@@ -909,7 +909,7 @@ class Server(th.Thread):
 			report("Starting server...")
 
 			report("- creating socket...")
-			s = socket.socket()
+			s = ServerSocket()
 
 			report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
 			while True:
@@ -2141,7 +2141,7 @@ class RequestHandler(BaseRequestHandler):
 
 	def __init__(self, c):
 		
-		super().__init__(c)
+		super().__init__(c, private=sc4mp_config["SECURITY"]["private"])
 
 
 	def run(self):
@@ -2155,81 +2155,83 @@ class RequestHandler(BaseRequestHandler):
 
 			try:
 
-				c = self.c
+				# c = self.c
+				# args = c.recv(SC4MP_BUFFER_SIZE).decode().split(" ")
+				# request = args[0]
+				# report("Request: " + request, self)
 
-				args = c.recv(SC4MP_BUFFER_SIZE).decode().split(" ")
+				command, headers = self.recv_request()
 
-				request = args[0]
+				print(f"Request: {command!r} {headers!r}")
 
-				report("Request: " + request, self)
+				self.handle_request()
 
-				if request == "ping":
-					self.ping(c)
-				elif request == "server_id":
-					self.send_server_id(c)
-				elif request == "server_name":
-					self.send_server_name(c)
-				elif request == "server_description":
-					self.send_server_description(c)
-				elif request == "server_url":
-					self.send_server_url(c)
-				elif request == "server_version":
-					self.send_server_version(c)
-				elif request == "user_id":
-					self.send_user_id(c, args[1])
-				elif request == "token":
-					self.request_header(c, args)
-					self.send_token(c)
-				elif request == "plugins":
-					if sc4mp_config["SECURITY"]["private"]:
+				if False:
+					if request == "ping":
+						self.ping(c)
+					elif request == "server_id":
+						self.send_server_id(c)
+					elif request == "server_name":
+						self.send_server_name(c)
+					elif request == "server_description":
+						self.send_server_description(c)
+					elif request == "server_url":
+						self.send_server_url(c)
+					elif request == "server_version":
+						self.send_server_version(c)
+					elif request == "user_id":
+						self.send_user_id(c, args[1])
+					elif request == "token":
 						self.request_header(c, args)
-					self.send_plugins(c)
-				elif request == "regions":
-					if sc4mp_config["SECURITY"]["private"]:
+						self.send_token(c)
+					elif request == "plugins":
+						if sc4mp_config["SECURITY"]["private"]:
+							self.request_header(c, args)
+						self.send_plugins(c)
+					elif request == "regions":
+						if sc4mp_config["SECURITY"]["private"]:
+							self.request_header(c, args)
+						self.send_regions(c)
+					elif request == "save":
 						self.request_header(c, args)
-					self.send_regions(c)
-				elif request == "save":
-					self.request_header(c, args)
-					self.save(c)
-				elif request == "add_server":
-					try:
-						self.add_server(c, args[1])
-					except IndexError as e:
-						print("[WARNING] Unable to add outdated server to server list")
-				elif request == "server_list":
-					self.server_list(c)
-				elif request == "password_enabled":
-					self.password_enabled(c)
-				elif request == "check_password":
-					self.check_password(c, " ".join(args[1:]))
-				elif request == "user_plugins_enabled":
-					self.user_plugins_enabled(c)
-				elif request == "private":
-					self.private(c)
-				elif request == "time":
-					c.sendall(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
-				elif request == "info":
-					send_json(c, {  
-						"server_id": sc4mp_config["INFO"]["server_id"],  
-						"server_name": sc4mp_config["INFO"]["server_name"],
-						"server_description": sc4mp_config["INFO"]["server_description"],
-						"server_url": sc4mp_config["INFO"]["server_url"],
-						"server_version": SC4MP_VERSION,
-						"private": sc4mp_config["SECURITY"]["private"],
-						"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
-						"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
-						"claim_duration": sc4mp_config["RULES"]["claim_duration"],
-						"max_region_claims": sc4mp_config["RULES"]["max_region_claims"],
-						"godmode_filter": sc4mp_config["RULES"]["godmode_filter"],
-					})
-				elif request == "background":
-					self.send_background(c)
-				else:
-					print("[WARNING] Invalid request!") # (\"{request}\")!")
+						self.save(c)
+					elif request == "add_server":
+						try:
+							self.add_server(c, args[1])
+						except IndexError as e:
+							print("[WARNING] Unable to add outdated server to server list")
+					elif request == "server_list":
+						self.server_list(c)
+					elif request == "password_enabled":
+						self.password_enabled(c)
+					elif request == "check_password":
+						self.check_password(c, " ".join(args[1:]))
+					elif request == "user_plugins_enabled":
+						self.user_plugins_enabled(c)
+					elif request == "private":
+						self.private(c)
+					elif request == "time":
+						c.sendall(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
+					elif request == "info":
+						send_json(c, {  
+							"server_id": sc4mp_config["INFO"]["server_id"],  
+							"server_name": sc4mp_config["INFO"]["server_name"],
+							"server_description": sc4mp_config["INFO"]["server_description"],
+							"server_url": sc4mp_config["INFO"]["server_url"],
+							"server_version": SC4MP_VERSION,
+							"private": sc4mp_config["SECURITY"]["private"],
+							"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
+							"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
+							"claim_duration": sc4mp_config["RULES"]["claim_duration"],
+							"max_region_claims": sc4mp_config["RULES"]["max_region_claims"],
+							"godmode_filter": sc4mp_config["RULES"]["godmode_filter"],
+						})
+					elif request == "background":
+						self.send_background(c)
+					else:
+						print("[WARNING] Invalid request!") # (\"{request}\")!")
 
-				c.close()
-			
-				#report("- connection closed.", self)
+				self.c.close()
 
 			except Exception as e:
 
@@ -2240,6 +2242,42 @@ class RequestHandler(BaseRequestHandler):
 		except Exception as e:
 
 			fatal_error(e)
+
+
+	def authenticate(self):
+		
+		version = self.get_header('version', str)
+		if unformat_version(version)[:2] < unformat_version(SC4MP_VERSION)[:2]:
+			self.error(error="Incorrect version.")
+
+		if sc4mp_config["SECURITY"]["password_enabled"]:
+			password = self.get_header('password', str)
+			if password != sc4mp_config["SECURITY"]["password"]:
+				self.error("Incorrect password.")
+
+		self.user_id = self.log_user(self.c, self.get_header('user_id', str))
+
+
+	def error(self, message='An error occurred.'):
+		self.respond(error=message)
+		raise ServerException(message)
+
+
+	def info(self):
+
+		return self.respond(**{
+			"server_id": sc4mp_config["INFO"]["server_id"],  
+			"server_name": sc4mp_config["INFO"]["server_name"],
+			"server_description": sc4mp_config["INFO"]["server_description"],
+			"server_url": sc4mp_config["INFO"]["server_url"],
+			"server_version": SC4MP_VERSION,
+			"private": sc4mp_config["SECURITY"]["private"],
+			"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
+			"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
+			"claim_duration": sc4mp_config["RULES"]["claim_duration"],
+			"max_region_claims": sc4mp_config["RULES"]["max_region_claims"],
+			"godmode_filter": sc4mp_config["RULES"]["godmode_filter"],
+		})
 
 
 	def request_header(self, c, args):
@@ -2257,9 +2295,9 @@ class RequestHandler(BaseRequestHandler):
 		self.user_id = self.log_user(c, args[2])
 
 
-	def ping(self, c):
+	# def ping(self, c):
 		
-		c.sendall(b"pong")
+	# 	c.sendall(b"pong")
 
 
 	def send_server_id(self, c):
@@ -2287,25 +2325,33 @@ class RequestHandler(BaseRequestHandler):
 		c.sendall(SC4MP_VERSION.encode())
 
 
-	def send_user_id(self, c, in_hash):
-		
+	def send_user_id(self):
+
+		in_hash = self.get_header('hash', str)
 
 		# Get database
 		data = sc4mp_users_database_manager.data
 
-		# Send the user_id that matches the hash
+		# Get the user_id that matches the hash
+		found = False
+		user_id = None
 		for user_id in data:
 			try:
 				token = data[user_id]["token"]
 				if hashlib.sha256((user_id + token).encode()).hexdigest() == in_hash:
-					c.sendall(user_id.encode())
+					found = True
 					break
 			except Exception:
 				pass
 
+		# Send it if found, otherwise return failure
+		if found:
+			self.respond(status='success', user_id=user_id)
+		else:
+			self.respond(status='failure')
 
-	def send_token(self, c):
-		
+
+	def send_token(self):
 		
 		user_id = self.user_id
 
@@ -2325,7 +2371,7 @@ class RequestHandler(BaseRequestHandler):
 		entry["token"] = token
 
 		# Send token
-		c.sendall(token.encode())
+		self.respond(token=token)
 
 
 	def send_plugins(self, c):
@@ -2587,8 +2633,7 @@ class RequestHandler(BaseRequestHandler):
 			if (sc4mp_config["SECURITY"]["max_ip_users"] is None or len(client_entry["users"]) < sc4mp_config["SECURITY"]["max_ip_users"]):
 				client_entry["users"].append(user_id)
 			else:
-				c.close()
-				raise ServerException("Authentication error.")
+				self.error("User limit exceeded.")
 
 		# Get users database
 		users_data = sc4mp_users_database_manager.data
@@ -2604,8 +2649,7 @@ class RequestHandler(BaseRequestHandler):
 
 		# Close connection and throw error if the user is banned
 		if (user_entry["ban"] or client_entry["ban"]): #TODO check for client bans in server loop
-			c.close()
-			raise ServerException("Authentication error.")
+			self.error("You are banned from this server.")
 		
 		# Log the time
 		user_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2627,12 +2671,16 @@ class RequestHandler(BaseRequestHandler):
 			c.sendall(b"n")
 
 
-	def check_password(self, c, password):
-		
+	def check_password(self):
+
+		password = self.get_header('password', str)
+
 		if password == sc4mp_config["SECURITY"]["password"]:
-			c.sendall(b'y')
+			status = 'success'
 		else:
-			c.sendall(b'n')
+			status - 'failure'
+
+		self.respond(status=status)
 
 
 	def user_plugins_enabled(self, c):
