@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "SC4MP Server"
-#define MyAppVersion "0.8.1"
+#define MyAppVersion "0.8.3"
 #define MyAppPublisher "SimCity 4 Multiplayer Project"
 #define MyAppExeName "sc4mpserver.exe"
 #define TimeStamp GetDateTimeString('yyyymmddhhnnss', '', '')
@@ -32,7 +32,7 @@ WizardStyle=modern
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-; Name: "startupicon"; Description: "Create a startup folder shortcut"; GroupDescription: "{cm:AdditionalIcons}";
+Name: "startupicon"; Description: "Create a startup folder shortcut"; GroupDescription: "{cm:AdditionalIcons}";
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
@@ -45,7 +45,7 @@ Source: "Readme.html"; DestDir: "{app}"; Flags: isreadme
 
 [Icons]
 Name: "{autoprograms}\{#MyAppPublisher}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-; Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: startupicon
+Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: startupicon
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
