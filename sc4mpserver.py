@@ -35,7 +35,8 @@ except ImportError:
 
 from core.config import Config
 from core.dbpf import DBPF, SC4Savegame, SC4Config
-from core.networking import ClientSocket, ServerSocket, send_json, recv_json
+from core.networking import ClientSocket, ServerSocket, BaseRequestHandler,
+	send_json, recv_json
 from core.util import *
 
 
@@ -2135,16 +2136,12 @@ class FileTablesManager(th.Thread):
 		print("- done.")
 
 
-class RequestHandler(th.Thread):
+class RequestHandler(BaseRequestHandler):
 	
-
 
 	def __init__(self, c):
 		
-
-		super().__init__()
-		
-		self.c = c
+		super().__init__(c)
 
 
 	def run(self):
