@@ -582,6 +582,19 @@ def send_filestream(c, rootpath):
 				c.sendall(data)
 
 
+def get_file_table(rootpath):
+
+	while sc4mp_server_running:
+		try:
+			filetable = sc4mp_filetables_manager.filetables[rootpath]
+			break
+		except KeyError:
+			print("[WARNING] Waiting for file table to generate...")
+			time.sleep(SC4MP_DELAY * 10)
+	
+	return filetable
+
+
 def send_tree(c, rootpath):
 	
 
@@ -2300,6 +2313,13 @@ class RequestHandler(BaseRequestHandler):
 	# 	c.sendall(b"pong")
 
 
+	def time(self):
+
+		time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+		self.respond(time=time)
+
+
 	def send_server_id(self, c):
 		
 		c.sendall(SC4MP_SERVER_ID.encode())
@@ -2384,6 +2404,16 @@ class RequestHandler(BaseRequestHandler):
 		#send_tree(c, os.path.join(sc4mp_server_path, "Plugins"))
 
 
+	def plugins_table(self):
+
+		self.respond()
+		
+		self.c.send_json(
+			get_file_table(os.path.join(sc4mp_server_path, "Plugins"))
+		)
+
+
+
 	def send_regions(self, c):
 		
 
@@ -2398,6 +2428,17 @@ class RequestHandler(BaseRequestHandler):
 
 		send_filestream(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
 		#send_tree(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
+
+
+	def regions_table(self):
+	
+		self.respond()
+
+		self.c.send_json(
+			get_file_table(
+				os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions")
+			)
+		)
 
 
 	#def delete(self, c):
