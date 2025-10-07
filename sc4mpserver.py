@@ -922,7 +922,7 @@ class Server(th.Thread):
 			report("Starting server...")
 
 			report("- creating socket...")
-			s = ServerSocket()
+			s = self.socket()
 
 			report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
 			while True:
@@ -1001,6 +1001,28 @@ class Server(th.Thread):
 
 			report("Shutting down...")
 			sc4mp_server_running = False
+
+
+	def socket(self) -> ServerSocket:
+
+		s = ServerSocket()
+
+		s.set_headers(
+			server_id=sc4mp_config["INFO"]["server_id"],
+			server_name=sc4mp_config["INFO"]["server_name"],
+			server_description=sc4mp_config["INFO"]["server_description"],
+			server_url=sc4mp_config["INFO"]["server_url"],
+			server_version=SC4MP_VERSION,
+			private=sc4mp_config["SECURITY"]["private"],
+			password_enabled=sc4mp_config["SECURITY"]["password_enabled"],
+			user_plugins_enabled=sc4mp_config["RULES"]["user_plugins"],
+			claim_duration=sc4mp_config["RULES"]["claim_duration"],
+			max_region_claims=sc4mp_config["RULES"]["max_region_claims"],
+			godmode_filter=sc4mp_config["RULES"]["godmode_filter"],
+			time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+		)
+
+		return s
 
 
 	def log_client(self, c):
@@ -2261,7 +2283,7 @@ class RequestHandler(BaseRequestHandler):
 		
 		version = self.get_header('version', str)
 		if unformat_version(version)[:2] < unformat_version(SC4MP_VERSION)[:2]:
-			self.error(error="Incorrect version.")
+			self.error("Incorrect version.")
 
 		if sc4mp_config["SECURITY"]["password_enabled"]:
 			password = self.get_header('password', str)
@@ -2272,77 +2294,10 @@ class RequestHandler(BaseRequestHandler):
 
 
 	def error(self, message='An error occurred.'):
+
 		self.respond(error=message)
+
 		raise ServerException(message)
-
-
-	def info(self):
-
-		return self.respond(**{
-			"server_id": sc4mp_config["INFO"]["server_id"],  
-			"server_name": sc4mp_config["INFO"]["server_name"],
-			"server_description": sc4mp_config["INFO"]["server_description"],
-			"server_url": sc4mp_config["INFO"]["server_url"],
-			"server_version": SC4MP_VERSION,
-			"private": sc4mp_config["SECURITY"]["private"],
-			"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
-			"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
-			"claim_duration": sc4mp_config["RULES"]["claim_duration"],
-			"max_region_claims": sc4mp_config["RULES"]["max_region_claims"],
-			"godmode_filter": sc4mp_config["RULES"]["godmode_filter"],
-		})
-
-
-	def request_header(self, c, args):
-		
-
-		if unformat_version(args[1])[:2] < unformat_version(SC4MP_VERSION)[:2]:
-			c.close()
-			raise ServerException("Invalid version.")
-
-		if sc4mp_config["SECURITY"]["password_enabled"]:
-			if " ".join(args[3:]) != sc4mp_config["SECURITY"]["password"]:
-				c.close()
-				raise ServerException("Incorrect password.")
-
-		self.user_id = self.log_user(c, args[2])
-
-
-	# def ping(self, c):
-		
-	# 	c.sendall(b"pong")
-
-
-	def time(self):
-
-		time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-		self.respond(time=time)
-
-
-	def send_server_id(self, c):
-		
-		c.sendall(SC4MP_SERVER_ID.encode())
-
-
-	def send_server_name(self, c):
-		
-		c.sendall(SC4MP_SERVER_NAME.encode())
-
-
-	def send_server_description(self, c):
-		
-		c.sendall(SC4MP_SERVER_DESCRIPTION.encode())
-
-
-	def send_server_url(self, c):
-		
-		c.sendall(sc4mp_config["INFO"]["server_url"].encode())
-
-
-	def send_server_version(self, c):
-		
-		c.sendall(SC4MP_VERSION.encode())
 
 
 	def send_user_id(self):
