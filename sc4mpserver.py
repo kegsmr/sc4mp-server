@@ -2277,7 +2277,6 @@ class RequestHandler(BaseRequestHandler):
 
 	def res_save(self, c):
 		
-		
 		user_id = self.user_id
 
 		# Separator
@@ -2302,14 +2301,6 @@ class RequestHandler(BaseRequestHandler):
 		count = 0
 		for file_size in file_sizes:
 
-			# Receive region name
-			#region = c.recv(SC4MP_BUFFER_SIZE).decode()
-			#.sendall(b"ok")
-
-			# Receive city name
-			#city = c.recv(SC4MP_BUFFER_SIZE).decode()
-			#c.sendall(b"ok")
-
 			# Receive file
 			path = os.path.join(sc4mp_server_path, "_Temp", "inbound", save_id, region)
 			if not os.path.exists(path):
@@ -2318,12 +2309,6 @@ class RequestHandler(BaseRequestHandler):
 			receive_file(c, filename, file_size)
 
 			count += 1
-
-			#c.sendall(b"ok")
-
-		# Separator
-		#c.sendall(b"ok")
-		#c.recv(SC4MP_BUFFER_SIZE)
 
 		# Get path to save directory
 		path = os.path.join(sc4mp_server_path, "_Temp", "inbound", save_id)
@@ -2434,12 +2419,6 @@ class RequestHandler(BaseRequestHandler):
 			# Delete savegame arrays to avoid file deletion errors
 			savegames = None
 			new_savegames = None
-
-		# Try to delete temporary files
-		#try:
-		#	shutil.rmtree(path)
-		#except Exception:
-		#	pass
 
 
 	def res_add_server(self):
