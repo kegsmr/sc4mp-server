@@ -573,70 +573,6 @@ def get_file_table(rootpath):
 	return filetable
 
 
-def send_tree(c, rootpath):
-	
-
-	# Loop through all files in path and append them to a list
-	fullpaths = []
-	for path, directories, files in os.walk(rootpath):
-		for file in files:
-			fullpaths.append(os.path.join(path, file))
-
-	# Send file count
-	c.sendall(str(len(fullpaths)).encode())
-
-	# Separator
-	c.recv(SC4MP_BUFFER_SIZE)
-
-	# Send size
-	size = 0
-	for fullpath in fullpaths:
-		size += os.path.getsize(fullpath)
-	c.sendall(str(size).encode())
-
-	# Loop through the file list and send each one to the client
-	for fullpath in fullpaths:
-
-		# Separator
-		c.recv(SC4MP_BUFFER_SIZE)
-
-		# Get relative path to file 
-		relpath = os.path.relpath(fullpath, rootpath)
-
-		# Send hashcode
-		c.sendall(md5(fullpath).encode())
-
-		# Separator
-		c.recv(SC4MP_BUFFER_SIZE)
-
-		# Send filesize
-		c.sendall(str(os.path.getsize(fullpath)).encode())
-
-		# Separator
-		c.recv(SC4MP_BUFFER_SIZE)
-
-		# Send relative path
-		c.sendall(relpath.encode())
-
-		# Send the file if not cached
-		if c.recv(SC4MP_BUFFER_SIZE).decode() != "y":
-			with open(fullpath, "rb") as file:
-				while True:
-					bytes_read = file.read(SC4MP_BUFFER_SIZE)
-					if not bytes_read:
-						break
-					c.sendall(bytes_read)
-
-
-def send_or_cached(c, filename):
-	
-	c.sendall(md5(filename).encode())
-	if c.recv(SC4MP_BUFFER_SIZE).decode() == "n":
-		send_file(c, filename)
-	else:
-		c.close()
-
-
 def send_file(c, filename):
 	
 
@@ -654,13 +590,7 @@ def send_file(c, filename):
 
 
 def receive_file(c, filename, filesize):
-	
 
-	#if (filesize is None):
-	#
-	#	filesize = int(c.recv(SC4MP_BUFFER_SIZE).decode())
-	#
-	#	c.sendall(SC4MP_SEPARATOR)
 
 	report("Receiving " + str(filesize) + " bytes...")
 	report("writing to " + filename)
@@ -2255,7 +2185,7 @@ class RequestHandler(BaseRequestHandler):
 
 
 	def authenticate(self):
-		
+
 		version = self.get_header('version', str)
 		if unformat_version(version)[:2] < unformat_version(SC4MP_VERSION)[:2]:
 			self.error("Incorrect version.")
@@ -2267,6 +2197,55 @@ class RequestHandler(BaseRequestHandler):
 
 		self.user_id = \
 			self.authenticate_user(self.c, self.get_header('user_id', str))
+
+
+	def authenticate_user(self, c, user_id):
+
+		# Use a hashcode of the user id for extra security
+		user_id = hashlib.sha256(user_id.encode()).hexdigest()[:32]
+
+		# Get the ip
+		user_ip = c.getpeername()[0]
+		
+		# Get clients database
+		clients_data = sc4mp_clients_database_manager.data
+		
+		# Get data entry that matches ip
+		client_entry = clients_data[user_ip]
+
+		# Check if the client has exceeded the user limit
+		if user_id not in client_entry["users"]:
+			if (sc4mp_config["SECURITY"]["max_ip_users"] is None or len(client_entry["users"]) < sc4mp_config["SECURITY"]["max_ip_users"]):
+				client_entry["users"].append(user_id)
+			else:
+				self.error("User limit exceeded.")
+
+		# Get users database
+		users_data = sc4mp_users_database_manager.data
+		
+		# Get data entry that matches user id or get & set to {}
+		user_entry = users_data.setdefault(user_id, {})
+
+		# Set default values if missing
+		user_entry.setdefault("clients", [])
+		user_entry.setdefault("mayors", [])
+		user_entry.setdefault("ban", False)
+		user_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+		# Close connection and throw error if the user is banned
+		if (user_entry["ban"] or client_entry["ban"]): #TODO check for client bans in server loop
+			self.error("You are banned from this server.")
+		
+		# Log the time
+		user_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+		# Log the IP
+		clients_entry = user_entry["clients"]
+		if user_ip not in clients_entry:
+			clients_entry.append(user_ip)
+		
+		# Return the user id
+		return user_id
 
 
 	def error(self, message='An error occurred.'):
@@ -2528,15 +2507,23 @@ class RequestHandler(BaseRequestHandler):
 		#	pass
 
 
-	def add_server(self, c, port):
+	def add_server(self):
 		
-		if not sc4mp_config["NETWORK"]["discoverable"]:
-			return
-		host = c.getpeername()[0]
-		port = int(port)
-		server = (host, port)
-		if len(sc4mp_server_list.server_queue) < sc4mp_server_list.SERVER_LIMIT:
-			sc4mp_server_list.server_queue.enqueue(server, left=True) # skip to the front of the queue
+		if sc4mp_config["NETWORK"]["discoverable"]:
+
+			host = self.c.getpeername()[0]
+			port = self.get_header('port', int)
+
+			server = (host, port)
+
+			if len(sc4mp_server_list.server_queue) < sc4mp_server_list.SERVER_LIMIT:
+				sc4mp_server_list.server_queue.enqueue(server, left=True) # skip to the front of the queue
+
+			self.respond(status='success')
+
+		else:
+
+			self.error("Server is not discoverable.")
 
 
 	def server_list(self):
@@ -2553,56 +2540,6 @@ class RequestHandler(BaseRequestHandler):
 			servers.add((server_info["host"], server_info["port"]))
 
 		self.c.send_json(list(servers))
-
-
-	def authenticate_user(self, c, user_id):
-		
-
-		# Use a hashcode of the user id for extra security
-		user_id = hashlib.sha256(user_id.encode()).hexdigest()[:32]
-
-		# Get the ip
-		user_ip = c.getpeername()[0]
-		
-		# Get clients database
-		clients_data = sc4mp_clients_database_manager.data
-		
-		# Get data entry that matches ip
-		client_entry = clients_data[user_ip]
-
-		# Check if the client has exceeded the user limit
-		if user_id not in client_entry["users"]:
-			if (sc4mp_config["SECURITY"]["max_ip_users"] is None or len(client_entry["users"]) < sc4mp_config["SECURITY"]["max_ip_users"]):
-				client_entry["users"].append(user_id)
-			else:
-				self.error("User limit exceeded.")
-
-		# Get users database
-		users_data = sc4mp_users_database_manager.data
-		
-		# Get data entry that matches user id or get & set to {}
-		user_entry = users_data.setdefault(user_id, {})
-
-		# Set default values if missing
-		user_entry.setdefault("clients", [])
-		user_entry.setdefault("mayors", [])
-		user_entry.setdefault("ban", False)
-		user_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-
-		# Close connection and throw error if the user is banned
-		if (user_entry["ban"] or client_entry["ban"]): #TODO check for client bans in server loop
-			self.error("You are banned from this server.")
-		
-		# Log the time
-		user_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-		# Log the IP
-		clients_entry = user_entry["clients"]
-		if user_ip not in clients_entry:
-			clients_entry.append(user_ip)
-		
-		# Return the user id
-		return user_id
 
 
 	def check_password(self):
@@ -2776,55 +2713,51 @@ class ServerList(th.Thread):
 
 
 	def create_socket(self, server):
-		
-		host = server[0]
-		port = server[1]
+
 		try:
-			s = ClientSocket()
-			s.settimeout(10)
-			s.connect((host, port))
-			return s
+			return ClientSocket(server)
 		except Exception as e:
 			raise ServerException("Server not found.") from e
 
 	
 	def request_server_id(self, server):
 		
-		s = self.create_socket(server)
-		s.sendall(b"server_id")
-		return s.recv(SC4MP_BUFFER_SIZE).decode()
+		SERVER_ID = 'server_id'
+
+		with self.create_socket(server) as s:
+			server_id = s.info().get(SERVER_ID)
+
+		if server_id:
+			return server_id
+		else:
+			raise ServerException(f"Headers missing {SERVER_ID!r}")
 
 
 	def ping(self, server):
-		
-		s = self.create_socket(server)
+
 		try:
-			start = time.time()
-			s.sendall(b"ping")
-			s.recv(SC4MP_BUFFER_SIZE)
-			end = time.time()
-			s.close()
-			return round(1000 * (end - start))
-		except socket.error as e:
+			with self.create_socket(server) as s:
+				start = time.time()
+				s.ping()
+				end = time.time()
+				return round(1000 * (end - start))
+		except (NetworkException, OSError):
 			return None
 
 
 	def add_server(self, server):
-		
-		s = self.create_socket(server)
-		s.sendall(b"add_server " + str(SC4MP_PORT).encode())
+
+		with self.create_socket(server) as s:
+			s.add_server(port=SC4MP_PORT)
+
 
 
 	def server_list(self, server):
-		
-		s = self.create_socket(server)
-		s.sendall(b"server_list")
-		servers = recv_json(s)
-		try:
-			for host, port in servers:
+
+		with self.create_socket(server) as s:
+			server_list = s.server_list()
+			for host, port in server_list:
 				self.server_queue.enqueue((host, port))
-		except TypeError as e:
-			raise ServerException("Unable to receive server list from outdated server") from e
 
 
 class SystemTrayIconManager(th.Thread):
