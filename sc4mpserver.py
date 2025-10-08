@@ -536,45 +536,23 @@ def purge_directory(directory):
 
 
 def send_filestream(c, rootpath):
-	
 
-	# Loop through all files in path and append them to a list
-	#fullpaths = []
-	#for path, directories, files in os.walk(rootpath):
-	#	for file in files:
-	#		fullpaths.append(os.path.join(path, file))
+	file_table = get_file_table(rootpath)
 
-	# Get fullpaths to files in rootpath
-	#fullpaths = rootpath.rglob("*")
-
-	# Get file table
-	while sc4mp_server_running:
-		try:
-			filetable = sc4mp_filetables_manager.filetables[rootpath]
-			break
-		except KeyError:
-			print("[WARNING] Waiting for file table to generate...")
-			time.sleep(SC4MP_DELAY * 10)
-
-	#filetable = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
-
-	# Send the file table to the client
-	send_json(c, filetable)
-
-	# Receive the modified filetable from the client and verify it
+	# Receive the filetable from the client and verify it
 	ft = [tuple(item) for item in recv_json(c)]
 	for item in ft:
-		if not item in filetable:
+		if not item in file_table:
 			c.close()
 	filetable = ft
 
 	# Loop through the filetable and send the respective data
-	for checksum, size, relpath in filetable:
+	for _, size, relpath in filetable:
 		with open(os.path.join(rootpath, relpath), "rb") as file:
 			size_read = 0
 			while True:
 				size_remaining = size - size_read
-				buffer_size = SC4MP_BUFFER_SIZE if size_remaining > SC4MP_BUFFER_SIZE else size_remaining
+				buffer_size = min(size_remaining, SC4MP_BUFFER_SIZE)
 				data = file.read(buffer_size)
 				if not data:
 					break
@@ -2180,7 +2158,6 @@ class RequestHandler(BaseRequestHandler):
 
 
 	def run(self):
-		
 
 		try:
 
@@ -2190,83 +2167,78 @@ class RequestHandler(BaseRequestHandler):
 
 			try:
 
-				# c = self.c
-				# args = c.recv(SC4MP_BUFFER_SIZE).decode().split(" ")
-				# request = args[0]
-				# report("Request: " + request, self)
+				while sc4mp_server_running:
 
-				command, headers = self.recv_request()
+					command, headers = self.recv_request()
 
-				print(f"Request: {command!r} {headers!r}")
+					print(f"Request: {command!r} {headers!r}")
 
-				self.handle_request()
+					self.handle_request()
 
-				if False:
-					if request == "ping":
-						self.ping(c)
-					elif request == "server_id":
-						self.send_server_id(c)
-					elif request == "server_name":
-						self.send_server_name(c)
-					elif request == "server_description":
-						self.send_server_description(c)
-					elif request == "server_url":
-						self.send_server_url(c)
-					elif request == "server_version":
-						self.send_server_version(c)
-					elif request == "user_id":
-						self.send_user_id(c, args[1])
-					elif request == "token":
-						self.request_header(c, args)
-						self.send_token(c)
-					elif request == "plugins":
-						if sc4mp_config["SECURITY"]["private"]:
+					if False:
+						if request == "ping":
+							self.ping(c)
+						elif request == "server_id":
+							self.send_server_id(c)
+						elif request == "server_name":
+							self.send_server_name(c)
+						elif request == "server_description":
+							self.send_server_description(c)
+						elif request == "server_url":
+							self.send_server_url(c)
+						elif request == "server_version":
+							self.send_server_version(c)
+						elif request == "user_id":
+							self.send_user_id(c, args[1])
+						elif request == "token":
 							self.request_header(c, args)
-						self.send_plugins(c)
-					elif request == "regions":
-						if sc4mp_config["SECURITY"]["private"]:
+							self.send_token(c)
+						elif request == "plugins":
+							if sc4mp_config["SECURITY"]["private"]:
+								self.request_header(c, args)
+							self.send_plugins(c)
+						elif request == "regions":
+							if sc4mp_config["SECURITY"]["private"]:
+								self.request_header(c, args)
+							self.regions_data(c)
+						elif request == "save":
 							self.request_header(c, args)
-						self.send_regions(c)
-					elif request == "save":
-						self.request_header(c, args)
-						self.save(c)
-					elif request == "add_server":
-						try:
-							self.add_server(c, args[1])
-						except IndexError as e:
-							print("[WARNING] Unable to add outdated server to server list")
-					elif request == "server_list":
-						self.server_list(c)
-					elif request == "password_enabled":
-						self.password_enabled(c)
-					elif request == "check_password":
-						self.check_password(c, " ".join(args[1:]))
-					elif request == "user_plugins_enabled":
-						self.user_plugins_enabled(c)
-					elif request == "private":
-						self.private(c)
-					elif request == "time":
-						c.sendall(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
-					elif request == "info":
-						send_json(c, {  
-							"server_id": sc4mp_config["INFO"]["server_id"],  
-							"server_name": sc4mp_config["INFO"]["server_name"],
-							"server_description": sc4mp_config["INFO"]["server_description"],
-							"server_url": sc4mp_config["INFO"]["server_url"],
-							"server_version": SC4MP_VERSION,
-							"private": sc4mp_config["SECURITY"]["private"],
-							"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
-							"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
-							"claim_duration": sc4mp_config["RULES"]["claim_duration"],
-							"max_region_claims": sc4mp_config["RULES"]["max_region_claims"],
-							"godmode_filter": sc4mp_config["RULES"]["godmode_filter"],
-						})
-					elif request == "background":
-						self.send_background(c)
-					else:
-						print("[WARNING] Invalid request!") # (\"{request}\")!")
-
-				self.c.close()
+							self.save(c)
+						elif request == "add_server":
+							try:
+								self.add_server(c, args[1])
+							except IndexError as e:
+								print("[WARNING] Unable to add outdated server to server list")
+						elif request == "server_list":
+							self.server_list(c)
+						elif request == "password_enabled":
+							self.password_enabled(c)
+						elif request == "check_password":
+							self.check_password(c, " ".join(args[1:]))
+						elif request == "user_plugins_enabled":
+							self.user_plugins_enabled(c)
+						elif request == "private":
+							self.private(c)
+						elif request == "time":
+							c.sendall(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
+						elif request == "info":
+							send_json(c, {  
+								"server_id": sc4mp_config["INFO"]["server_id"],  
+								"server_name": sc4mp_config["INFO"]["server_name"],
+								"server_description": sc4mp_config["INFO"]["server_description"],
+								"server_url": sc4mp_config["INFO"]["server_url"],
+								"server_version": SC4MP_VERSION,
+								"private": sc4mp_config["SECURITY"]["private"],
+								"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
+								"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
+								"claim_duration": sc4mp_config["RULES"]["claim_duration"],
+								"max_region_claims": sc4mp_config["RULES"]["max_region_claims"],
+								"godmode_filter": sc4mp_config["RULES"]["godmode_filter"],
+							})
+						elif request == "background":
+							self.send_background(c)
+						else:
+							print("[WARNING] Invalid request!") # (\"{request}\")!")
 
 			except Exception as e:
 
@@ -2290,7 +2262,8 @@ class RequestHandler(BaseRequestHandler):
 			if password != sc4mp_config["SECURITY"]["password"]:
 				self.error("Incorrect password.")
 
-		self.user_id = self.log_user(self.c, self.get_header('user_id', str))
+		self.user_id = \
+			self.authenticate_user(self.c, self.get_header('user_id', str))
 
 
 	def error(self, message='An error occurred.'):
@@ -2349,28 +2322,21 @@ class RequestHandler(BaseRequestHandler):
 		self.respond(token=token)
 
 
-	def send_plugins(self, c):
-		
-
-		#filename = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", "Plugins.zip")))
-		#send_or_cached(c, filename)
-
-		send_filestream(c, os.path.join(sc4mp_server_path, "Plugins"))
-		#send_tree(c, os.path.join(sc4mp_server_path, "Plugins"))
-
-
 	def plugins_table(self):
 
 		self.respond()
-		
 		self.c.send_json(
 			get_file_table(os.path.join(sc4mp_server_path, "Plugins"))
 		)
 
 
+	def plugins_data(self):
 
-	def send_regions(self, c):
-		
+		self.respond()
+		send_filestream(self.c, os.path.join(sc4mp_server_path, "Plugins"))
+
+
+	def regions_data(self):
 
 		if sc4mp_regions_manager.regions_modified:
 			sc4mp_regions_manager.export_regions = True
@@ -2378,42 +2344,18 @@ class RequestHandler(BaseRequestHandler):
 				time.sleep(SC4MP_DELAY)
 			time.sleep(SC4MP_DELAY * 2)
 
-		#filename = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", "Regions.zip")))
-		#send_or_cached(c, filename)
-
-		send_filestream(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
-		#send_tree(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
+		self.respond()
+		send_filestream(self.c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
 
 
 	def regions_table(self):
 	
 		self.respond()
-
 		self.c.send_json(
 			get_file_table(
 				os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions")
 			)
 		)
-
-
-	#def delete(self, c):
-	#	
-	#
-	#	c.sendall(SC4MP_SEPARATOR)
-	#
-	#	user_id = self.log_user(c)
-	#	c.sendall(SC4MP_SEPARATOR)
-	#	region = c.recv(SC4MP_BUFFER_SIZE).decode()
-	#	c.sendall(SC4MP_SEPARATOR)
-	#	city = c.recv(SC4MP_BUFFER_SIZE).decode()
-	#
-	#	c.sendall(SC4MP_SEPARATOR) #TODO verify that the user can make the deletion
-	#
-	#	#TODO only delete file if user is authorized
-	#
-	#	filename = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, city)))
-	#
-	#	os.remove(filename)
 
 
 	def save(self, c):
@@ -2594,22 +2536,23 @@ class RequestHandler(BaseRequestHandler):
 			sc4mp_server_list.server_queue.enqueue(server, left=True) # skip to the front of the queue
 
 
-	def server_list(self, c):
-		
+	def server_list(self):
 
-		if not sc4mp_config["NETWORK"]["discoverable"]:
-			return
-		
+		if sc4mp_config["NETWORK"]["discoverable"]:
+			self.respond()
+		else:
+			self.error("Server is not discoverable.")
+
 		server_dict = sc4mp_server_list.servers.copy()
 		
 		servers = set()
 		for server_info in server_dict.values():
 			servers.add((server_info["host"], server_info["port"]))
 
-		send_json(c, list(servers))
+		self.c.send_json(list(servers))
 
 
-	def log_user(self, c, user_id):
+	def authenticate_user(self, c, user_id):
 		
 
 		# Use a hashcode of the user id for extra security
@@ -2659,14 +2602,6 @@ class RequestHandler(BaseRequestHandler):
 		return user_id
 
 
-	def password_enabled(self, c):
-		
-		if sc4mp_config['SECURITY']['password_enabled']:
-			c.sendall(b"y")
-		else:
-			c.sendall(b"n")
-
-
 	def check_password(self):
 
 		password = self.get_header('password', str)
@@ -2674,55 +2609,22 @@ class RequestHandler(BaseRequestHandler):
 		if password == sc4mp_config["SECURITY"]["password"]:
 			status = 'success'
 		else:
-			status - 'failure'
+			status = 'failure'
 
 		self.respond(status=status)
 
 
-	def user_plugins_enabled(self, c):
-		
-		if sc4mp_config['RULES']['user_plugins']:
-			c.sendall(b"y")
-		else:
-			c.sendall(b"n")
+	def loading_background(self):
 
-
-	def private(self, c):
-		
-		if sc4mp_config['SECURITY']['private']:
-			c.sendall(b"y")
-		else:
-			c.sendall(b"n")
-
-
-	def refresh(self, c):
-		
-
-		user_id = self.user_id
-
-		# Loop through regions
-		regions_directory = os.path.join(sc4mp_server_path, "Regions")
-		for region in os.listdir(regions_directory):
-			if os.path.isdir(os.path.join(regions_directory, region)):
-				#print(region)
-				region_data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json"))
-				for city_entry in region_data.values():
-					if (city_entry is not None and city_entry["owner"] != user_id):
-						c.sendall(city_entry["hashcode"].encode())
-						if c.recv(SC4MP_BUFFER_SIZE).decode() == "missing":
-							c.sendall(region.encode())
-							c.recv(SC4MP_BUFFER_SIZE)
-							send_file(c, os.path.join(sc4mp_server_path, "Regions", region, city_entry["filename"]))
-							c.recv(SC4MP_BUFFER_SIZE)
-		c.sendall(b'done')
-
-
-	def send_background(self, c):
-
-		background_image_filename = os.path.join(sc4mp_server_path, "background.png")
+		background_image_filename = \
+			os.path.join(sc4mp_server_path, "background.png")
 
 		if os.path.exists(background_image_filename):
-			c.sendall(open(background_image_filename, "rb").read())
+			data = open(background_image_filename, "rb").read()
+			self.respond(size=len(data))
+			self.c.sendall(data)
+		else:
+			self.error("Server has no loading background.")
 
 
 class ServerList(th.Thread):
