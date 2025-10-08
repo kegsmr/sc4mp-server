@@ -34,9 +34,9 @@ except ImportError:
 	sc4mp_has_pystray = False
 
 from core.config import Config
-from core.dbpf import DBPF, SC4Savegame, SC4Config
+from core.dbpf import SC4Savegame
 from core.networking import ClientSocket, ServerSocket, BaseRequestHandler, \
-	send_json, recv_json
+	NetworkException, ConnectionClosedException, send_json, recv_json
 from core.util import *
 
 
@@ -2169,7 +2169,10 @@ class RequestHandler(BaseRequestHandler):
 
 				while sc4mp_server_running:
 
-					command, headers = self.recv_request()
+					try:
+						command, headers = self.recv_request()
+					except ConnectionClosedException:
+						break
 
 					print(f"Request: {command!r} {headers!r}")
 
