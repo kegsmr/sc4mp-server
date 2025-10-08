@@ -2122,10 +2122,10 @@ class RequestHandler(BaseRequestHandler):
 						elif request == "server_version":
 							self.send_server_version(c)
 						elif request == "user_id":
-							self.send_user_id(c, args[1])
+							self.res_user_id(c, args[1])
 						elif request == "token":
 							self.request_header(c, args)
-							self.send_token(c)
+							self.res_token(c)
 						elif request == "plugins":
 							if sc4mp_config["SECURITY"]["private"]:
 								self.request_header(c, args)
@@ -2133,25 +2133,25 @@ class RequestHandler(BaseRequestHandler):
 						elif request == "regions":
 							if sc4mp_config["SECURITY"]["private"]:
 								self.request_header(c, args)
-							self.regions_data(c)
+							self.res_regions_data(c)
 						elif request == "save":
 							self.request_header(c, args)
-							self.save(c)
+							self.res_save(c)
 						elif request == "add_server":
 							try:
-								self.add_server(c, args[1])
+								self.res_add_server(c, args[1])
 							except IndexError as e:
 								print("[WARNING] Unable to add outdated server to server list")
 						elif request == "server_list":
-							self.server_list(c)
+							self.res_server_list(c)
 						elif request == "password_enabled":
 							self.password_enabled(c)
 						elif request == "check_password":
-							self.check_password(c, " ".join(args[1:]))
+							self.res_check_password(c, " ".join(args[1:]))
 						elif request == "user_plugins_enabled":
 							self.user_plugins_enabled(c)
 						elif request == "private":
-							self.private(c)
+							self.res_private(c)
 						elif request == "time":
 							c.sendall(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
 						elif request == "info":
@@ -2255,7 +2255,7 @@ class RequestHandler(BaseRequestHandler):
 		raise ServerException(message)
 
 
-	def send_user_id(self):
+	def res_user_id(self):
 
 		in_hash = self.get_header('hash', str)
 
@@ -2281,7 +2281,7 @@ class RequestHandler(BaseRequestHandler):
 			self.respond(status='failure')
 
 
-	def send_token(self):
+	def res_token(self):
 		
 		user_id = self.user_id
 
@@ -2304,7 +2304,7 @@ class RequestHandler(BaseRequestHandler):
 		self.respond(token=token)
 
 
-	def plugins_table(self):
+	def res_plugins_table(self):
 
 		self.respond()
 		self.c.send_json(
@@ -2312,13 +2312,13 @@ class RequestHandler(BaseRequestHandler):
 		)
 
 
-	def plugins_data(self):
+	def res_plugins_data(self):
 
 		self.respond()
 		send_filestream(self.c, os.path.join(sc4mp_server_path, "Plugins"))
 
 
-	def regions_data(self):
+	def res_regions_data(self):
 
 		if sc4mp_regions_manager.regions_modified:
 			sc4mp_regions_manager.export_regions = True
@@ -2330,7 +2330,7 @@ class RequestHandler(BaseRequestHandler):
 		send_filestream(self.c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
 
 
-	def regions_table(self):
+	def res_regions_table(self):
 	
 		self.respond()
 		self.c.send_json(
@@ -2340,7 +2340,7 @@ class RequestHandler(BaseRequestHandler):
 		)
 
 
-	def save(self, c):
+	def res_save(self, c):
 		
 		
 		user_id = self.user_id
@@ -2507,7 +2507,7 @@ class RequestHandler(BaseRequestHandler):
 		#	pass
 
 
-	def add_server(self):
+	def res_add_server(self):
 		
 		if sc4mp_config["NETWORK"]["discoverable"]:
 
@@ -2526,7 +2526,7 @@ class RequestHandler(BaseRequestHandler):
 			self.error("Server is not discoverable.")
 
 
-	def server_list(self):
+	def res_server_list(self):
 
 		if sc4mp_config["NETWORK"]["discoverable"]:
 			self.respond()
@@ -2542,7 +2542,7 @@ class RequestHandler(BaseRequestHandler):
 		self.c.send_json(list(servers))
 
 
-	def check_password(self):
+	def res_check_password(self):
 
 		password = self.get_header('password', str)
 
@@ -2554,7 +2554,7 @@ class RequestHandler(BaseRequestHandler):
 		self.respond(status=status)
 
 
-	def loading_background(self):
+	def res_loading_background(self):
 
 		background_image_filename = \
 			os.path.join(sc4mp_server_path, "background.png")
