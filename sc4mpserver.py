@@ -2275,12 +2275,12 @@ class RequestHandler(BaseRequestHandler):
 		)
 
 
-	def res_save(self, c):
+	def res_save(self):
 		
+		c = self.c
 		user_id = self.user_id
 
-		# Separator
-		c.sendall(b"ok")
+		self.respond()
 
 		# Receive region name, file sizes
 		region, file_sizes = recv_json(c)
