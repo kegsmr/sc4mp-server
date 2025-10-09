@@ -652,6 +652,7 @@ class BaseRequestHandler(Thread):
 	def res_check_password(self): self.respond()
 	def res_info(self): self.respond()
 	def res_password_enabled(self): self.respond()
+	def res_ping(self): self.respond()
 	def res_plugins_table(self): self.respond()
 	def res_plugins_data(self): self.respond()
 	def res_private(self): self.respond()
@@ -699,11 +700,6 @@ class BaseRequestHandler(Thread):
 	def respond(self, **headers):
 
 		return self.c.respond(self.command, **headers)
-
-
-	def ping(self):
-
-		return self.respond()
 
 
 class NetworkException(Exception):
