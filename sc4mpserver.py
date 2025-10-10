@@ -573,22 +573,6 @@ def get_file_table(rootpath):
 	return filetable
 
 
-def send_file(c, filename):
-	
-
-	report("Sending file " + filename + "...")
-
-	filesize = os.path.getsize(filename)
-	c.sendall(str(filesize).encode())
-
-	with open(filename, "rb") as f:
-		while True:
-			bytes_read = f.read(SC4MP_BUFFER_SIZE)
-			if not bytes_read:
-				break
-			c.sendall(bytes_read)
-
-
 def receive_file(c, filename, filesize):
 
 
@@ -2291,9 +2275,6 @@ class RequestHandler(BaseRequestHandler):
 		if len(file_sizes) > 17 or max(file_sizes) > 500000000:
 			return
 
-		# Separator
-		c.sendall(b"ok")
-
 		# Set save id
 		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id)
 
@@ -2318,8 +2299,7 @@ class RequestHandler(BaseRequestHandler):
 
 		# Only allow save pushes of one region
 		if len(regions) > 1:
-			c.sendall(b"Too many regions.")
-			return		
+			self.respond("Too many regions.")	
 
 		# Loop through regions. Should only loop once since save pushes of multiple regions are filtered out.
 		for region in regions:
@@ -2409,12 +2389,12 @@ class RequestHandler(BaseRequestHandler):
 					time.sleep(SC4MP_DELAY)
 
 				# Send the output to the client
-				c.sendall((sc4mp_regions_manager.outputs[save_id]).encode())
+				self.respond(result=sc4mp_regions_manager.outputs[save_id])
 
 			else:
 
 				# Report to the client that the save push is invalid
-				c.sendall(b"Unpause the game, then retry.")
+				self.respond(result="Unpause the game, then retry.")
 
 			# Delete savegame arrays to avoid file deletion errors
 			savegames = None
