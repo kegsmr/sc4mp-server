@@ -79,6 +79,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		# ("upnp", False),	#TODO
 		# ("domain", None),	#TODO for servers hosted on a DDNS or other specific domain
 		("discoverable", True),
+		("domain", '')
 	]),
 	("INFO", [
 		("server_id", generate_server_id()),
@@ -780,6 +781,24 @@ def open_upnp_port(port, protocol="TCP", description="Port Forwarding via UPnP")
         )
 
 
+def set_headers(s):
+
+	return s.set_headers(
+		server_id=sc4mp_config["INFO"]["server_id"],
+		server_name=sc4mp_config["INFO"]["server_name"],
+		server_description=sc4mp_config["INFO"]["server_description"],
+		server_url=sc4mp_config["INFO"]["server_url"],
+		server_version=SC4MP_VERSION,
+		private=sc4mp_config["SECURITY"]["private"],
+		password_enabled=sc4mp_config["SECURITY"]["password_enabled"],
+		user_plugins_enabled=sc4mp_config["RULES"]["user_plugins"],
+		claim_duration=sc4mp_config["RULES"]["claim_duration"],
+		max_region_claims=sc4mp_config["RULES"]["max_region_claims"],
+		godmode_filter=sc4mp_config["RULES"]["godmode_filter"],
+		time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+	)
+
+
 # Workers
 
 class Server(th.Thread):
@@ -898,22 +917,7 @@ class Server(th.Thread):
 	def socket(self) -> ServerSocket:
 
 		s = ServerSocket()
-
-		s.set_headers(
-			server_id=sc4mp_config["INFO"]["server_id"],
-			server_name=sc4mp_config["INFO"]["server_name"],
-			server_description=sc4mp_config["INFO"]["server_description"],
-			server_url=sc4mp_config["INFO"]["server_url"],
-			server_version=SC4MP_VERSION,
-			private=sc4mp_config["SECURITY"]["private"],
-			password_enabled=sc4mp_config["SECURITY"]["password_enabled"],
-			user_plugins_enabled=sc4mp_config["RULES"]["user_plugins"],
-			claim_duration=sc4mp_config["RULES"]["claim_duration"],
-			max_region_claims=sc4mp_config["RULES"]["max_region_claims"],
-			godmode_filter=sc4mp_config["RULES"]["godmode_filter"],
-			time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-		)
-
+		set_headers(s)
 		return s
 
 
@@ -2405,7 +2409,7 @@ class RequestHandler(BaseRequestHandler):
 		
 		if sc4mp_config["NETWORK"]["discoverable"]:
 
-			host = self.c.getpeername()[0]
+			host = self.get_header('host', str) or self.c.getpeername()[0]
 			port = self.get_header('port', int)
 
 			server = (host, port)
@@ -2609,7 +2613,9 @@ class ServerList(th.Thread):
 	def create_socket(self, server):
 
 		try:
-			return ClientSocket(server)
+			s = ClientSocket(server)
+			set_headers(s)
+			return s
 		except Exception as e:
 			raise ServerException("Server not found.") from e
 
@@ -2642,7 +2648,10 @@ class ServerList(th.Thread):
 	def add_server(self, server):
 
 		with self.create_socket(server) as s:
-			s.add_server(port=SC4MP_PORT)
+			s.add_server(
+				host=sc4mp_config['NETWORK']['domain'],
+				port=SC4MP_PORT
+			)
 
 
 
