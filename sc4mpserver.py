@@ -2092,7 +2092,8 @@ class RequestHandler(BaseRequestHandler):
 					except ConnectionClosedException:
 						break
 
-					print(f"Request: {command!r} {headers!r}")
+					print(f"Request: {command!r}")
+					# print(f"Request: {command!r} {headers!r}")
 
 					self.handle_request()
 
