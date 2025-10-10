@@ -36,7 +36,7 @@ except ImportError:
 from core.config import Config
 from core.dbpf import SC4Savegame
 from core.networking import ClientSocket, ServerSocket, BaseRequestHandler, \
-	NetworkException, ConnectionClosedException, send_json, recv_json
+	NetworkException, ConnectionClosedException
 from core.util import *
 
 
@@ -541,7 +541,7 @@ def send_filestream(c, rootpath):
 	file_table = get_file_table(rootpath)
 
 	# Receive the filetable from the client and verify it
-	ft = [tuple(item) for item in recv_json(c)]
+	ft = [tuple(item) for item in c.recv_json()]
 	for item in ft:
 		if not item in file_table:
 			c.close()
@@ -2272,7 +2272,7 @@ class RequestHandler(BaseRequestHandler):
 		self.respond()
 
 		# Receive region name, file sizes
-		region, file_sizes = recv_json(c)
+		region, file_sizes = c.recv_json()
 		region = sanitize_directory_name(region)
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
