@@ -261,7 +261,7 @@ Retrieves the loading background image data.
 
 **Response:**
 ```json
-{"size": <bytes>}
+{"size": <integer>}
 ```
 Followed by a binary payload of `<size>` bytes.
 
