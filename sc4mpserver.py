@@ -881,7 +881,7 @@ class Server(th.Thread):
 							client_requests.setdefault(host, 0)
 							client_requests[host] += 1
 
-						report("Connection accepted with " + str(host) + ":" + str(port) + ".")
+						# report(f"Connection accepted with {host}.")
 
 						self.log_client(c)
 
@@ -2088,14 +2088,16 @@ class RequestHandler(BaseRequestHandler):
 				while sc4mp_server_running:
 
 					try:
-						command, headers = self.recv_request()
+
+						self.recv_request()
+
+						print(f"{self.address} - {self.command}")
+
+						self.handle_request()
+
 					except ConnectionClosedException:
+
 						break
-
-					print(f"Request: {command!r}")
-					# print(f"Request: {command!r} {headers!r}")
-
-					self.handle_request()
 
 			except Exception as e:
 
