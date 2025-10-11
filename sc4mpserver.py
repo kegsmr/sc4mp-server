@@ -799,6 +799,54 @@ def set_headers(s):
 	)
 
 
+# Objects
+
+class EventsChannel:
+
+
+	def __init__(self):
+
+		self._lock = th.Lock()
+		self._events: dict[str, list[dict]] = {}
+
+
+	def subscribe(self, user_id: str):
+
+		with self._lock:
+			self._events.setdefault(user_id, [])
+
+
+	def unsubscribe(self, user_id: str):
+
+		if not user_id:
+			return
+
+		with self._lock:
+			if user_id in self._events:
+				self._events.pop(user_id)
+
+	
+	def push(self, event: dict):
+
+		with self._lock:
+			user_ids = list(self._events.keys())
+			for user_id in user_ids:
+				self._events[user_id].append(event)
+
+
+	def get(self, user_id) -> list[dict]:
+
+		with self._lock:
+			if user_id not in self._events:
+				raise ValueError(
+					f"User {user_id!r} is not subscribed to the event channel."
+				)
+			events = list(self._events[user_id])
+			self._events[user_id].clear()
+
+		return events
+
+
 # Workers
 
 class Server(th.Thread):
@@ -821,6 +869,7 @@ class Server(th.Thread):
 		self.prep_regions() 
 		self.prep_backups()
 		self.prep_server_list()
+		self.prep_events()
 		# self.prep_upnp()
 
 	
@@ -1441,7 +1490,6 @@ class Server(th.Thread):
 
 
 	def prep_server_list(self):
-		
 
 		if sc4mp_nostart:
 			return
@@ -1454,6 +1502,17 @@ class Server(th.Thread):
 		global sc4mp_server_list
 		sc4mp_server_list = ServerList()
 		sc4mp_server_list.start()
+
+
+	def prep_events(self):
+
+		if sc4mp_nostart:
+			return
+
+		report("Preparing events channel...")
+
+		global sc4mp_events_channel
+		sc4mp_events_channel = EventsChannel()
 
 
 	def prep_upnp(self):
@@ -1912,6 +1971,11 @@ class RegionsManager(th.Thread):
 									# Report success
 									self.outputs[save_id] = "ok"
 
+									# Push channel event
+									sc4mp_events_channel.push({
+										'event': 'save'
+									})
+
 							except Exception as e:
 
 								# Report an error to the request handler
@@ -2074,6 +2138,8 @@ class RequestHandler(BaseRequestHandler):
 		
 		super().__init__(c, private=sc4mp_config["SECURITY"]["private"])
 
+		self.user_id = None
+
 
 	def run(self):
 
@@ -2102,6 +2168,10 @@ class RequestHandler(BaseRequestHandler):
 			except Exception as e:
 
 				show_error(e)
+
+			finally:
+
+				sc4mp_events_channel.unsubscribe(self.user_id)
 
 			sc4mp_request_threads -= 1
 
@@ -2466,6 +2536,26 @@ class RequestHandler(BaseRequestHandler):
 			self.c.sendall(data)
 		else:
 			self.error("Server has no loading background.")
+
+
+	def res_subscribe(self):
+
+		if self.user_id:
+			sc4mp_events_channel.subscribe(self.user_id)
+			self.respond()
+		else:
+			self.error(message='Invalid user ID.')
+
+
+	def res_events(self):
+
+		if self.user_id:
+			self.respond(
+				events=sc4mp_events_channel.get(self.user_id)
+			)
+		else:
+			self.error(message='Invalid user ID')
+		
 
 
 class ServerList(th.Thread):
