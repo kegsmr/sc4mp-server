@@ -15,7 +15,6 @@ import threading as th
 import time
 import traceback
 import platform
-import urllib.request
 from argparse import ArgumentParser, Namespace
 from collections import deque
 from datetime import datetime, timedelta
@@ -34,15 +33,16 @@ try:
 except ImportError:
 	sc4mp_has_pystray = False
 
-from core.config import *
-from core.dbpf import *
-from core.networking import *
+from core.config import Config
+from core.dbpf import SC4Savegame
+from core.networking import ClientSocket, ServerSocket, BaseRequestHandler, \
+	NetworkException, ConnectionClosedException
 from core.util import *
 
 
 # Globals
 
-SC4MP_VERSION = "0.8.3"
+SC4MP_VERSION = "0.9.0"
 
 SC4MP_SERVERS = get_server_list()
 
@@ -79,6 +79,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		# ("upnp", False),	#TODO
 		# ("domain", None),	#TODO for servers hosted on a DDNS or other specific domain
 		("discoverable", True),
+		("domain", '')
 	]),
 	("INFO", [
 		("server_id", generate_server_id()),
@@ -536,45 +537,23 @@ def purge_directory(directory):
 
 
 def send_filestream(c, rootpath):
-	
 
-	# Loop through all files in path and append them to a list
-	#fullpaths = []
-	#for path, directories, files in os.walk(rootpath):
-	#	for file in files:
-	#		fullpaths.append(os.path.join(path, file))
+	file_table = get_file_table(rootpath)
 
-	# Get fullpaths to files in rootpath
-	#fullpaths = rootpath.rglob("*")
-
-	# Get file table
-	while sc4mp_server_running:
-		try:
-			filetable = sc4mp_filetables_manager.filetables[rootpath]
-			break
-		except KeyError:
-			print("[WARNING] Waiting for file table to generate...")
-			time.sleep(SC4MP_DELAY * 10)
-
-	#filetable = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
-
-	# Send the file table to the client
-	send_json(c, filetable)
-
-	# Receive the modified filetable from the client and verify it
-	ft = [tuple(item) for item in recv_json(c)]
+	# Receive the filetable from the client and verify it
+	ft = [tuple(item) for item in c.recv_json()]
 	for item in ft:
-		if not item in filetable:
+		if not item in file_table:
 			c.close()
 	filetable = ft
 
 	# Loop through the filetable and send the respective data
-	for checksum, size, relpath in filetable:
+	for _, size, relpath in filetable:
 		with open(os.path.join(rootpath, relpath), "rb") as file:
 			size_read = 0
 			while True:
 				size_remaining = size - size_read
-				buffer_size = SC4MP_BUFFER_SIZE if size_remaining > SC4MP_BUFFER_SIZE else size_remaining
+				buffer_size = min(size_remaining, SC4MP_BUFFER_SIZE)
 				data = file.read(buffer_size)
 				if not data:
 					break
@@ -582,94 +561,21 @@ def send_filestream(c, rootpath):
 				c.sendall(data)
 
 
-def send_tree(c, rootpath):
+def get_file_table(rootpath):
+
+	while sc4mp_server_running:
+		try:
+			filetable = sc4mp_filetables_manager.filetables[rootpath]
+			break
+		except KeyError:
+			print("[WARNING] Waiting for file table to generate...")
+			time.sleep(SC4MP_DELAY * 10)
 	
-
-	# Loop through all files in path and append them to a list
-	fullpaths = []
-	for path, directories, files in os.walk(rootpath):
-		for file in files:
-			fullpaths.append(os.path.join(path, file))
-
-	# Send file count
-	c.sendall(str(len(fullpaths)).encode())
-
-	# Separator
-	c.recv(SC4MP_BUFFER_SIZE)
-
-	# Send size
-	size = 0
-	for fullpath in fullpaths:
-		size += os.path.getsize(fullpath)
-	c.sendall(str(size).encode())
-
-	# Loop through the file list and send each one to the client
-	for fullpath in fullpaths:
-
-		# Separator
-		c.recv(SC4MP_BUFFER_SIZE)
-
-		# Get relative path to file 
-		relpath = os.path.relpath(fullpath, rootpath)
-
-		# Send hashcode
-		c.sendall(md5(fullpath).encode())
-
-		# Separator
-		c.recv(SC4MP_BUFFER_SIZE)
-
-		# Send filesize
-		c.sendall(str(os.path.getsize(fullpath)).encode())
-
-		# Separator
-		c.recv(SC4MP_BUFFER_SIZE)
-
-		# Send relative path
-		c.sendall(relpath.encode())
-
-		# Send the file if not cached
-		if c.recv(SC4MP_BUFFER_SIZE).decode() != "y":
-			with open(fullpath, "rb") as file:
-				while True:
-					bytes_read = file.read(SC4MP_BUFFER_SIZE)
-					if not bytes_read:
-						break
-					c.sendall(bytes_read)
-
-
-def send_or_cached(c, filename):
-	
-	c.sendall(md5(filename).encode())
-	if c.recv(SC4MP_BUFFER_SIZE).decode() == "n":
-		send_file(c, filename)
-	else:
-		c.close()
-
-
-def send_file(c, filename):
-	
-
-	report("Sending file " + filename + "...")
-
-	filesize = os.path.getsize(filename)
-	c.sendall(str(filesize).encode())
-
-	with open(filename, "rb") as f:
-		while True:
-			bytes_read = f.read(SC4MP_BUFFER_SIZE)
-			if not bytes_read:
-				break
-			c.sendall(bytes_read)
+	return filetable
 
 
 def receive_file(c, filename, filesize):
-	
 
-	#if (filesize is None):
-	#
-	#	filesize = int(c.recv(SC4MP_BUFFER_SIZE).decode())
-	#
-	#	c.sendall(SC4MP_SEPARATOR)
 
 	report("Receiving " + str(filesize) + " bytes...")
 	report("writing to " + filename)
@@ -875,6 +781,24 @@ def open_upnp_port(port, protocol="TCP", description="Port Forwarding via UPnP")
         )
 
 
+def set_headers(s):
+
+	return s.set_headers(
+		server_id=sc4mp_config["INFO"]["server_id"],
+		server_name=sc4mp_config["INFO"]["server_name"],
+		server_description=sc4mp_config["INFO"]["server_description"],
+		server_url=sc4mp_config["INFO"]["server_url"],
+		server_version=SC4MP_VERSION,
+		private=sc4mp_config["SECURITY"]["private"],
+		password_enabled=sc4mp_config["SECURITY"]["password_enabled"],
+		user_plugins_enabled=sc4mp_config["RULES"]["user_plugins"],
+		claim_duration=sc4mp_config["RULES"]["claim_duration"],
+		max_region_claims=sc4mp_config["RULES"]["max_region_claims"],
+		godmode_filter=sc4mp_config["RULES"]["godmode_filter"],
+		time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+	)
+
+
 # Workers
 
 class Server(th.Thread):
@@ -909,7 +833,7 @@ class Server(th.Thread):
 			report("Starting server...")
 
 			report("- creating socket...")
-			s = socket.socket()
+			s = self.socket()
 
 			report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
 			while True:
@@ -988,6 +912,13 @@ class Server(th.Thread):
 
 			report("Shutting down...")
 			sc4mp_server_running = False
+
+
+	def socket(self) -> ServerSocket:
+
+		s = ServerSocket()
+		set_headers(s)
+		return s
 
 
 	def log_client(self, c):
@@ -2136,20 +2067,15 @@ class FileTablesManager(th.Thread):
 		print("- done.")
 
 
-class RequestHandler(th.Thread):
+class RequestHandler(BaseRequestHandler):
 	
-
 
 	def __init__(self, c):
 		
-
-		super().__init__()
-		
-		self.c = c
+		super().__init__(c, private=sc4mp_config["SECURITY"]["private"])
 
 
 	def run(self):
-		
 
 		try:
 
@@ -2159,81 +2085,17 @@ class RequestHandler(th.Thread):
 
 			try:
 
-				c = self.c
+				while sc4mp_server_running:
 
-				args = c.recv(SC4MP_BUFFER_SIZE).decode().split(" ")
-
-				request = args[0]
-
-				report("Request: " + request, self)
-
-				if request == "ping":
-					self.ping(c)
-				elif request == "server_id":
-					self.send_server_id(c)
-				elif request == "server_name":
-					self.send_server_name(c)
-				elif request == "server_description":
-					self.send_server_description(c)
-				elif request == "server_url":
-					self.send_server_url(c)
-				elif request == "server_version":
-					self.send_server_version(c)
-				elif request == "user_id":
-					self.send_user_id(c, args[1])
-				elif request == "token":
-					self.request_header(c, args)
-					self.send_token(c)
-				elif request == "plugins":
-					if sc4mp_config["SECURITY"]["private"]:
-						self.request_header(c, args)
-					self.send_plugins(c)
-				elif request == "regions":
-					if sc4mp_config["SECURITY"]["private"]:
-						self.request_header(c, args)
-					self.send_regions(c)
-				elif request == "save":
-					self.request_header(c, args)
-					self.save(c)
-				elif request == "add_server":
 					try:
-						self.add_server(c, args[1])
-					except IndexError as e:
-						print("[WARNING] Unable to add outdated server to server list")
-				elif request == "server_list":
-					self.server_list(c)
-				elif request == "password_enabled":
-					self.password_enabled(c)
-				elif request == "check_password":
-					self.check_password(c, " ".join(args[1:]))
-				elif request == "user_plugins_enabled":
-					self.user_plugins_enabled(c)
-				elif request == "private":
-					self.private(c)
-				elif request == "time":
-					c.sendall(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
-				elif request == "info":
-					send_json(c, {  
-						"server_id": sc4mp_config["INFO"]["server_id"],  
-						"server_name": sc4mp_config["INFO"]["server_name"],
-						"server_description": sc4mp_config["INFO"]["server_description"],
-						"server_url": sc4mp_config["INFO"]["server_url"],
-						"server_version": SC4MP_VERSION,
-						"private": sc4mp_config["SECURITY"]["private"],
-						"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
-						"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
-						"claim_duration": sc4mp_config["RULES"]["claim_duration"],
-						"max_region_claims": sc4mp_config["RULES"]["max_region_claims"],
-						"godmode_filter": sc4mp_config["RULES"]["godmode_filter"],
-					})
-				elif request == "background":
-					self.send_background(c)
-				else:
-					print("[WARNING] Invalid request!") # (\"{request}\")!")
+						command, headers = self.recv_request()
+					except ConnectionClosedException:
+						break
 
-				c.close()
-			
-				#report("- connection closed.", self)
+					print(f"Request: {command!r}")
+					# print(f"Request: {command!r} {headers!r}")
+
+					self.handle_request()
 
 			except Exception as e:
 
@@ -2246,70 +2108,104 @@ class RequestHandler(th.Thread):
 			fatal_error(e)
 
 
-	def request_header(self, c, args):
-		
+	def authenticate(self):
 
-		if unformat_version(args[1])[:2] < unformat_version(SC4MP_VERSION)[:2]:
-			c.close()
-			raise ServerException("Invalid version.")
+		version = self.get_header('version', str)
+		if unformat_version(version)[:2] < unformat_version(SC4MP_VERSION)[:2]:
+			self.error("Incorrect version.")
 
 		if sc4mp_config["SECURITY"]["password_enabled"]:
-			if " ".join(args[3:]) != sc4mp_config["SECURITY"]["password"]:
-				c.close()
-				raise ServerException("Incorrect password.")
+			password = self.get_header('password', str)
+			if password != sc4mp_config["SECURITY"]["password"]:
+				self.error("Incorrect password.")
 
-		self.user_id = self.log_user(c, args[2])
+		self.user_id = \
+			self.authenticate_user(self.c, self.get_header('user_id', str))
 
 
-	def ping(self, c):
+	def authenticate_user(self, c, user_id):
+
+		# Use a hashcode of the user id for extra security
+		user_id = hashlib.sha256(user_id.encode()).hexdigest()[:32]
+
+		# Get the ip
+		user_ip = c.getpeername()[0]
 		
-		c.sendall(b"pong")
-
-
-	def send_server_id(self, c):
+		# Get clients database
+		clients_data = sc4mp_clients_database_manager.data
 		
-		c.sendall(SC4MP_SERVER_ID.encode())
+		# Get data entry that matches ip
+		client_entry = clients_data[user_ip]
 
+		# Check if the client has exceeded the user limit
+		if user_id not in client_entry["users"]:
+			if (sc4mp_config["SECURITY"]["max_ip_users"] is None or len(client_entry["users"]) < sc4mp_config["SECURITY"]["max_ip_users"]):
+				client_entry["users"].append(user_id)
+			else:
+				self.error("User limit exceeded.")
 
-	def send_server_name(self, c):
+		# Get users database
+		users_data = sc4mp_users_database_manager.data
 		
-		c.sendall(SC4MP_SERVER_NAME.encode())
+		# Get data entry that matches user id or get & set to {}
+		user_entry = users_data.setdefault(user_id, {})
 
+		# Set default values if missing
+		user_entry.setdefault("clients", [])
+		user_entry.setdefault("mayors", [])
+		user_entry.setdefault("ban", False)
+		user_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-	def send_server_description(self, c):
+		# Close connection and throw error if the user is banned
+		if (user_entry["ban"] or client_entry["ban"]): #TODO check for client bans in server loop
+			self.error("You are banned from this server.")
 		
-		c.sendall(SC4MP_SERVER_DESCRIPTION.encode())
+		# Log the time
+		user_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-
-	def send_server_url(self, c):
+		# Log the IP
+		clients_entry = user_entry["clients"]
+		if user_ip not in clients_entry:
+			clients_entry.append(user_ip)
 		
-		c.sendall(sc4mp_config["INFO"]["server_url"].encode())
+		# Return the user id
+		return user_id
 
 
-	def send_server_version(self, c):
-		
-		c.sendall(SC4MP_VERSION.encode())
+	def error(self, message='An error occurred.'):
+
+		self.respond(error=message)
+
+		raise ServerException(message)
 
 
-	def send_user_id(self, c, in_hash):
-		
+	def res_user_id(self):
+
+		in_hash = self.get_header('hash', str)
 
 		# Get database
 		data = sc4mp_users_database_manager.data
 
-		# Send the user_id that matches the hash
+		# Get the user_id that matches the hash
+		found = False
+		user_id = None
 		for user_id in data:
 			try:
 				token = data[user_id]["token"]
 				if hashlib.sha256((user_id + token).encode()).hexdigest() == in_hash:
-					c.sendall(user_id.encode())
+					found = True
 					break
 			except Exception:
 				pass
 
+		# Send it if found, otherwise return failure
+		if found:
+			self.respond(status='success', user_id=user_id)
+		else:
+			self.respond(status='failure')
 
-	def send_token(self, c):
-		
+
+	def res_token(self):
 		
 		user_id = self.user_id
 
@@ -2329,21 +2225,24 @@ class RequestHandler(th.Thread):
 		entry["token"] = token
 
 		# Send token
-		c.sendall(token.encode())
+		self.respond(token=token)
 
 
-	def send_plugins(self, c):
-		
+	def res_plugins_table(self):
 
-		#filename = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", "Plugins.zip")))
-		#send_or_cached(c, filename)
-
-		send_filestream(c, os.path.join(sc4mp_server_path, "Plugins"))
-		#send_tree(c, os.path.join(sc4mp_server_path, "Plugins"))
+		self.respond()
+		self.c.send_json(
+			get_file_table(os.path.join(sc4mp_server_path, "Plugins"))
+		)
 
 
-	def send_regions(self, c):
-		
+	def res_plugins_data(self):
+
+		self.respond()
+		send_filestream(self.c, os.path.join(sc4mp_server_path, "Plugins"))
+
+
+	def res_regions_data(self):
 
 		if sc4mp_regions_manager.regions_modified:
 			sc4mp_regions_manager.export_regions = True
@@ -2351,43 +2250,29 @@ class RequestHandler(th.Thread):
 				time.sleep(SC4MP_DELAY)
 			time.sleep(SC4MP_DELAY * 2)
 
-		#filename = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", "Regions.zip")))
-		#send_or_cached(c, filename)
-
-		send_filestream(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
-		#send_tree(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
+		self.respond()
+		send_filestream(self.c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
 
 
-	#def delete(self, c):
-	#	
-	#
-	#	c.sendall(SC4MP_SEPARATOR)
-	#
-	#	user_id = self.log_user(c)
-	#	c.sendall(SC4MP_SEPARATOR)
-	#	region = c.recv(SC4MP_BUFFER_SIZE).decode()
-	#	c.sendall(SC4MP_SEPARATOR)
-	#	city = c.recv(SC4MP_BUFFER_SIZE).decode()
-	#
-	#	c.sendall(SC4MP_SEPARATOR) #TODO verify that the user can make the deletion
-	#
-	#	#TODO only delete file if user is authorized
-	#
-	#	filename = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, city)))
-	#
-	#	os.remove(filename)
+	def res_regions_table(self):
+	
+		self.respond()
+		self.c.send_json(
+			get_file_table(
+				os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions")
+			)
+		)
 
 
-	def save(self, c):
+	def res_save(self):
 		
-		
+		c = self.c
 		user_id = self.user_id
 
-		# Separator
-		c.sendall(b"ok")
+		self.respond()
 
 		# Receive region name, file sizes
-		region, file_sizes = recv_json(c)
+		region, file_sizes = c.recv_json()
 		region = sanitize_directory_name(region)
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
@@ -2395,23 +2280,12 @@ class RequestHandler(th.Thread):
 		if len(file_sizes) > 17 or max(file_sizes) > 500000000:
 			return
 
-		# Separator
-		c.sendall(b"ok")
-
 		# Set save id
 		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id)
 
 		# Receive files
 		count = 0
 		for file_size in file_sizes:
-
-			# Receive region name
-			#region = c.recv(SC4MP_BUFFER_SIZE).decode()
-			#.sendall(b"ok")
-
-			# Receive city name
-			#city = c.recv(SC4MP_BUFFER_SIZE).decode()
-			#c.sendall(b"ok")
 
 			# Receive file
 			path = os.path.join(sc4mp_server_path, "_Temp", "inbound", save_id, region)
@@ -2422,12 +2296,6 @@ class RequestHandler(th.Thread):
 
 			count += 1
 
-			#c.sendall(b"ok")
-
-		# Separator
-		#c.sendall(b"ok")
-		#c.recv(SC4MP_BUFFER_SIZE)
-
 		# Get path to save directory
 		path = os.path.join(sc4mp_server_path, "_Temp", "inbound", save_id)
 
@@ -2436,8 +2304,7 @@ class RequestHandler(th.Thread):
 
 		# Only allow save pushes of one region
 		if len(regions) > 1:
-			c.sendall(b"Too many regions.")
-			return		
+			self.respond("Too many regions.")	
 
 		# Loop through regions. Should only loop once since save pushes of multiple regions are filtered out.
 		for region in regions:
@@ -2527,162 +2394,76 @@ class RequestHandler(th.Thread):
 					time.sleep(SC4MP_DELAY)
 
 				# Send the output to the client
-				c.sendall((sc4mp_regions_manager.outputs[save_id]).encode())
+				self.respond(result=sc4mp_regions_manager.outputs[save_id])
 
 			else:
 
 				# Report to the client that the save push is invalid
-				c.sendall(b"Unpause the game, then retry.")
+				self.respond(result="Unpause the game, then retry.")
 
 			# Delete savegame arrays to avoid file deletion errors
 			savegames = None
 			new_savegames = None
 
-		# Try to delete temporary files
-		#try:
-		#	shutil.rmtree(path)
-		#except Exception:
-		#	pass
 
-
-	def add_server(self, c, port):
+	def res_add_server(self):
 		
-		if not sc4mp_config["NETWORK"]["discoverable"]:
-			return
-		host = c.getpeername()[0]
-		port = int(port)
-		server = (host, port)
-		if len(sc4mp_server_list.server_queue) < sc4mp_server_list.SERVER_LIMIT:
-			sc4mp_server_list.server_queue.enqueue(server, left=True) # skip to the front of the queue
+		if sc4mp_config["NETWORK"]["discoverable"]:
+
+			host = self.get_header('host', str) or self.c.getpeername()[0]
+			port = self.get_header('port', int)
+
+			server = (host, port)
+
+			if len(sc4mp_server_list.server_queue) < sc4mp_server_list.SERVER_LIMIT:
+				sc4mp_server_list.server_queue.enqueue(server, left=True) # skip to the front of the queue
+
+			self.respond(status='success')
+
+		else:
+
+			self.error("Server is not discoverable.")
 
 
-	def server_list(self, c):
-		
+	def res_server_list(self):
 
-		if not sc4mp_config["NETWORK"]["discoverable"]:
-			return
-		
+		if sc4mp_config["NETWORK"]["discoverable"]:
+			self.respond()
+		else:
+			self.error("Server is not discoverable.")
+
 		server_dict = sc4mp_server_list.servers.copy()
 		
 		servers = set()
 		for server_info in server_dict.values():
 			servers.add((server_info["host"], server_info["port"]))
 
-		send_json(c, list(servers))
+		self.c.send_json(list(servers))
 
 
-	def log_user(self, c, user_id):
-		
+	def res_check_password(self):
 
-		# Use a hashcode of the user id for extra security
-		user_id = hashlib.sha256(user_id.encode()).hexdigest()[:32]
+		password = self.get_header('password', str)
 
-		# Get the ip
-		user_ip = c.getpeername()[0]
-		
-		# Get clients database
-		clients_data = sc4mp_clients_database_manager.data
-		
-		# Get data entry that matches ip
-		client_entry = clients_data[user_ip]
-
-		# Check if the client has exceeded the user limit
-		if user_id not in client_entry["users"]:
-			if (sc4mp_config["SECURITY"]["max_ip_users"] is None or len(client_entry["users"]) < sc4mp_config["SECURITY"]["max_ip_users"]):
-				client_entry["users"].append(user_id)
-			else:
-				c.close()
-				raise ServerException("Authentication error.")
-
-		# Get users database
-		users_data = sc4mp_users_database_manager.data
-		
-		# Get data entry that matches user id or get & set to {}
-		user_entry = users_data.setdefault(user_id, {})
-
-		# Set default values if missing
-		user_entry.setdefault("clients", [])
-		user_entry.setdefault("mayors", [])
-		user_entry.setdefault("ban", False)
-		user_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-
-		# Close connection and throw error if the user is banned
-		if (user_entry["ban"] or client_entry["ban"]): #TODO check for client bans in server loop
-			c.close()
-			raise ServerException("Authentication error.")
-		
-		# Log the time
-		user_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-		# Log the IP
-		clients_entry = user_entry["clients"]
-		if user_ip not in clients_entry:
-			clients_entry.append(user_ip)
-		
-		# Return the user id
-		return user_id
-
-
-	def password_enabled(self, c):
-		
-		if sc4mp_config['SECURITY']['password_enabled']:
-			c.sendall(b"y")
-		else:
-			c.sendall(b"n")
-
-
-	def check_password(self, c, password):
-		
 		if password == sc4mp_config["SECURITY"]["password"]:
-			c.sendall(b'y')
+			status = 'success'
 		else:
-			c.sendall(b'n')
+			status = 'failure'
+
+		self.respond(status=status)
 
 
-	def user_plugins_enabled(self, c):
-		
-		if sc4mp_config['RULES']['user_plugins']:
-			c.sendall(b"y")
-		else:
-			c.sendall(b"n")
+	def res_loading_background(self):
 
-
-	def private(self, c):
-		
-		if sc4mp_config['SECURITY']['private']:
-			c.sendall(b"y")
-		else:
-			c.sendall(b"n")
-
-
-	def refresh(self, c):
-		
-
-		user_id = self.user_id
-
-		# Loop through regions
-		regions_directory = os.path.join(sc4mp_server_path, "Regions")
-		for region in os.listdir(regions_directory):
-			if os.path.isdir(os.path.join(regions_directory, region)):
-				#print(region)
-				region_data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json"))
-				for city_entry in region_data.values():
-					if (city_entry is not None and city_entry["owner"] != user_id):
-						c.sendall(city_entry["hashcode"].encode())
-						if c.recv(SC4MP_BUFFER_SIZE).decode() == "missing":
-							c.sendall(region.encode())
-							c.recv(SC4MP_BUFFER_SIZE)
-							send_file(c, os.path.join(sc4mp_server_path, "Regions", region, city_entry["filename"]))
-							c.recv(SC4MP_BUFFER_SIZE)
-		c.sendall(b'done')
-
-
-	def send_background(self, c):
-
-		background_image_filename = os.path.join(sc4mp_server_path, "background.png")
+		background_image_filename = \
+			os.path.join(sc4mp_server_path, "background.png")
 
 		if os.path.exists(background_image_filename):
-			c.sendall(open(background_image_filename, "rb").read())
+			data = open(background_image_filename, "rb").read()
+			self.respond(size=len(data))
+			self.c.sendall(data)
+		else:
+			self.error("Server has no loading background.")
 
 
 class ServerList(th.Thread):
@@ -2831,13 +2612,10 @@ class ServerList(th.Thread):
 
 
 	def create_socket(self, server):
-		
-		host = server[0]
-		port = server[1]
+
 		try:
-			s = socket.socket()
-			s.settimeout(10)
-			s.connect((host, port))
+			s = ClientSocket(server)
+			set_headers(s)
 			return s
 		except Exception as e:
 			raise ServerException("Server not found.") from e
@@ -2845,41 +2623,45 @@ class ServerList(th.Thread):
 	
 	def request_server_id(self, server):
 		
-		s = self.create_socket(server)
-		s.sendall(b"server_id")
-		return s.recv(SC4MP_BUFFER_SIZE).decode()
+		SERVER_ID = 'server_id'
+
+		with self.create_socket(server) as s:
+			server_id = s.info().get(SERVER_ID)
+
+		if server_id:
+			return server_id
+		else:
+			raise ServerException(f"Headers missing {SERVER_ID!r}")
 
 
 	def ping(self, server):
-		
-		s = self.create_socket(server)
+
 		try:
-			start = time.time()
-			s.sendall(b"ping")
-			s.recv(SC4MP_BUFFER_SIZE)
-			end = time.time()
-			s.close()
-			return round(1000 * (end - start))
-		except socket.error as e:
+			with self.create_socket(server) as s:
+				start = time.time()
+				s.ping()
+				end = time.time()
+				return round(1000 * (end - start))
+		except (NetworkException, OSError):
 			return None
 
 
 	def add_server(self, server):
-		
-		s = self.create_socket(server)
-		s.sendall(b"add_server " + str(SC4MP_PORT).encode())
+
+		with self.create_socket(server) as s:
+			s.add_server(
+				host=sc4mp_config['NETWORK']['domain'],
+				port=SC4MP_PORT
+			)
+
 
 
 	def server_list(self, server):
-		
-		s = self.create_socket(server)
-		s.sendall(b"server_list")
-		servers = recv_json(s)
-		try:
-			for host, port in servers:
+
+		with self.create_socket(server) as s:
+			server_list = s.server_list()
+			for host, port in server_list:
 				self.server_queue.enqueue((host, port))
-		except TypeError as e:
-			raise ServerException("Unable to receive server list from outdated server") from e
 
 
 class SystemTrayIconManager(th.Thread):
