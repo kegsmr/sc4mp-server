@@ -812,7 +812,7 @@ class EventsChannel:
 
 	def subscribe(self, user_id: str):
 
-		self.push('user_join', user_id=user_id)
+		self.push('user_join', {'user_id': user_id})
 
 		with self._lock:
 			self._events.setdefault(user_id, [])
@@ -828,18 +828,21 @@ class EventsChannel:
 				return
 			self._events.pop(user_id)
 		
-		self.push('user_leave', user_id=user_id)
+		self.push('user_leave', {'user_id': user_id})
 
 	
-	def push(self, event_type: str, **context):
+	def push(self, event_type: str, event_context: dict, exclude=None):
+
+		event = {
+			'event': event_type,
+			**event_context
+		}
 
 		with self._lock:
 			user_ids = list(self._events.keys())
 			for user_id in user_ids:
-				event = {
-					'event': event_type,
-					**context
-				}
+				if exclude and user_id in exclude:
+					continue
 				self._events[user_id].append(event)
 
 
@@ -1982,7 +1985,11 @@ class RegionsManager(th.Thread):
 
 									# Push channel event
 									sc4mp_events_channel.push(
-										'save', user_id=user_id
+										'save', {
+											'user_id': user_id,
+											'coords': (savegameX, savegameY)
+										},
+										exclude=[user_id]
 									)
 
 							except Exception as e:
