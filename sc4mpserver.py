@@ -35,7 +35,7 @@ except ImportError:
 
 from core.config import Config
 from core.dbpf import SC4Savegame
-from core.events import EventsChannel
+from core.events import EventChannel
 from core.networking import ClientSocket, ServerSocket, BaseRequestHandler, \
 	NetworkException, ConnectionClosedException
 from core.util import *
@@ -1463,8 +1463,8 @@ class Server(th.Thread):
 
 		report("Preparing events channel...")
 
-		global sc4mp_events_channel
-		sc4mp_events_channel = EventsChannel()
+		global sc4mp_event_channel
+		sc4mp_event_channel = EventChannel()
 
 
 	def prep_upnp(self):
@@ -1924,7 +1924,7 @@ class RegionsManager(th.Thread):
 									self.outputs[save_id] = "ok"
 
 									# Push channel event
-									sc4mp_events_channel.push(
+									sc4mp_event_channel.push(
 										'save', {
 											'user_id': user_id,
 											'coords': (savegameX, savegameY)
@@ -2107,27 +2107,15 @@ class RequestHandler(BaseRequestHandler):
 
 			try:
 
-				while sc4mp_server_running:
+				self.recv_request()
 
-					try:
+				print(f"{self.address} - {self.command}")
 
-						self.recv_request()
-
-						print(f"{self.address} - {self.command}")
-
-						self.handle_request()
-
-					except ConnectionClosedException:
-
-						break
+				self.handle_request()
 
 			except Exception as e:
 
 				show_error(e)
-
-			finally:
-
-				sc4mp_events_channel.unsubscribe(self.user_id)
 
 			sc4mp_request_threads -= 1
 
@@ -2496,23 +2484,31 @@ class RequestHandler(BaseRequestHandler):
 
 	def res_subscribe(self):
 
-		if self.user_id:
-			sc4mp_events_channel.subscribe(self.user_id)
-			self.respond()
-		else:
-			self.error(message='Invalid user ID.')
+		if not self.user_id:
+			self.error("Invalid user ID.")
 
+		try:
 
-	def res_events(self):
+			sc4mp_event_channel.subscribe(self.user_id)
+			self.respond(status='success')
 
-		if self.user_id:
-			self.respond(
-				events=sc4mp_events_channel.get(self.user_id)
+			while sc4mp_server_running:
+				try:
+					self.respond(
+						events=sc4mp_event_channel.listen(self.user_id)
+					)
+				except NetworkException:
+					break
+
+		except Exception:
+
+			self.error(
+				message='An unexpected error occurred in the event channel.'
 			)
-		else:
-			self.error(message='Invalid user ID')
-		
 
+		finally:
+
+			sc4mp_event_channel.unsubscribe(self.user_id)
 
 class ServerList(th.Thread):
 
