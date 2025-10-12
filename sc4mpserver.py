@@ -1927,6 +1927,8 @@ class RegionsManager(th.Thread):
 									sc4mp_event_channel.push(
 										'save', {
 											'user_id': user_id,
+											'save_id': save_id,
+											'region': region,
 											'coords': (savegameX, savegameY)
 										},
 										exclude=[user_id]
