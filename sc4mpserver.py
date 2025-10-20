@@ -2097,6 +2097,10 @@ class RequestHandler(BaseRequestHandler):
 
 					self.handle_request()
 
+			except ServerException as e:
+
+				print(f"[WARNING] {e}")
+
 			except Exception as e:
 
 				show_error(e)
@@ -2176,7 +2180,9 @@ class RequestHandler(BaseRequestHandler):
 
 		self.respond(error=message)
 
-		raise ServerException(message)
+		raise ServerException(
+			f"Error for {self.c.getpeername()[0]}: {message!r}"
+		)
 
 
 	def res_user_id(self):
