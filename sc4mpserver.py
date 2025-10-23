@@ -34,6 +34,7 @@ except ImportError:
 	sc4mp_has_pystray = False
 
 from core.config import Config
+from core.database import Database
 from core.dbpf import SC4Savegame
 from core.events import EventChannel
 from core.networking import ClientSocket, ServerSocket, BaseRequestHandler, \
@@ -400,7 +401,7 @@ def set_savegame_data(entry, savegame: SC4Savegame):
 			if mayor_name is not None:
 				last_mayor_name = entry.get("last_mayor_name", None)
 				if mayor_name != last_mayor_name:
-					mayor_names = sc4mp_users_database_manager.data[owner]["mayors"]
+					mayor_names = sc4mp_users_database_manager[owner]["mayors"]
 					if mayor_name not in mayor_names:
 						mayor_names.append(mayor_name)
 
@@ -929,7 +930,7 @@ class Server(th.Thread):
 		ip = c.getpeername()[0]
 
 		# Get clients database
-		clients_data = sc4mp_clients_database_manager.data
+		clients_data = sc4mp_clients_database_manager
 		
 		# Get data entry that matches ip
 		client_entry = None
@@ -1674,68 +1675,36 @@ class BackupsManager(th.Thread):
 		return referenced_files
 
 
-class DatabaseManager(th.Thread):
-	
+class DatabaseManager(th.Thread, Database):
 
-	
+
 	def __init__(self, filename):
-		
 
-		super().__init__()
+		th.Thread.__init__(self)
+		Database.__init__(self, filename)
+
 	
-		self.filename = filename #os.path.join(sc4mp_server_path, "_Database", "users.json")
-		self.data = self.load_json(self.filename)
-
-
 	def run(self):
-		
 	
 		try:
 
 			global sc4mp_server_running
 
 			while not sc4mp_server_running:
-				
 				time.sleep(SC4MP_DELAY)
 
 			set_thread_name("DbThread")
-
-			#report("Monitoring database for changes...", self) #TODO why is the spacing wrong?
 			
-			old_data = str(self.data)
-			
-			while sc4mp_server_running: #TODO pretty dumb way of checking if a dictionary has been modified. also this thread probably needs to stop at some point
+			while sc4mp_server_running: 
 				try:
 					time.sleep(SC4MP_DELAY)
-					new_data = str(self.data)
-					if old_data != new_data:
-						#report('Updating "' + self.filename + '"...', self) #TODO make verbose
-						self.update_json(self.filename, self.data)
-						#report("- done.", self) #TODO make verbose
-					old_data = new_data
+					self.update_json()
 				except Exception as e:
 					show_error(e)
 
 		except Exception as e:
 
 			fatal_error(e)
-
-
-	def load_json(self, filename):
-		
-		try:
-			with open(filename, 'r') as file:
-				return json.load(file)
-		except Exception:
-			return {}
-
-	
-	def update_json(self, filename, data):
-		
-		with open(filename, 'w') as file:
-			file.seek(0)
-			json.dump(data, file, indent=4)
-			file.truncate()
 
 
 class RegionsManager(th.Thread):
@@ -2154,7 +2123,7 @@ class RequestHandler(BaseRequestHandler):
 		user_ip = c.getpeername()[0]
 		
 		# Get clients database
-		clients_data = sc4mp_clients_database_manager.data
+		clients_data = sc4mp_clients_database_manager
 		
 		# Get data entry that matches ip
 		client_entry = clients_data[user_ip]
@@ -2167,7 +2136,7 @@ class RequestHandler(BaseRequestHandler):
 				self.error("User limit exceeded.")
 
 		# Get users database
-		users_data = sc4mp_users_database_manager.data
+		users_data = sc4mp_users_database_manager
 		
 		# Get data entry that matches user id or get & set to {}
 		user_entry = users_data.setdefault(user_id, {})
@@ -2208,7 +2177,7 @@ class RequestHandler(BaseRequestHandler):
 		in_hash = self.get_header('hash', str)
 
 		# Get database
-		data = sc4mp_users_database_manager.data
+		data = sc4mp_users_database_manager
 
 		# Get the user_id that matches the hash
 		found = False
@@ -2236,7 +2205,7 @@ class RequestHandler(BaseRequestHandler):
 		token = ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))
 
 		# Get database
-		data = sc4mp_users_database_manager.data
+		data = sc4mp_users_database_manager
 
 		# Get database entry for user
 		key = user_id
