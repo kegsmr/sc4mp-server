@@ -548,13 +548,16 @@ def send_filestream(c, rootpath):
 	#fullpaths = rootpath.rglob("*")
 
 	# Get file table
-	while sc4mp_server_running:
-		try:
-			filetable = sc4mp_filetables_manager.filetables[rootpath]
-			break
-		except KeyError:
-			print("[WARNING] Waiting for file table to generate...")
-			time.sleep(SC4MP_DELAY * 10)
+	try:
+		filetable = sc4mp_filetables_manager.filetables[rootpath]
+	except KeyError:
+		print("[WARNING] Waiting for file table to generate...")
+		# Create event if it doesn't exist yet
+		if rootpath not in sc4mp_filetables_manager._ready_events:
+			sc4mp_filetables_manager._ready_events[rootpath] = th.Event()
+		# Wait for the event to be signaled (blocks until file table is ready)
+		sc4mp_filetables_manager._ready_events[rootpath].wait()
+		filetable = sc4mp_filetables_manager.filetables[rootpath]
 
 	#filetable = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
 
@@ -931,6 +934,12 @@ class Server(th.Thread):
 
 			max_request_threads = sc4mp_config["PERFORMANCE"]["max_request_threads"]
 
+			# Create semaphore for thread limiting (if max_request_threads is set)
+			if max_request_threads is not None:
+				request_threads_semaphore = th.Semaphore(max_request_threads)
+			else:
+				request_threads_semaphore = None
+
 			client_requests = {}
 			client_requests_cleared = datetime.now()
 
@@ -941,40 +950,38 @@ class Server(th.Thread):
 					client_requests = {}
 					client_requests_cleared = datetime.now()
 				
-				if max_request_threads is None or sc4mp_request_threads < max_request_threads:
+				try:
 
-					try:
+					c, (host, port) = s.accept()
 
-						c, (host, port) = s.accept()
+					c.settimeout(sc4mp_config["PERFORMANCE"]["connection_timeout"])
 
-						c.settimeout(sc4mp_config["PERFORMANCE"]["connection_timeout"])
+					if (sc4mp_config["PERFORMANCE"]["request_limit"] is not None and host in client_requests and client_requests[host] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
+						print("[WARNING] Connection blocked from " + str(host) + ":" + str(port) + ".")
+						c.close()
+						continue
+					else:
+						client_requests.setdefault(host, 0)
+						client_requests[host] += 1
 
-						if (sc4mp_config["PERFORMANCE"]["request_limit"] is not None and host in client_requests and client_requests[host] >= sc4mp_config["PERFORMANCE"]["request_limit"]):
-							print("[WARNING] Connection blocked from " + str(host) + ":" + str(port) + ".")
-							c.close()
-							continue
-						else:
-							client_requests.setdefault(host, 0)
-							client_requests[host] += 1
+					report("Connection accepted with " + str(host) + ":" + str(port) + ".")
 
-						report("Connection accepted with " + str(host) + ":" + str(port) + ".")
+					self.log_client(c)
 
-						self.log_client(c)
+					# Acquire semaphore (blocks if limit reached)
+					if request_threads_semaphore is not None:
+						request_threads_semaphore.acquire()
 
-						sc4mp_request_threads += 1
+					sc4mp_request_threads += 1
 
-						RequestHandler(c).start()	
+					# Pass semaphore to request handler so it can release it
+					handler = RequestHandler(c)
+					handler._semaphore = request_threads_semaphore
+					handler.start()
 
-					except Exception as e: #socket.error as e:
+				except Exception as e: #socket.error as e:
 
-						show_error(e)
-			
-				else:
-
-					print("[WARNING] Request thread limit reached!")
-
-					while not (sc4mp_request_threads < max_request_threads):
-						time.sleep(SC4MP_DELAY)
+					show_error(e)
 				
 		except (SystemExit, KeyboardInterrupt):
 
@@ -1801,7 +1808,7 @@ class RegionsManager(th.Thread):
 
 	
 	def __init__(self):
-		
+
 
 		super().__init__()
 
@@ -1809,7 +1816,17 @@ class RegionsManager(th.Thread):
 		self.export_regions = False
 		self.tasks = []
 		self.outputs = {}
+		self._output_events = {}  # Events to signal when outputs are ready
 		#self.lastmtime = self.get_mtime()
+
+
+	def set_output(self, save_id, value):
+		"""Set output and signal the event for waiting threads."""
+		self.outputs[save_id] = value
+		# Create and signal event for this save_id
+		if save_id not in self._output_events:
+			self._output_events[save_id] = th.Event()
+		self._output_events[save_id].set()
 
 
 	def run(self):
@@ -1885,21 +1902,21 @@ class RegionsManager(th.Thread):
 
 								# Filter out claims on locked tiles
 								if entry.get("locked", False):
-									self.outputs[save_id] = "Tile is locked."
+									self.set_output(save_id, "Tile is locked.")
 
 								# Filter out godmode savegames if required
 								if sc4mp_config["RULES"]["godmode_filter"]:
 									if savegameModeFlag == 0:
-										self.outputs[save_id] = "You must establish a city before claiming a tile."
+										self.set_output(save_id, "You must establish a city before claiming a tile.")
 								
 								# Filter out cities that don't match the region configuration
 								if entry is None:
-									self.outputs[save_id] = "Invalid city location."
+									self.set_output(save_id, "Invalid city location.")
 
 								# Filter out cities of the wrong size
 								if "size" in entry:
 									if (savegameSizeX != savegameSizeY or savegameSizeX != entry["size"]):
-										self.outputs[save_id] = "Invalid city size."
+										self.set_output(save_id, "Invalid city size.")
 
 								# Filter out claims on tiles with unexpired claims of other users
 								reclaimed = False
@@ -1907,11 +1924,11 @@ class RegionsManager(th.Thread):
 									owner = entry["owner"]
 									if (owner is not None and owner != user_id):
 										if sc4mp_config["RULES"]["claim_duration"] is None:
-											self.outputs[save_id] = "City already claimed."
+											self.set_output(save_id, "City already claimed.")
 										else:
 											expires = datetime.strptime(entry["modified"], "%Y-%m-%d %H:%M:%S") + timedelta(days=sc4mp_config["RULES"]["claim_duration"])
 											if expires > datetime.now():
-												self.outputs[save_id] = "City already claimed."
+												self.set_output(save_id, "City already claimed.")
 										reclaimed = True
 
 								# Filter out cliams of users who have exhausted their region claims
@@ -1919,7 +1936,7 @@ class RegionsManager(th.Thread):
 									if sc4mp_config["RULES"]["max_region_claims"] is not None:
 										claims = len(list(filter(lambda x: x is not None and x.get("owner") == user_id, data.values())))
 										if claims >= sc4mp_config["RULES"]["max_region_claims"]:
-											self.outputs[save_id] = "Claim limit reached in this region."
+											self.set_output(save_id, "Claim limit reached in this region.")
 
 								# Filter out claims of users who have exhausted their total claims
 								#TODO
@@ -1979,12 +1996,12 @@ class RegionsManager(th.Thread):
 									self.regions_modified = True
 
 									# Report success
-									self.outputs[save_id] = "ok"
+									self.set_output(save_id, "ok")
 
 							except Exception as e:
 
 								# Report an error to the request handler
-								self.outputs[save_id] = "Unexpected server-side error."
+								self.set_output(save_id, "Unexpected server-side error.")
 
 								# Raise the exception so that it appears in the server's output
 								raise e
@@ -2052,6 +2069,7 @@ class FileTablesManager(th.Thread):
 		super().__init__()
 
 		self.filetables = {}
+		self._ready_events = {}  # Events to signal when file tables are ready
 
 
 	def run(self):
@@ -2115,12 +2133,19 @@ class FileTablesManager(th.Thread):
 
 		print(f"Generating file table for \"{rootpath}\"...")
 
+		# Create event for this rootpath if it doesn't exist
+		if rootpath not in self._ready_events:
+			self._ready_events[rootpath] = th.Event()
+
 		fullpaths = []
 		for path, directories, files in os.walk(rootpath):
 			for file in files:
 				fullpaths.append(os.path.join(path, file))
 
 		self.filetables[rootpath] = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
+
+		# Signal that the file table is ready
+		self._ready_events[rootpath].set()
 
 		#print(self.filetables[path])
 
@@ -2240,6 +2265,11 @@ class RequestHandler(th.Thread):
 				show_error(e)
 
 			sc4mp_request_threads -= 1
+
+			# Release semaphore if it was acquired
+			if hasattr(self, '_semaphore') and self._semaphore is not None:
+				self._semaphore.release()
+
 
 		except Exception as e:
 
@@ -2522,9 +2552,10 @@ class RequestHandler(th.Thread):
 				# Send the task to the regions manager
 				sc4mp_regions_manager.tasks.append((save_id, user_id, region, savegame))
 
-				# Wait for the output
-				while save_id not in sc4mp_regions_manager.outputs:
-					time.sleep(SC4MP_DELAY)
+				# Wait for the output using an event
+				if save_id not in sc4mp_regions_manager._output_events:
+					sc4mp_regions_manager._output_events[save_id] = th.Event()
+				sc4mp_regions_manager._output_events[save_id].wait()
 
 				# Send the output to the client
 				c.sendall((sc4mp_regions_manager.outputs[save_id]).encode())
