@@ -26,7 +26,7 @@ class DBPF:
 			self.file.seek(self.offset)
 
 		# Read the identifier
-		self.identifier = self.file.read(4).decode()		# Always "DBPF"
+		self.identifier = self.file.read(4).decode('latin-1')		# Always "DBPF"
 		if self.require_identifier and self.identifier != "DBPF":
 			raise Exception()
 
@@ -210,7 +210,7 @@ class DBPF:
 			file = self.file
 		if length is None:
 			length = struct.unpack("<L", file.read(4))[0]
-		return file.read(length).decode()
+		return file.read(length).decode('latin-1')
 
 
 	def read_nullstring(self, file=None):
@@ -222,7 +222,7 @@ class DBPF:
 			if byte == b"\x00":
 				return text
 			else:
-				text += byte.decode()
+				text += byte.decode('latin-1')
 
 
 	def read_ID(self, file=None):
