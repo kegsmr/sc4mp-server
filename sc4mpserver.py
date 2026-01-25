@@ -224,7 +224,7 @@ def parse_args() -> Namespace:
 
 	parser.add_argument("-s", "--server-path", help="specify server directory relative path")
 
-	parser.add_argument("-t", "--stop", help="terminate the server currectly running from the specified server path (Windows-only)", action="store_true")
+	parser.add_argument("-t", "--stop", help="terminate the server currently running from the specified server path (Windows-only)", action="store_true")
 
 	parser.add_argument("-k", "--skip-update", help="skip the update check at startup", action="store_true")
 
@@ -1621,7 +1621,7 @@ class BackupsManager(th.Thread):
 		try:
 			self.prune()
 		except Exception as e:
-			show_error("An error occured while pruning backups.")
+			show_error("An error occurred while pruning backups.")
 
 		# Report creating backups
 		report("Creating backup...", self)
