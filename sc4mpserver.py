@@ -271,8 +271,17 @@ def prevent_multiple():
 						o_p_c = None
 
 					if other_process_creation == o_p_c:
-						if subprocess.call(f"TASKKILL /F /PID {other_process_pid}", shell=True) != 0:
-							raise ServerException("`TASKKILL` did not return exit code 0.")
+						result = subprocess.call(f"TASKKILL /F /PID {other_process_pid}", shell=True)
+						if result != 0:
+							# TASKKILL failed - verify if process still exists
+							try:
+								get_process_creation_time(other_process_pid)
+								# Process still exists after TASKKILL failed
+								raise ServerException(f"`TASKKILL` failed with exit code {result} and process {other_process_pid} is still running.")
+							except Exception:
+								# Process does not exist - TASKKILL probably failed because process already exited
+								# This is fine, continue with startup
+								pass
 
 			this_process_pid = os.getpid()
 			this_process_creation = datetime.strftime(get_process_creation_time(this_process_pid), DATETIME_FORMAT)
