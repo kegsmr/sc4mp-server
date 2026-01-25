@@ -1945,13 +1945,28 @@ class RegionsManager(th.Thread):
 			
 
 class FileTablesManager(th.Thread):
+	"""
+	Manages file tables for plugins and regions directories.
 
+	Uses mtime and size to efficiently track file changes, only recalculating
+	MD5 checksums when files are modified. This is much more efficient than
+	constantly hashing files.
+
+	File tables are stored in the format: [(md5, size, relpath), ...]
+	"""
 
 	def __init__(self):
 
 		super().__init__()
 
+		# Public file tables: {rootpath: [(md5, size, relpath), ...]}
 		self.filetables = {}
+
+		# Internal metadata cache: {rootpath: {relpath: {'mtime': X, 'size': Y, 'md5': 'hash'}}}
+		self._file_metadata = {}
+
+		# Thread lock for safe concurrent access
+		self._lock = th.Lock()
 
 
 	def run(self):
@@ -1976,62 +1991,145 @@ class FileTablesManager(th.Thread):
 					show_error(e)
 
 		except Exception as e:
-	
-			fatal_error(e)	
-	
+
+			fatal_error(e)
+
 
 	def update(self):
+		"""
+		Update all file tables by checking for changes using mtime and size.
+		Only recalculates MD5 when a file has actually changed.
+		"""
 
-		# Loop through all file tables
-		for rootpath, filetable in self.filetables.items():
-			
-			# Loop through file table and check for missing files and files which have changed size
-			for entry in filetable:
-				checksum, size, relpath = entry
-				fullpath = os.path.join(rootpath, relpath)
-				if not os.path.exists(fullpath):
-					filetable.remove(entry)
-					print(f"Removed deleted file \"{fullpath}\" from file table.")
-				elif os.path.getsize(fullpath) != size:
-					filetable.remove(entry)
-					print(f"Removed old file \"{fullpath}\" from file table.")
+		with self._lock:
+			# Loop through all managed rootpaths
+			for rootpath in list(self.filetables.keys()):
 
-			# Get all files in rootpath
-			fullpaths = []
-			for path, directories, files in os.walk(rootpath):
-				for file in files:
-					fullpaths.append(os.path.join(path, file))
+				if not os.path.exists(rootpath):
+					print(f"[WARNING] Rootpath no longer exists: {rootpath}")
+					continue
 
-			# Add new files to the file table
-			relpaths = [entry[2] for entry in filetable]
-			for fullpath in fullpaths:
-				relpath = os.path.relpath(fullpath, rootpath)
-				if not relpath in relpaths:
-					filetable.append((md5(fullpath), os.path.getsize(fullpath), Path(relpath).as_posix()))
-					print(f"Added new file \"{fullpath}\" to file table.")
-				
+				metadata = self._file_metadata.get(rootpath, {})
+				new_metadata = {}
+				new_filetable = []
+
+				# Scan all files in rootpath
+				for path, directories, files in os.walk(rootpath):
+					for filename in files:
+						fullpath = os.path.join(path, filename)
+						relpath = os.path.relpath(fullpath, rootpath)
+
+						# Use forward slashes for cross-platform compatibility
+						relpath_normalized = Path(relpath).as_posix()
+
+						try:
+							# Get current file stats
+							stat = os.stat(fullpath)
+							current_size = stat.st_size
+							current_mtime = stat.st_mtime
+
+							# Check if we have cached metadata for this file
+							cached = metadata.get(relpath_normalized)
+
+							if cached and cached['mtime'] == current_mtime and cached['size'] == current_size:
+								# File unchanged - reuse cached MD5
+								md5_hash = cached['md5']
+							else:
+								# File is new or modified - calculate MD5
+								md5_hash = md5(fullpath)
+
+								if cached:
+									print(f"Updated modified file \"{fullpath}\" in file table.")
+								else:
+									print(f"Added new file \"{fullpath}\" to file table.")
+
+							# Store metadata for next update
+							new_metadata[relpath_normalized] = {
+								'mtime': current_mtime,
+								'size': current_size,
+								'md5': md5_hash
+							}
+
+							# Add to file table
+							new_filetable.append((md5_hash, current_size, relpath_normalized))
+
+						except (OSError, IOError) as e:
+							print(f"[WARNING] Could not access file \"{fullpath}\": {e}")
+							continue
+
+				# Check for deleted files
+				for old_relpath in metadata.keys():
+					if old_relpath not in new_metadata:
+						fullpath = os.path.join(rootpath, old_relpath)
+						print(f"Removed deleted file \"{fullpath}\" from file table.")
+
+				# Update the file table and metadata
+				self.filetables[rootpath] = new_filetable
+				self._file_metadata[rootpath] = new_metadata
+
 
 	def generate(self, rootpath):
+		"""
+		Generate a new file table for the given rootpath.
+		Scans all files and calculates MD5 checksums.
+		"""
 
 		print(f"Generating file table for \"{rootpath}\"...")
 
-		fullpaths = []
-		for path, directories, files in os.walk(rootpath):
-			for file in files:
-				fullpaths.append(os.path.join(path, file))
+		with self._lock:
+			filetable = []
+			metadata = {}
 
-		self.filetables[rootpath] = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
+			# Scan all files in rootpath
+			fullpaths = []
+			for path, directories, files in os.walk(rootpath):
+				for filename in files:
+					fullpaths.append(os.path.join(path, filename))
 
-		#print(self.filetables[path])
+			# Process each file
+			for fullpath in fullpaths:
+				try:
+					relpath = os.path.relpath(fullpath, rootpath)
+					relpath_normalized = Path(relpath).as_posix()
 
-		print("- done.")
+					# Get file stats
+					stat = os.stat(fullpath)
+					size = stat.st_size
+					mtime = stat.st_mtime
+
+					# Calculate MD5
+					md5_hash = md5(fullpath)
+
+					# Store in file table
+					filetable.append((md5_hash, size, relpath_normalized))
+
+					# Store metadata
+					metadata[relpath_normalized] = {
+						'mtime': mtime,
+						'size': size,
+						'md5': md5_hash
+					}
+
+				except (OSError, IOError) as e:
+					print(f"[WARNING] Could not access file \"{fullpath}\": {e}")
+					continue
+
+			self.filetables[rootpath] = filetable
+			self._file_metadata[rootpath] = metadata
+
+		print(f"- done.")
 
 
 	def erase(self, rootpath):
+		"""
+		Remove a file table and its metadata.
+		"""
 
 		print(f"Erasing file table for \"{rootpath}\"...")
 
-		self.filetables.pop(rootpath)
+		with self._lock:
+			self.filetables.pop(rootpath, None)
+			self._file_metadata.pop(rootpath, None)
 
 		print("- done.")
 
