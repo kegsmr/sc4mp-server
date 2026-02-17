@@ -271,8 +271,7 @@ def prevent_multiple():
 						o_p_c = None
 
 					if other_process_creation == o_p_c:
-						if subprocess.call(f"TASKKILL /F /PID {other_process_pid}", shell=True) != 0:
-							raise ServerException("`TASKKILL` did not return exit code 0.")
+						subprocess.call(f"TASKKILL /F /PID {other_process_pid}", shell=True)
 
 			this_process_pid = os.getpid()
 			this_process_creation = datetime.strftime(get_process_creation_time(this_process_pid), DATETIME_FORMAT)
