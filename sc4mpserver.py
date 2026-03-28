@@ -93,6 +93,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		("password_enabled", False),
 		("password", "maxis2003"),
 		("max_ip_users", 3),
+		("grant_localhost_admin", True),
 	]),
 	("RULES", [
 		("claim_duration", 30),
@@ -2127,6 +2128,7 @@ class RequestHandler(BaseRequestHandler):
 		user_entry.setdefault("clients", [])
 		user_entry.setdefault("mayors", [])
 		user_entry.setdefault("ban", False)
+		user_entry.setdefault("admin", False)
 		user_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 		# Close connection and throw error if the user is banned
@@ -2439,6 +2441,22 @@ class RequestHandler(BaseRequestHandler):
 			self.c.sendall(data)
 		else:
 			self.error("Server has no loading background.")
+
+
+	def res_check_admin(self):
+
+		user_entry = sc4mp_users_database_manager[self.user_id]
+
+		if sc4mp_config['SECURITY']['grant_localhost_admin']:
+			if self.c.getpeername()[0] in ['127.0.0.1', 'localhost']:
+				user_entry['admin'] = True
+
+		self.respond(admin=user_entry['admin'])
+
+
+	def res_admin(self):
+
+		self.error(f"Not implemented")
 
 
 class ServerList(th.Thread):
