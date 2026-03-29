@@ -2142,6 +2142,7 @@ class RequestHandler(BaseRequestHandler):
 		clients_entry = user_entry["clients"]
 		if user_ip not in clients_entry:
 			clients_entry.append(user_ip)
+		user_entry["last_client"] = user_ip
 		
 		# Return the user id
 		return user_id
@@ -2154,6 +2155,12 @@ class RequestHandler(BaseRequestHandler):
 		raise ServerException(
 			f"Error for {self.c.getpeername()[0]}: {message!r}"
 		)
+
+
+	def admin_check(self):
+
+		if not sc4mp_users_database_manager[self.user_id]['admin'] is True:
+			self.error("Unauthorized.")
 
 
 	def res_user_id(self):
@@ -2443,7 +2450,7 @@ class RequestHandler(BaseRequestHandler):
 			self.error("Server has no loading background.")
 
 
-	def res_check_admin(self):
+	def res_is_admin(self):
 
 		user_entry = sc4mp_users_database_manager[self.user_id]
 
@@ -2454,9 +2461,39 @@ class RequestHandler(BaseRequestHandler):
 		self.respond(admin=user_entry['admin'])
 
 
-	def res_admin(self):
+	def res_admin_data(self):
 
-		self.error(f"Not implemented")
+		self.admin_check()
+
+		types = self.get_header('types', list)
+		data = {}
+
+		if not types or 'regions' in types:
+			cities_obj = {}
+			regions_dir = os.path.join(sc4mp_server_path, 'Regions')
+			regions = os.listdir(regions_dir)
+			for region in regions:
+				try:
+					region_db = os.path.join(regions_dir, region, '_Database', 'region.json')
+					with open(region_db, 'r', encoding='utf-8') as f:
+						cities_obj[region] = json.load(f)
+				except Exception as e:
+					show_error(e)
+			data['regions'] = cities_obj
+
+		if not types or 'users' in types:
+			data['users'] = sc4mp_users_database_manager.to_dict()
+
+		if not types or 'clients' in types:
+			data['clients'] = sc4mp_clients_database_manager.to_dict()
+
+		self.respond(status='success')
+		self.c.send_json(data)
+
+
+	def res_admin_command(self):
+
+		self.admin_check()
 
 
 class ServerList(th.Thread):
