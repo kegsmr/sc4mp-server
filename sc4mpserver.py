@@ -2132,7 +2132,7 @@ class RequestHandler(BaseRequestHandler):
 		user_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 		# Close connection and throw error if the user is banned
-		if (user_entry["ban"] or client_entry["ban"]): #TODO check for client bans in server loop
+		if (user_entry["ban"] or client_entry["ban"] or any(sc4mp_users_database_manager.get(u, {}).get("ban") for u in client_entry['users'])): #TODO check for client bans in server loop
 			self.error("You are banned from this server.")
 		
 		# Log the time
