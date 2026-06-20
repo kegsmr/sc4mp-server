@@ -1553,7 +1553,7 @@ class BackupsManager(th.Thread):
 		try:
 			self.prune()
 		except Exception as e:
-			show_error("An error occured while pruning backups.")
+			show_error("An error occurred while pruning backups.")
 
 		# Report creating backups
 		report("Creating backup...", self)
@@ -1941,7 +1941,7 @@ class RegionsManager(th.Thread):
 
 	def get_mtime(self):
 
-		os.path.getmtime(os.path.join(sc4mp_server_path, "Regions"))
+		return os.path.getmtime(os.path.join(sc4mp_server_path, "Regions"))
 			
 
 class FileTablesManager(th.Thread):
@@ -2252,7 +2252,7 @@ class RequestHandler(BaseRequestHandler):
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Enforce max file count and file sizes
-		if len(file_sizes) > 17 or max(file_sizes) > 500000000:
+		if len(file_sizes) > 17 or max(file_sizes or [0]) > 500_000_000:
 			return
 
 		# Set save id
@@ -2279,7 +2279,8 @@ class RequestHandler(BaseRequestHandler):
 
 		# Only allow save pushes of one region
 		if len(regions) > 1:
-			self.respond("Too many regions.")	
+			self.respond(result="Too many regions.")
+			return
 
 		# Loop through regions. Should only loop once since save pushes of multiple regions are filtered out.
 		for region in regions:
