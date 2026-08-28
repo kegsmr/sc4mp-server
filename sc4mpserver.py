@@ -36,10 +36,10 @@ except ImportError:
 from core.config import Config
 from core.database import Database
 from core.dbpf import SC4Savegame
+from core.events import EventChannel
 from core.networking import ClientSocket, ServerSocket, BaseRequestHandler, \
 	NetworkException, ConnectionClosedException
 from core.util import *
-
 
 # Globals
 
@@ -822,6 +822,7 @@ class Server(th.Thread):
 		self.prep_regions() 
 		self.prep_backups()
 		self.prep_server_list()
+		self.prep_events()
 		# self.prep_upnp()
 
 	
@@ -882,7 +883,7 @@ class Server(th.Thread):
 							client_requests.setdefault(host, 0)
 							client_requests[host] += 1
 
-						report("Connection accepted with " + str(host) + ":" + str(port) + ".")
+						# report(f"Connection accepted with {host}.")
 
 						self.log_client(c)
 
@@ -1442,7 +1443,6 @@ class Server(th.Thread):
 
 
 	def prep_server_list(self):
-		
 
 		if sc4mp_nostart:
 			return
@@ -1455,6 +1455,17 @@ class Server(th.Thread):
 		global sc4mp_server_list
 		sc4mp_server_list = ServerList()
 		sc4mp_server_list.start()
+
+
+	def prep_events(self):
+
+		if sc4mp_nostart:
+			return
+
+		report("Preparing events channel...")
+
+		global sc4mp_event_channel
+		sc4mp_event_channel = EventChannel()
 
 
 	def prep_upnp(self):
@@ -1881,6 +1892,17 @@ class RegionsManager(th.Thread):
 									# Report success
 									self.outputs[save_id] = "ok"
 
+									# Push channel event
+									sc4mp_event_channel.push(
+										'save', {
+											'user_id': user_id,
+											'save_id': save_id,
+											'region': region,
+											'coords': (savegameX, savegameY)
+										},
+										exclude=[user_id]
+									)
+
 							except Exception as e:
 
 								# Report an error to the request handler
@@ -2043,6 +2065,8 @@ class RequestHandler(BaseRequestHandler):
 		
 		super().__init__(c, private=sc4mp_config["SECURITY"]["private"])
 
+		self.user_id = None
+
 
 	def run(self):
 
@@ -2054,17 +2078,11 @@ class RequestHandler(BaseRequestHandler):
 
 			try:
 
-				while sc4mp_server_running:
+				self.recv_request()
 
-					try:
-						command, headers = self.recv_request()
-					except ConnectionClosedException:
-						break
+				print(f"{self.address} - {self.command}")
 
-					print(f"Request: {command!r}")
-					# print(f"Request: {command!r} {headers!r}")
-
-					self.handle_request()
+				self.handle_request()
 
 			except ServerException as e:
 
@@ -2441,6 +2459,34 @@ class RequestHandler(BaseRequestHandler):
 		else:
 			self.error("Server has no loading background.")
 
+
+	def res_subscribe(self):
+
+		if not self.user_id:
+			self.error("Invalid user ID.")
+
+		try:
+
+			sc4mp_event_channel.subscribe(self.user_id)
+			self.respond(status='success')
+
+			while sc4mp_server_running:
+				try:
+					self.respond(
+						events=sc4mp_event_channel.listen(self.user_id)
+					)
+				except NetworkException:
+					break
+
+		except Exception:
+
+			self.error(
+				message='An unexpected error occurred in the event channel.'
+			)
+
+		finally:
+
+			sc4mp_event_channel.unsubscribe(self.user_id)
 
 class ServerList(th.Thread):
 
