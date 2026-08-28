@@ -24,379 +24,245 @@ To compile the source code, run the `setup.py` script.
 
 This section is meant for developers using the SC4MP protocol. Here you can find examples of requests and responses from the server, useful for creating a server scanner or client appplication for the SC4MP network.
 
-**WARNING**: This protocol is slated to be completely rewritten in v0.9.
+The SC4MP protocol is a lightweight, binary-framed JSON-based protocol designed for reliable TCP communication between SC4MP clients and servers. All messages begin with a **16-byte fixed header** followed by a variable-length JSON payload.
 
-## Add server
-Adds the requesting server to the requested server's server list queue.
-
-#### Request
-```
-add_server <port>
-```
-
-#### Response
-none
+Communication uses **request-response** semantics — every client request expects a corresponding server response with the same command code.
 
 
-## Check password
-Returns "y" if the password provided is correct, otherwise "n".
+---
 
-#### Request
-```
-check_password <password>
-```
+## Message Structure
 
-#### Response
-```
-y
-```
-or
-```
-n
-```
+| Section | Size | Description |
+|----------|------|-------------|
+| Protocol Identifier | 5 bytes | Always `"SC4MP"` |
+| Message Type | 3 bytes | `"Req"` for requests, `"Res"` for responses |
+| Command Code | 6 bytes | ASCII command name, null-padded |
+| Header Length | 2 bytes | Unsigned short (`H`), specifies length of JSON payload |
+| Headers | Variable | UTF-8 JSON-encoded key-value pairs |
 
 
-## Info
-Returns server info in a JSON dictionary.
+---
 
-#### Request
-```
-info
+## Commands
+
+### COMMAND_ADD_SERVER (`AddSrv`)
+Adds the requesting server to another server’s list.
+
+**Request:**
+```json
+{"host": "<hostname>", "port": <port>}
 ```
 
-#### Response
+**Response:**
+```json
+{"status": "success"}
 ```
-{  
-    "server_id": <server_id>,  
-    "server_name": <server_name>,  
-    "server_description": <server_description>,  
-    "server_url": <server_url>,  
-    "server_version": <server_version>,  
-    "private": <private>,  
-    "password_enabled": <password_enabled>,  
-    "user_plugins_enabled": <user_plugins_enabled>  
+
+---
+
+### COMMAND_CHECK_PASSWORD (`ChkPwd`)
+Verifies a server password.
+
+**Request:**
+```json
+{"password": "<password>"}
+```
+
+**Response:**
+```json
+{"status": "success"}  // or {"status": "failure"}
+```
+
+---
+
+### COMMAND_INFO (`Info`)
+Retrieves general server information.
+
+**Request:**
+```json
+{}
+```
+
+**Response:**
+```json
+{
+  "server_id": "<string>",
+  "server_name": "<string>",
+  "server_description": "<string>",
+  "server_url": "<string>",
+  "server_version": "<string>",
+  "private": <bool>,
+  "password_enabled": <bool>,
+  "user_plugins_enabled": <bool>
 }
 ```
 
+---
 
-## Password enabled
-Returns "y" if the server requires a password, otherwise "n".
+### COMMAND_PASSWORD_ENABLED (`PwdEnb`)
+Checks if the server requires a password.
 
-#### Request
-```
-password_enabled
-```
-
-#### Response
-```
-y
-```
-or
-```
-n
+**Response:**
+```json
+{"password_enabled": true}
 ```
 
+---
 
-## Ping
-Returns "pong".
+### COMMAND_PING (`Ping`)
+Verifies connectivity.
 
-#### Request
-```
-ping
-```
-
-#### Response
-```
-pong
+**Response:**
+```json
+{}
 ```
 
+---
 
-## Plugins
-Requests plugins from the server.
+### COMMAND_PLUGINS_TABLE (`PlgTbl`)
+Retrieves a list of available plugin files.
 
-#### Request
-```
-plugins
-```
-or
-```
-plugins <version> <user_id> <password>
-```
-
-#### Response
-```
+**Response:**
+```json
 [
-	[<file_1_md5>, <file_1_size>, <file_1_relpath>],
-	[<file_2_md5>, <file_2_size>, <file_2_relpath>],
-	...
-	[<file_n_md5>, <file_n_size>, <file_n_relpath>]
+  ["<md5>", <filesize>, "<relative_path>"],
+  ...
 ]
 ```
 
-#### Request
-```
+---
+
+### COMMAND_PLUGINS_DATA (`PlgDat`)
+Requests actual plugin data after receiving a plugin table.
+
+**Request:**
+```json
 [
-    [<file_1_md5>, <file_1_size>, <file_1_relpath>],
-    [<file_2_md5>, <file_2_size>, <file_2_relpath>],
-    ...
-    [<file_n_md5>, <file_n_size>, <file_n_relpath>]
+  ["<md5>", <filesize>, "<relative_path>"],
+  ...
 ]
 ```
 
-#### Response
-```
-<file_1_data>
-<file_2_data>
-...
-<file_n_data>
+**Response:**
+Raw file data stream matching the table entries.
+
+---
+
+### COMMAND_PRIVATE (`Prv`)
+Indicates whether plugin and region access requires authentication.
+
+**Response:**
+```json
+{"private": true}
 ```
 
+---
 
-## Private
-Returns "y" if the server's plugins and regions require a request header, otherwise "n".
+### COMMAND_REGIONS_TABLE (`RgnTbl`)
+Retrieves a list of available region files.
 
-#### Request
-```
-private
-```
-
-#### Response
-```
-y
-```
-or
-```
-n
-```
-
-
-## Regions
-Requests regions from the server.
-
-#### Request
-```
-regions
-```
-or
-```
-regions <version> <user_id> <password>
-```
-
-#### Response
-```
+**Response:**
+```json
 [
-	[<file_1_md5>, <file_1_size>, <file_1_relpath>],
-	[<file_2_md5>, <file_2_size>, <file_2_relpath>],
-	...
-	[<file_n_md5>, <file_n_size>, <file_n_relpath>]
+  ["<md5>", <filesize>, "<relative_path>"],
+  ...
 ]
 ```
 
-#### Request
-```
+---
+
+### COMMAND_REGIONS_DATA (`RgnDat`)
+Requests actual region data after receiving a region table.
+
+**Request:**
+```json
 [
-    [<file_1_md5>, <file_1_size>, <file_1_relpath>],
-    [<file_2_md5>, <file_2_size>, <file_2_relpath>],
-    ...
-    [<file_n_md5>, <file_n_size>, <file_n_relpath>]
+  ["<md5>", <filesize>, "<relative_path>"],
+  ...
 ]
 ```
 
-#### Response
-```
-<file_1_data>
-<file_2_data>
-...
-<file_n_data>
+**Response:**
+Raw file data stream matching the table entries.
+
+---
+
+### COMMAND_SAVE (`Save`)
+Pushes a region save to the server.
+
+**Sequence:**
+1. Request with version and user authentication headers.
+2. Send file table JSON array.
+3. Send raw file data.
+4. Server responds with:
+```json
+{"result": "ok"}
 ```
 
+---
 
-## Save
-Pushes a save to the server.
+### COMMAND_SERVER_LIST (`SrvLst`)
+Retrieves the global SC4MP server list.
 
-#### Request
-```
-save <version> <user_id> <password>
-```
-
-#### Response
-```
-ok
-```
-
-#### Request
-```
+**Response:**
+```json
 [
-	<region_name>,
-	[
-		<file_1_size>,
-		<file_2_size>,
-		...
-		<file_n_size>
-	]
+  ["<host1>", <port1>],
+  ["<host2>", <port2>],
+  ...
 ]
 ```
 
-#### Response
-```
-ok
+---
+
+### COMMAND_USER_ID (`UserId`)
+Validates user identity by checking a hashed token.
+
+**Request:**
+```json
+{"hash": "<sha256(user_id + token)>"} 
 ```
 
-#### Request
-```
-<data>
-```
-
-#### Response
-```
-<message>
+**Response:**
+```json
+{"user_id": "<uuid>"}
 ```
 
+---
 
-## Server description
-Returns the server description.
+### COMMAND_TOKEN (`Token`)
+Requests a random token for authentication.
 
-#### Request
-```
-server_description
-```
-
-#### Response
-```
-<server_description>
+**Request:**
+```json
+{"user_id": "<uuid>"}
 ```
 
-
-## Server ID
-Returns the server ID.
-
-#### Request
-```
-server_id
+**Response:**
+```json
+{"token": "<random_string>"}
 ```
 
-#### Response
-```
-<server_id>
+---
+
+### COMMAND_TIME (`Time`)
+Retrieves the current server time.
+
+**Response:**
+```json
+{"time": "YYYY-MM-DD HH:MM:SS"}
 ```
 
+---
 
-## Server list
-Returns the server list in a 2d JSON array.
+### COMMAND_LOADING_BACKGROUND (`LdgBkg`)
+Retrieves the loading background image data.
 
-#### Request
+**Response:**
+```json
+{"size": <integer>}
 ```
-server_list
-```
+Followed by a binary payload of `<size>` bytes.
 
-#### Response
-```
-[  
-    [<server_1_host>, <server_1_port>],  
-    [<server_2_host>, <server_2_port>],  
-    ...  
-    [<server_n_host>, <server_n_port>]  
-]  
-```
-
-
-## Server name
-Returns the server name.
-
-#### Request
-```
-server_name
-```
-
-#### Response
-```
-<server_name>
-```
-
-
-## Server URL
-Returns the server URL.
-
-#### Request
-```
-server_url
-```
-
-#### Response
-```
-<server_url>
-```
-
-
-## Server version
-Returns the version of the SC4MP Server that the server is running on.
-
-#### Request
-```
-server_version
-```
-
-#### Response
-```
-<server_version as major.minor.patch>
-```
-
-
-## Time
-Returns the time in the server's timezone.
-
-#### Request
-```
-time
-```
-
-#### Response
-```
-<time as Y-m-d H:M:S>
-```
-
-
-## Token
-Returns a radomized token that is used for server verification.
-
-#### Request
-```
-token <version> <user_id> <password>
-```
-
-#### Response
-```
-<token>
-```
-
-
-## User ID
-Returns a user_id from an SHA-256 hash of a concatenation of the user_id and client-side token. Used to verify that the server has the user ID on record.
-
-#### Request
-```
-user_id <hash>
-```
-
-#### Response
-```
-<user_id>
-```
-
-
-## User plugins enabled
-Returns "y" if user plugins are permitted, otherwise "n".
-
-#### Request
-```
-user_plugins_enabled
-```
-
-#### Response
-```
-y
-```
-or
-```
-n
-```
+---
