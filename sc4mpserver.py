@@ -2248,7 +2248,11 @@ class RequestHandler(BaseRequestHandler):
 
 		# Receive region name, file sizes
 		region, file_sizes = c.recv_json()
-		region = sanitize_directory_name(region)
+		try:
+			region = sanitize_directory_name(region)
+		except ValueError as e:
+			self.respond(result=f"Invalid region name: {e}")
+			return
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Enforce max file count and file sizes
