@@ -2085,8 +2085,8 @@ class FileTablesManager(th.Thread):
 		# Loop through all file tables
 		for rootpath, filetable in self.filetables.items():
 			
-			# Loop through file table and check for missing files and files which have changed size
-			for entry in filetable:
+			# Loop through file table and check for missing files and files which have changed size (iterate over a copy since entries are removed)
+			for entry in list(filetable):
 				checksum, size, relpath = entry
 				fullpath = os.path.join(rootpath, relpath)
 				if not os.path.exists(fullpath):
