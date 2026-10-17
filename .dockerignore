@@ -1,0 +1,14 @@
+.git
+.github
+.vscode
+__pycache__
+*.pyc
+/builds
+/dist
+/dist32
+/dist64
+/setupbuilds
+/temp
+/logs
+/_SC4MP*
+/_Server*

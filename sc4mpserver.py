@@ -637,6 +637,38 @@ def update_config_constants(config):
 	SC4MP_SERVER_DESCRIPTION = config['INFO']['server_description']
 
 
+def apply_config_environment_variables(config):
+	"""Overrides config values with `SC4MP_<SECTION>_<OPTION>` environment variables (e.g. `SC4MP_NETWORK_PORT=7240`). Overrides are not written to the config file."""
+
+	for section_name, section in config.data.items():
+		for item_name, item_value in section.items():
+
+			variable_name = f"SC4MP_{section_name}_{item_name}".upper()
+			value = os.environ.get(variable_name)
+
+			if value is None:
+				continue
+
+			try:
+				if value in ("true", "True", "TRUE"):
+					value = True
+				elif value in ("false", "False", "FALSE"):
+					value = False
+				elif value in ("none", "None", "NONE"):
+					value = None
+				elif item_value is not None:
+					value = type(item_value)(value)
+			except Exception as e:
+				show_error(f"Invalid value for environment variable `{variable_name}`. Using the config file value instead.\n\n{e}")
+				continue
+
+			section[item_name] = value
+
+			report(f"- using environment variable `{variable_name}`")
+
+	update_config_constants(config)
+
+
 def restore(filename):
 	
 	possible_paths = [
@@ -1052,6 +1084,9 @@ class Server(th.Thread):
 		report("Loading config...")
 		
 		sc4mp_config = Config(SC4MP_CONFIG_PATH, SC4MP_CONFIG_DEFAULTS, error_callback=show_error, update_constants_callback=update_config_constants)
+
+		# Override config values with environment variables (useful when running in a container)
+		apply_config_environment_variables(sc4mp_config)
 
 		# System tray icon
 		global sc4mp_system_tray_icon_manager

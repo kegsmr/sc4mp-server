@@ -10,6 +10,29 @@ Download and run the installer from the [latest release](https://github.com/kegs
 Alternatively, use the [SC4MP Server Dockerizer](https://github.com/andreRBarata/sc4mp-server-docker) by [andreRBarata](https://github.com/andreRBarata) and deploy your server as a [Docker](https://www.docker.com/) container.
 
 
+# Docker
+
+The server can be run as a [Docker](https://www.docker.com/) container using the included `Dockerfile`:
+
+```sh
+docker compose up -d
+```
+
+The server directory (config, plugins, regions, databases and backups) is stored in the `/data` volume, which `docker-compose.yml` maps to `./data`. Port `7240` must be reachable from the internet for players to connect.
+
+Any option in `serverconfig.ini` can be overridden with an environment variable named `SC4MP_<SECTION>_<OPTION>`, for example:
+
+| Variable | Config option |
+|----------|---------------|
+| `SC4MP_NETWORK_PORT` | `[NETWORK] port` |
+| `SC4MP_INFO_SERVER_NAME` | `[INFO] server_name` |
+| `SC4MP_SECURITY_PASSWORD_ENABLED` | `[SECURITY] password_enabled` |
+| `SC4MP_SECURITY_PASSWORD` | `[SECURITY] password` |
+| `SC4MP_RULES_CLAIM_DURATION` | `[RULES] claim_duration` |
+
+Environment variables take priority over `serverconfig.ini` and are not written to it. If you change the port, map the same port in `docker-compose.yml` (e.g. `"7241:7241"`) so the server's announced port matches.
+
+
 # Usage
 
 Follow the instructions included in the `Readme.html` file.
