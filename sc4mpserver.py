@@ -566,6 +566,7 @@ def send_filestream(c, rootpath):
 	for item in ft:
 		if not item in filetable:
 			c.close()
+			return
 	filetable = ft
 
 	# Loop through the filetable and send the respective data
