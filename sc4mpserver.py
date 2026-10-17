@@ -406,10 +406,13 @@ def set_savegame_data(entry, savegame: SC4Savegame):
 
 def update_json(filename, data):
 	
-	with open(filename, 'w') as file:
-		file.seek(0)
+	# Write to a temporary file first so a crash or error mid-write can't truncate the original
+	temp_filename = f"{filename}.tmp"
+	with open(temp_filename, 'w') as file:
 		json.dump(data, file, indent=4)
-		file.truncate()
+		file.flush()
+		os.fsync(file.fileno())
+	os.replace(temp_filename, filename)
 
 
 def package_plugins_and_regions():
@@ -1608,10 +1611,13 @@ class BackupsManager(th.Thread):
 
 	def update_json(self, filename, data):
 		
-		with open(filename, 'w') as file:
-			file.seek(0)
+		# Write to a temporary file first so a crash or error mid-write can't truncate the original
+		temp_filename = f"{filename}.tmp"
+		with open(temp_filename, 'w') as file:
 			json.dump(data, file, indent=4)
-			file.truncate()
+			file.flush()
+			os.fsync(file.fileno())
+		os.replace(temp_filename, filename)
 
 
 	def backup(self): #TODO stop backing up the backups subdirectory
@@ -1790,10 +1796,13 @@ class DatabaseManager(th.Thread):
 	
 	def update_json(self, filename, data):
 		
-		with open(filename, 'w') as file:
-			file.seek(0)
+		# Write to a temporary file first so a crash or error mid-write can't truncate the original
+		temp_filename = f"{filename}.tmp"
+		with open(temp_filename, 'w') as file:
 			json.dump(data, file, indent=4)
-			file.truncate()
+			file.flush()
+			os.fsync(file.fileno())
+		os.replace(temp_filename, filename)
 
 
 class RegionsManager(th.Thread):
@@ -2033,10 +2042,13 @@ class RegionsManager(th.Thread):
 	
 	def update_json(self, filename, data):
 		
-		with open(filename, 'w') as file:
-			file.seek(0)
+		# Write to a temporary file first so a crash or error mid-write can't truncate the original
+		temp_filename = f"{filename}.tmp"
+		with open(temp_filename, 'w') as file:
 			json.dump(data, file, indent=4)
-			file.truncate()
+			file.flush()
+			os.fsync(file.fileno())
+		os.replace(temp_filename, filename)
 
 
 	def get_mtime(self):
