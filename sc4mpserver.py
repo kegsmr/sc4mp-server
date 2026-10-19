@@ -2464,7 +2464,7 @@ class RequestHandler(th.Thread):
 		c.sendall(b"ok")
 
 		# Set save id
-		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id)
+		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id + "_" + os.urandom(4).hex())	# unique, even for pushes by the same user in the same second
 		self.save_id = save_id
 
 		# Receive files
