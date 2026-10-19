@@ -73,6 +73,10 @@ SC4MP_BUFFER_SIZE = 4096
 
 SC4MP_DELAY = .1
 
+SC4MP_CHAT_HISTORY = 20		# recent chat messages sent to players when they join
+SC4MP_CHAT_MAX_LENGTH = 200
+SC4MP_CHAT_DELAY = 1		# seconds a player has to wait between chat messages
+
 SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
 		("host", "0.0.0.0"),
@@ -1486,6 +1490,11 @@ class Server(th.Thread):
 		global sc4mp_event_channel
 		sc4mp_event_channel = EventChannel()
 
+		# Recent chat messages (sent to players when they subscribe) and when each user last sent one
+		global sc4mp_chat_history, sc4mp_chat_times
+		sc4mp_chat_history = deque(maxlen=SC4MP_CHAT_HISTORY)
+		sc4mp_chat_times = {}
+
 
 	def prep_upnp(self):
 
@@ -2511,7 +2520,9 @@ class RequestHandler(BaseRequestHandler):
 		if not self.user_id:
 			self.error("Invalid user ID.")
 
-		subscription_id = sc4mp_event_channel.subscribe(self.user_id)
+		subscription_id = sc4mp_event_channel.subscribe(
+			self.user_id, events=list(sc4mp_chat_history)
+		)
 
 		try:
 
@@ -2534,6 +2545,64 @@ class RequestHandler(BaseRequestHandler):
 		finally:
 
 			sc4mp_event_channel.unsubscribe(subscription_id)
+
+
+	def res_chat(self):
+
+		# Remove control characters and extra whitespace
+		message = " ".join(
+			"".join(
+				character if character.isprintable() else " "
+				for character in self.get_header('message', str)
+			).split()
+		)
+
+		if not message:
+			self.error("Empty message.")
+		if len(message) > SC4MP_CHAT_MAX_LENGTH:
+			self.error(f"Messages can't be longer than {SC4MP_CHAT_MAX_LENGTH} characters.")
+
+		now = time.time()
+		if now - sc4mp_chat_times.get(self.user_id, 0) < SC4MP_CHAT_DELAY:
+			self.error("You're sending messages too quickly.")
+		sc4mp_chat_times[self.user_id] = now
+
+		# The name is the mayor name of the user's latest claim, so players can't pretend to be someone else
+		name = self.get_mayor_name(self.user_id)
+
+		report(f"[CHAT] {name} ({self.user_id[:8]}): {message}")
+
+		event = {
+			'user_id': self.user_id,
+			'name': name,
+			'message': message,
+			'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+		}
+		sc4mp_chat_history.append({'event': 'chat', **event})
+		sc4mp_event_channel.push('chat', event)
+
+		self.respond(status='success')
+
+
+	def get_mayor_name(self, user_id):
+
+		name = None
+		modified = ""
+
+		regions_path = os.path.join(sc4mp_server_path, "Regions")
+		for region in os.listdir(regions_path):
+			try:
+				data = load_json(os.path.join(regions_path, region, "_Database", "region.json"))
+			except Exception:
+				continue
+			for entry in data.values():
+				if entry is None or entry.get("owner") != user_id or not entry.get("mayor_name"):
+					continue
+				if (entry.get("modified") or "") >= modified:
+					name = entry["mayor_name"]
+					modified = entry.get("modified") or ""
+
+		return name or f"Mayor {user_id[:4]}"
 
 
 class ServerList(th.Thread):
