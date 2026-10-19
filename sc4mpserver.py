@@ -74,7 +74,7 @@ SC4MP_BUFFER_SIZE = 4096
 SC4MP_DELAY = .1
 
 SC4MP_CHAT_MAX_LENGTH = 200
-SC4MP_CHAT_DELAY = 1		# seconds a player has to wait between chat messages
+SC4MP_CHAT_RATE = (5, 5)	# players can send this many chat messages in this many seconds
 
 SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
@@ -2606,9 +2606,11 @@ class RequestHandler(BaseRequestHandler):
 			self.error(f"Messages can't be longer than {SC4MP_CHAT_MAX_LENGTH} characters.")
 
 		now = time.time()
-		if now - sc4mp_chat_times.get(self.user_id, 0) < SC4MP_CHAT_DELAY:
-			self.error("You're sending messages too quickly.")
-		sc4mp_chat_times[self.user_id] = now
+		count, seconds = SC4MP_CHAT_RATE
+		times = [t for t in sc4mp_chat_times.get(self.user_id, []) if now - t < seconds]
+		if len(times) >= count:
+			self.error("You're sending messages too quickly. Wait a few seconds.")
+		sc4mp_chat_times[self.user_id] = times + [now]
 
 		# The name comes from the user's claims, so players can't pretend to be someone else
 		name = self.get_chat_name(self.user_id)
@@ -3223,7 +3225,12 @@ class Logger():
 			output = color + timestamp + label + msg_type + message
 
 		# Print
-		self.terminal.write(output)
+		try:
+			self.terminal.write(output)
+		except UnicodeEncodeError:
+			# The console can't show some characters (eg. emoji in a chat message on a cp1252 console)
+			encoding = getattr(self.terminal, "encoding", None) or "ascii"
+			self.terminal.write(output.encode(encoding, errors="replace").decode(encoding))
 		with open(self.log, "a", encoding='utf-8') as log:
 			log.write(output)
 			log.close()  
