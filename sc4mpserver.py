@@ -2147,6 +2147,9 @@ class RequestHandler(th.Thread):
 		
 		self.c = c
 
+		# Set by `save()`, so its temporary files can be purged if the save is rejected
+		self.save_id = None
+
 
 	def run(self):
 		
@@ -2552,13 +2555,11 @@ class RequestHandler(th.Thread):
 	def purge_temp_files(self):
 		"""Deletes the temporary files of a save push that was never passed to the regions manager."""
 
-		save_id = getattr(self, "save_id", None)
-
 		# Saves passed to the regions manager are cleaned up by the regions manager
-		if save_id is None or save_id in sc4mp_regions_manager.outputs:
+		if self.save_id is None or self.save_id in sc4mp_regions_manager.outputs:
 			return
 
-		shutil.rmtree(os.path.join(sc4mp_server_path, "_Temp", "inbound", save_id), ignore_errors=True)
+		shutil.rmtree(os.path.join(sc4mp_server_path, "_Temp", "inbound", self.save_id), ignore_errors=True)
 
 
 	def add_server(self, c, port):
