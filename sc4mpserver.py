@@ -3297,7 +3297,12 @@ class Logger():
 			output = color + timestamp + label + msg_type + message
 
 		# Print
-		self.terminal.write(output)
+		try:
+			self.terminal.write(output)
+		except UnicodeEncodeError:
+			# The console can't show some characters (eg. emoji on a cp1252 console)
+			encoding = getattr(self.terminal, "encoding", None) or "ascii"
+			self.terminal.write(output.encode(encoding, errors="replace").decode(encoding))
 		with open(self.log, "a", encoding='utf-8') as log:
 			log.write(output)
 			log.close()  
