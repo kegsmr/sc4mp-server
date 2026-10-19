@@ -1,0 +1,31 @@
+# Words hidden in chat when chat_filter is turned on in serverconfig.ini (they're replaced with asterisks).
+# One word or phrase per line, matched as whole words and ignoring case.
+# End a word with * to also match longer words starting with it (eg. "fuck*" also hides "fucking").
+# Lines starting with # are ignored. Changes apply right away, without restarting the server.
+fuck*
+motherfuck*
+shit*
+bullshit*
+bitch*
+cunt*
+ass
+asses
+asshole*
+dick
+dicks
+dickhead*
+cock
+cocks
+pussy
+pussies
+bastard*
+whore*
+slut*
+twat*
+wank*
+fag
+fags
+faggot*
+nigger*
+nigga*
+retard*

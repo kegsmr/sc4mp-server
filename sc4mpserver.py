@@ -115,6 +115,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	("CHAT", [
 		("chat_enabled", True),
 		("chat_history", 1000),		# recent chat messages sent to players when they join
+		("chat_filter", True),		# hide the words in `chat_filter.txt`
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 6),
@@ -1495,7 +1496,8 @@ class Server(th.Thread):
 		sc4mp_event_channel = EventChannel()
 
 		# Recent chat messages (sent to players when they subscribe), kept in `_Database/chat.jsonl` across restarts, and when each user last sent one
-		global sc4mp_chat_history, sc4mp_chat_times, sc4mp_chat_lock
+		global sc4mp_chat_history, sc4mp_chat_times, sc4mp_chat_lock, sc4mp_chat_filter
+		sc4mp_chat_filter = None
 		sc4mp_chat_history = deque(maxlen=max(0, int(sc4mp_config["CHAT"]["chat_history"] or 0)))
 		sc4mp_chat_times = {}
 		sc4mp_chat_lock = th.Lock()
@@ -2616,6 +2618,8 @@ class RequestHandler(BaseRequestHandler):
 			self.error("You're sending messages too quickly. Wait a few seconds.")
 		sc4mp_chat_times[self.user_id] = times + [now]
 
+		message = self.filter_chat(message)
+
 		# The name comes from the user's claims, so players can't pretend to be someone else
 		name = self.get_chat_name(self.user_id)
 
@@ -2641,10 +2645,51 @@ class RequestHandler(BaseRequestHandler):
 		self.respond(status='success')
 
 
+	@staticmethod
+	def filter_chat(text):
+		"""Replaces the words in `chat_filter.txt` with asterisks, if the chat filter is turned on. The file is created from the default list if missing, and reloaded when it changes."""
+
+		global sc4mp_chat_filter
+
+		if not sc4mp_config["CHAT"]["chat_filter"]:
+			return text
+
+		try:
+
+			filename = os.path.join(sc4mp_server_path, "chat_filter.txt")
+			if not os.path.exists(filename):
+				shutil.copy(get_sc4mp_path("chat_filter.txt"), filename)
+
+			mtime = os.path.getmtime(filename)
+			if sc4mp_chat_filter is None or sc4mp_chat_filter[0] != mtime:
+				words = []
+				with open(filename, encoding="utf-8") as file:
+					for line in file:
+						word = line.strip()
+						if not word or word.startswith("#"):
+							continue
+						if word.endswith("*"):
+							words.append(re.escape(word[:-1].strip()) + r"\w*")
+						else:
+							words.append(re.escape(word))
+				words.sort(key=len, reverse=True)
+				pattern = re.compile(r"(?<!\w)(?:" + "|".join(words) + r")(?!\w)", re.IGNORECASE) if words else None
+				sc4mp_chat_filter = (mtime, pattern)
+
+			pattern = sc4mp_chat_filter[1]
+			if pattern is None:
+				return text
+			return pattern.sub(lambda match: "*" * len(match.group(0)), text)
+
+		except Exception as e:
+			show_error(f"An error occurred while filtering a chat message.\n\n{e}")
+			return text
+
+
 	def get_chat_name(self, user_id):
 		"""Returns the user's name in chat: the mayor name of their latest claim (or "Defacto", SC4's default mayor name), with a number if another user already has that name (eg. "Defacto (1)")."""
 
-		mayor_name = self.get_mayor_name(user_id) or "Defacto"
+		mayor_name = self.filter_chat(self.get_mayor_name(user_id) or "") or "Defacto"
 
 		with sc4mp_chat_lock:
 
