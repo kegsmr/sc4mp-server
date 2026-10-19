@@ -171,8 +171,6 @@ def main():
 		# -s / --server-path argument
 		global sc4mp_server_path
 		if args.server_path:
-			if not sc4mp_force_update:
-				sc4mp_skip_update = True
 			sc4mp_server_path = args.server_path
 			os.makedirs(sc4mp_server_path, exist_ok=True)
 
@@ -195,6 +193,9 @@ def main():
 
 		# If there's another server running from the same directory, kill it
 		prevent_multiple()
+
+		# Record this server, so an update can stop and restart every server running from this executable
+		register_instance()
 
 		# Exit if --stop argument is provided
 		if args.stop:
@@ -290,6 +291,81 @@ def prevent_multiple():
 		except Exception as e:
 
 			raise ServerException(f"Failed to terminate the server process already running.\n\n{e}") from e
+
+
+def register_instance():
+	"""Records this server's process and arguments next to the executable (Windows distribution only)."""
+
+	if is_windows() and is_frozen():
+
+		try:
+
+			pid = os.getpid()
+
+			os.makedirs("_Instances", exist_ok=True)
+
+			update_json(os.path.join("_Instances", f"{pid}.json"), {
+				"pid": pid,
+				"creation": datetime.strftime(get_process_creation_time(pid), "%Y%m%d%H%M%S"),
+				"args": sys.argv[1:],
+			})
+
+		except Exception as e:
+
+			show_error(f"Failed to register the server instance.\n\n{e}", no_ui=True)
+
+
+def get_other_instances():
+	"""Returns the arguments of the other servers currently running from this executable, by PID."""
+
+	instances = {}
+
+	if os.path.exists("_Instances"):
+
+		for filename in os.listdir("_Instances"):
+
+			path = os.path.join("_Instances", filename)
+
+			try:
+
+				instance = load_json(path)
+
+				pid = instance["pid"]
+				if pid == os.getpid():
+					continue
+
+				# The PID may have been reused by another process, so compare creation times too
+				try:
+					creation = datetime.strftime(get_process_creation_time(pid), "%Y%m%d%H%M%S")
+				except Exception:
+					creation = None
+
+				if creation == instance["creation"]:
+					instances[pid] = instance["args"]
+				else:
+					os.unlink(path)	# not running anymore
+
+			except Exception as e:
+
+				show_error(f"Failed to read the server instance at \"{path}\".\n\n{e}", no_ui=True)
+
+	return instances
+
+
+def acquire_update_lock():
+	"""Creates `updater.lock` next to the executable. Returns `False` if another server is already updating."""
+
+	try:
+		if time.time() - os.path.getmtime("updater.lock") > 3600:
+			os.unlink("updater.lock")	# left over from an update that didn't finish
+	except FileNotFoundError:
+		pass
+
+	try:
+		os.close(os.open("updater.lock", os.O_CREAT | os.O_EXCL))
+		return True
+	except FileExistsError:
+		return False
 
 
 def prep():
@@ -1152,6 +1228,11 @@ class Server(th.Thread):
 					# Download the update if the version doesn't match
 					if sc4mp_force_update or unformat_version(latest_release_info["tag_name"]) > unformat_version(SC4MP_VERSION):
 
+						# Only one server running from this executable can install the update (e.g. when several start together); it restarts the others
+						if not acquire_update_lock():
+							print("Another server running from this executable is installing the update.")
+							return
+
 						# Local function for update thread
 						def update():
 							
@@ -1222,39 +1303,65 @@ class Server(th.Thread):
 								# Report installing update
 								report("Installing update...")
 
-								# Create `updater.bat``								
-								args = sys.argv
-								args.pop(0)
-								if "-u" in args:
-									args.remove("-u")
-								if "--force-update" in args:
-									args.remove("--force-update")
-								if "-k" not in args and "--skip-update" not in args:
-									args.append("-k")	# so a failed install relaunches the current version instead of updating again in a loop
+								# Arguments to relaunch a server with after the update
+								def relaunch_args(args):
+									args = [arg for arg in args if arg not in ("-u", "--force-update")]
+									if "-k" not in args and "--skip-update" not in args:
+										args.append("-k")	# so a failed install relaunches the current version instead of updating again in a loop
+									return subprocess.list2cmdline(args)
+
+								# Other servers running from this executable, which have to be stopped for the installer and started again afterwards
+								other_instances = get_other_instances()
+
+								# Create `updater.bat`
+								lines = [
+									"@echo off\n",
+									f"cd /d \"{os.getcwd()}\"\n",
+									"echo Waiting for the server to exit...\n",
+									f":wait{os.getpid()}\n",
+									f"tasklist /fi \"PID eq {os.getpid()}\" | find \"{os.getpid()}\" >nul && (timeout /t 1 /nobreak >nul & goto wait{os.getpid()})\n",	# the installer can't replace files the server still has open
+								]
+								for pid in other_instances:
+									lines += [
+										f"echo Stopping server {pid}...\n",
+										f"TASKKILL /F /PID {pid} >nul 2>&1\n",
+										f":wait{pid}\n",
+										f"tasklist /fi \"PID eq {pid}\" | find \"{pid}\" >nul && (timeout /t 1 /nobreak >nul & goto wait{pid})\n",
+									]
+								lines += [
+									"echo Running installer...\n",
+									f"cd {destination.parent}\n",
+									f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",
+									"cd ..\n",
+									"del updater.lock\n",
+									"echo Relaunching servers...\n",
+								]
+								for args in other_instances.values():
+									lines += [f"start \"\" {PROCESS_NAME} {relaunch_args(args)}\n"]
+								lines += [f"{PROCESS_NAME} {relaunch_args(sys.argv[1:])}\n"]
 								with open("updater.bat", "w") as batch_file:
-									batch_file.writelines([
-										"@echo off\n",
-										f"cd /d \"{os.getcwd()}\"\n",
-										"echo Waiting for the server to exit...\n",
-										":wait\n",
-										f"tasklist /fi \"PID eq {os.getpid()}\" | find \"{os.getpid()}\" >nul && (timeout /t 1 /nobreak >nul & goto wait)\n",	# the installer can't replace files the server still has open
-										"echo Running installer...\n",
-										f"cd {destination.parent}\n",
-										f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",
-										"cd ..\n",
-										"echo Relaunching server...\n",
-										f"{PROCESS_NAME} {subprocess.list2cmdline(args)}\n"
-									])
+									batch_file.writelines(lines)
 
 								# Start installer in very silent mode and exit
 								subprocess.Popen(["updater.bat"])
+
+								return True
 							
 							except Exception as e:
 
 								show_error(f"An error occurred in the update thread.\n\n{e}", no_ui=True)
 
-						# Run update function
-						update()
+								# Let this or another server try again next time
+								try:
+									os.unlink("updater.lock")
+								except Exception:
+									pass
+
+								return False
+
+						# Run update function, and keep running if it failed
+						if not update():
+							return
 
 						# Stop the system tray icon, since its thread would otherwise keep the process running after `sys.exit()`
 						if sc4mp_system_tray_icon_manager:
