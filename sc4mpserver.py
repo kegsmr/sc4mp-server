@@ -2199,7 +2199,10 @@ class RequestHandler(th.Thread):
 
 				c = self.c
 
-				args = c.recv(SC4MP_BUFFER_SIZE).decode().split(" ")
+				try:
+					args = c.recv(SC4MP_BUFFER_SIZE).decode().split(" ")
+				except UnicodeDecodeError:
+					args = [""]	# not an SC4MP request (e.g. a TLS handshake from a port scanner), so treat it as an invalid request
 
 				request = args[0]
 
