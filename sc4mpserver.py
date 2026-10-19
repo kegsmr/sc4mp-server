@@ -1927,7 +1927,8 @@ class RegionsManager(th.Thread):
 											'user_id': user_id,
 											'save_id': save_id,
 											'region': region,
-											'coords': (savegameX, savegameY)
+											'coords': (savegameX, savegameY),
+											'filename': entry['filename']
 										},
 										exclude=[user_id]
 									)
@@ -2275,17 +2276,15 @@ class RequestHandler(BaseRequestHandler):
 
 	def res_regions_data(self):
 
-		if sc4mp_regions_manager.regions_modified:
-			sc4mp_regions_manager.export_regions = True
-			while sc4mp_regions_manager.export_regions:
-				time.sleep(SC4MP_DELAY)
-			time.sleep(SC4MP_DELAY * 2)
+		self.export_regions()
 
 		self.respond()
 		send_filestream(self.c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
 
 
 	def res_regions_table(self):
+
+		self.export_regions()	# so the table includes saves pushed since the last export
 	
 		self.respond()
 		self.c.send_json(
@@ -2293,6 +2292,15 @@ class RequestHandler(BaseRequestHandler):
 				os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions")
 			)
 		)
+
+
+	def export_regions(self):
+
+		if sc4mp_regions_manager.regions_modified:
+			sc4mp_regions_manager.export_regions = True
+			while sc4mp_regions_manager.export_regions:
+				time.sleep(SC4MP_DELAY)
+			time.sleep(SC4MP_DELAY * 2)
 
 
 	def res_save(self):
@@ -2503,15 +2511,16 @@ class RequestHandler(BaseRequestHandler):
 		if not self.user_id:
 			self.error("Invalid user ID.")
 
+		subscription_id = sc4mp_event_channel.subscribe(self.user_id)
+
 		try:
 
-			sc4mp_event_channel.subscribe(self.user_id)
 			self.respond(status='success')
 
 			while sc4mp_server_running:
 				try:
 					self.respond(
-						events=sc4mp_event_channel.listen(self.user_id)
+						events=sc4mp_event_channel.listen(subscription_id)
 					)
 				except NetworkException:
 					break
@@ -2524,7 +2533,8 @@ class RequestHandler(BaseRequestHandler):
 
 		finally:
 
-			sc4mp_event_channel.unsubscribe(self.user_id)
+			sc4mp_event_channel.unsubscribe(subscription_id)
+
 
 class ServerList(th.Thread):
 
