@@ -1911,6 +1911,11 @@ class RegionsManager(th.Thread):
 								# Get city entry or get & set as empty dict if key does not exist
 								entry = data.setdefault(coords, {})
 
+								# Filter out cities that don't match the region configuration
+								if entry is None:
+									self.outputs[save_id] = "Invalid city location."
+									entry = {}
+
 								# Filter out claims on locked tiles
 								if entry.get("locked", False):
 									self.outputs[save_id] = "Tile is locked."
@@ -1920,10 +1925,6 @@ class RegionsManager(th.Thread):
 									if savegameModeFlag == 0:
 										self.outputs[save_id] = "You must establish a city before claiming a tile."
 								
-								# Filter out cities that don't match the region configuration
-								if entry is None:
-									self.outputs[save_id] = "Invalid city location."
-
 								# Filter out cities of the wrong size
 								if "size" in entry:
 									if (savegameSizeX != savegameSizeY or savegameSizeX != entry["size"]):
@@ -2534,8 +2535,8 @@ class RequestHandler(th.Thread):
 					coords = str(savegameX) + "_" + str(savegameY)
 					data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json"))
 					if coords in data:
-						entry = data[coords]
-						date_subfile_hashes = entry["date_subfile_hashes"]
+						entry = data[coords] or {}
+						date_subfile_hashes = entry.get("date_subfile_hashes", [])
 						new_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
 						if new_date_subfile_hash not in date_subfile_hashes:
 							new_savegames.append(savegame)
