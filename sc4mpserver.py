@@ -73,7 +73,6 @@ SC4MP_BUFFER_SIZE = 4096
 
 SC4MP_DELAY = .1
 
-SC4MP_CHAT_HISTORY = 20		# recent chat messages sent to players when they join
 SC4MP_CHAT_MAX_LENGTH = 200
 SC4MP_CHAT_DELAY = 1		# seconds a player has to wait between chat messages
 
@@ -112,6 +111,10 @@ SC4MP_CONFIG_DEFAULTS = [
 		("max_request_threads", 200),
 		("connection_timeout", 600),
 		("filetable_update_interval", 600),
+	]),
+	("CHAT", [
+		("chat_enabled", True),
+		("chat_history", 1000),		# recent chat messages sent to players when they join
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 6),
@@ -817,6 +820,7 @@ def set_headers(s):
 		claim_duration=sc4mp_config["RULES"]["claim_duration"],
 		max_region_claims=sc4mp_config["RULES"]["max_region_claims"],
 		godmode_filter=sc4mp_config["RULES"]["godmode_filter"],
+		chat_enabled=sc4mp_config["CHAT"]["chat_enabled"],
 		time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 	)
 
@@ -1490,10 +1494,26 @@ class Server(th.Thread):
 		global sc4mp_event_channel
 		sc4mp_event_channel = EventChannel()
 
-		# Recent chat messages (sent to players when they subscribe) and when each user last sent one
-		global sc4mp_chat_history, sc4mp_chat_times
-		sc4mp_chat_history = deque(maxlen=SC4MP_CHAT_HISTORY)
+		# Recent chat messages (sent to players when they subscribe), kept in `_Database/chat.jsonl` across restarts, and when each user last sent one
+		global sc4mp_chat_history, sc4mp_chat_times, sc4mp_chat_lock
+		sc4mp_chat_history = deque(maxlen=max(0, int(sc4mp_config["CHAT"]["chat_history"] or 0)))
 		sc4mp_chat_times = {}
+		sc4mp_chat_lock = th.Lock()
+		chat_filename = os.path.join(sc4mp_server_path, "_Database", "chat.jsonl")
+		try:
+			with open(chat_filename, encoding="utf-8") as file:
+				for line in file:
+					try:
+						sc4mp_chat_history.append(json.loads(line))
+					except Exception:
+						pass	# skip a line that was cut off
+			with open(chat_filename, "w", encoding="utf-8") as file:	# keep only the recent messages
+				for event in sc4mp_chat_history:
+					file.write(json.dumps(event) + "\n")
+		except FileNotFoundError:
+			pass
+		except Exception as e:
+			show_error(f"An error occurred while loading the chat history.\n\n{e}")
 
 
 	def prep_upnp(self):
@@ -2520,8 +2540,11 @@ class RequestHandler(BaseRequestHandler):
 		if not self.user_id:
 			self.error("Invalid user ID.")
 
+		with sc4mp_chat_lock:
+			chat_history = list(sc4mp_chat_history)
+
 		subscription_id = sc4mp_event_channel.subscribe(
-			self.user_id, events=list(sc4mp_chat_history)
+			self.user_id, events=chat_history
 		)
 
 		try:
@@ -2530,9 +2553,8 @@ class RequestHandler(BaseRequestHandler):
 
 			while sc4mp_server_running:
 				try:
-					self.respond(
-						events=sc4mp_event_channel.listen(subscription_id)
-					)
+					for events in self.split_events(sc4mp_event_channel.listen(subscription_id)):
+						self.respond(events=events)
 				except NetworkException:
 					break
 
@@ -2547,7 +2569,27 @@ class RequestHandler(BaseRequestHandler):
 			sc4mp_event_channel.unsubscribe(subscription_id)
 
 
+	@staticmethod
+	def split_events(events, max_size=50000):
+		"""Splits events into lists small enough for a message header (eg. the chat history sent when subscribing). Always yields at least one list, so clients get an empty list when there are no events."""
+
+		chunk = []
+		size = 0
+		for event in events:
+			event_size = len(json.dumps(event)) + 2
+			if chunk and size + event_size > max_size:
+				yield chunk
+				chunk = []
+				size = 0
+			chunk.append(event)
+			size += event_size
+		yield chunk
+
+
 	def res_chat(self):
+
+		if not sc4mp_config["CHAT"]["chat_enabled"]:
+			self.error("Chat is disabled on this server.")
 
 		# Remove control characters and extra whitespace
 		message = " ".join(
@@ -2567,8 +2609,8 @@ class RequestHandler(BaseRequestHandler):
 			self.error("You're sending messages too quickly.")
 		sc4mp_chat_times[self.user_id] = now
 
-		# The name is the mayor name of the user's latest claim, so players can't pretend to be someone else
-		name = self.get_mayor_name(self.user_id)
+		# The name comes from the user's claims, so players can't pretend to be someone else
+		name = self.get_chat_name(self.user_id)
 
 		report(f"[CHAT] {name} ({self.user_id[:8]}): {message}")
 
@@ -2578,10 +2620,48 @@ class RequestHandler(BaseRequestHandler):
 			'message': message,
 			'time': now	# seconds since the epoch, so clients can show it in their own time zone
 		}
-		sc4mp_chat_history.append({'event': 'chat', **event, 'history': True})	# not new for players who join later
+		with sc4mp_chat_lock:
+			sc4mp_chat_history.append({'event': 'chat', **event, 'history': True})	# not new for players who join later
+			try:
+				with open(os.path.join(sc4mp_server_path, "_Database", "chat.jsonl"), "a", encoding="utf-8") as file:
+					file.write(json.dumps(sc4mp_chat_history[-1]) + "\n")
+			except IndexError:
+				pass	# chat history turned off
+			except Exception as e:
+				show_error(f"An error occurred while saving the chat history.\n\n{e}")
 		sc4mp_event_channel.push('chat', event)
 
 		self.respond(status='success')
+
+
+	def get_chat_name(self, user_id):
+		"""Returns the user's name in chat: the mayor name of their latest claim (or "Defacto", SC4's default mayor name), with a number if another user already has that name (eg. "Defacto (1)")."""
+
+		mayor_name = self.get_mayor_name(user_id) or "Defacto"
+
+		with sc4mp_chat_lock:
+
+			entry = sc4mp_users_database_manager.get(user_id) or {}
+
+			# Keep the name while the mayor name doesn't change
+			if entry.get("chat_mayor_name") == mayor_name and entry.get("chat_name"):
+				return entry["chat_name"]
+
+			taken = set(
+				other.get("chat_name") for other_id, other in sc4mp_users_database_manager.items()
+				if other_id != user_id and isinstance(other, dict)
+			)
+			name = mayor_name
+			number = 0
+			while name in taken:
+				number += 1
+				name = f"{mayor_name} ({number})"
+
+			entry["chat_mayor_name"] = mayor_name
+			entry["chat_name"] = name
+			sc4mp_users_database_manager[user_id] = entry
+
+		return name
 
 
 	def get_mayor_name(self, user_id):
@@ -2602,7 +2682,7 @@ class RequestHandler(BaseRequestHandler):
 					name = entry["mayor_name"]
 					modified = entry.get("modified") or ""
 
-		return name or f"Mayor {user_id[:4]}"
+		return name
 
 
 class ServerList(th.Thread):
