@@ -115,7 +115,7 @@ SC4MP_CONFIG_DEFAULTS = [
 	("CHAT", [
 		("chat_enabled", True),
 		("chat_history", 1000),		# recent chat messages sent to players when they join
-		("chat_filter", True),		# hide the words in `chat_filter.txt`
+		("chat_filter", False),		# hide the words in `chat_filter.txt`
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 6),
