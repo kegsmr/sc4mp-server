@@ -1779,6 +1779,7 @@ class RegionsManager(th.Thread):
 		self.export_regions = False
 		self.tasks = []
 		self.outputs = {}
+		self.claims = {}	# accepted save pushes that claimed a tile the user didn't own before, by save ID
 		#self.lastmtime = self.get_mtime()
 
 
@@ -1935,6 +1936,7 @@ class RegionsManager(th.Thread):
 									#TODO delete old backups
 
 									# Set entry values
+									new_claim = entry.get("owner") != user_id
 									entry["filename"] = new_filename
 									entry["owner"] = user_id
 									entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1949,7 +1951,14 @@ class RegionsManager(th.Thread):
 									# Mark regions as modified
 									self.regions_modified = True
 
-									# Report success
+									# Report success (and new claims, which are announced in chat)
+									if new_claim:
+										self.claims[save_id] = {
+											'city': savegameCityName,
+											'region': region,
+											'coords': (savegameX, savegameY),
+											'reclaimed': reclaimed
+										}
 									self.outputs[save_id] = "ok"
 
 									# Push channel event
@@ -2467,6 +2476,14 @@ class RequestHandler(BaseRequestHandler):
 				# Send the output to the client
 				self.respond(result=sc4mp_regions_manager.outputs[save_id])
 
+				# Announce new cities in chat
+				claim = sc4mp_regions_manager.claims.pop(save_id, None)
+				if claim is not None:
+					try:
+						self.announce_city(claim)
+					except Exception as e:
+						show_error(f"An error occurred while announcing a new city in chat.\n\n{e}")
+
 			else:
 
 				# Report to the client that the save push is invalid
@@ -2631,8 +2648,17 @@ class RequestHandler(BaseRequestHandler):
 			'message': message,
 			'time': now	# seconds since the epoch, so clients can show it in their own time zone
 		}
+		self.push_chat_event('chat', event)
+
+		self.respond(status='success')
+
+
+	@staticmethod
+	def push_chat_event(event_type, event):
+		"""Adds an event to the chat history (and `chat.jsonl`) and pushes it to every player."""
+
 		with sc4mp_chat_lock:
-			sc4mp_chat_history.append({'event': 'chat', **event, 'history': True})	# not new for players who join later
+			sc4mp_chat_history.append({'event': event_type, **event, 'history': True})	# not new for players who join later
 			try:
 				with open(os.path.join(sc4mp_server_path, "_Database", "chat.jsonl"), "a", encoding="utf-8") as file:
 					file.write(json.dumps(sc4mp_chat_history[-1]) + "\n")
@@ -2640,9 +2666,27 @@ class RequestHandler(BaseRequestHandler):
 				pass	# chat history turned off
 			except Exception as e:
 				show_error(f"An error occurred while saving the chat history.\n\n{e}")
-		sc4mp_event_channel.push('chat', event)
+		sc4mp_event_channel.push(event_type, event)
 
-		self.respond(status='success')
+
+	def announce_city(self, claim):
+		"""Tells everyone in chat that a player founded (or took over) a city."""
+
+		if not sc4mp_config["CHAT"]["chat_enabled"]:
+			return
+
+		name = self.get_chat_name(self.user_id)
+		city = self.filter_chat(" ".join(str(claim['city'] or "").split())[:SC4MP_CHAT_MAX_LENGTH]) or "a city"
+
+		report(f"[CHAT] {name} ({self.user_id[:8]}) {'took over' if claim['reclaimed'] else 'founded'} {city} in {claim['region']}.")
+
+		self.push_chat_event('city_founded', {
+			'user_id': self.user_id,
+			'name': name,
+			'time': time.time(),
+			**claim,
+			'city': city,
+		})
 
 
 	@staticmethod
