@@ -1229,16 +1229,21 @@ class Server(th.Thread):
 									args.remove("-u")
 								if "--force-update" in args:
 									args.remove("--force-update")
+								if "-k" not in args and "--skip-update" not in args:
+									args.append("-k")	# so a failed install relaunches the current version instead of updating again in a loop
 								with open("updater.bat", "w") as batch_file:
 									batch_file.writelines([
 										"@echo off\n",
 										f"cd /d \"{os.getcwd()}\"\n",
+										"echo Waiting for the server to exit...\n",
+										":wait\n",
+										f"tasklist /fi \"PID eq {os.getpid()}\" | find \"{os.getpid()}\" >nul && (timeout /t 1 /nobreak >nul & goto wait)\n",	# the installer can't replace files the server still has open
 										"echo Running installer...\n",
 										f"cd {destination.parent}\n",
 										f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",
 										"cd ..\n",
 										"echo Relaunching server...\n",
-										f"{PROCESS_NAME} {' '.join(args)}\n"
+										f"{PROCESS_NAME} {subprocess.list2cmdline(args)}\n"
 									])
 
 								# Start installer in very silent mode and exit
@@ -1250,6 +1255,10 @@ class Server(th.Thread):
 
 						# Run update function
 						update()
+
+						# Stop the system tray icon, since its thread would otherwise keep the process running after `sys.exit()`
+						if sc4mp_system_tray_icon_manager:
+							sc4mp_system_tray_icon_manager.icon.stop()
 
 						# Exit when complete
 						sys.exit()
