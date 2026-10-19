@@ -2081,6 +2081,9 @@ class RequestHandler(BaseRequestHandler):
 		
 		super().__init__(c, private=sc4mp_config["SECURITY"]["private"])
 
+		# Set by `res_save()`, so its temporary files can be purged if the save is rejected
+		self.save_id = None
+
 
 	def run(self):
 
@@ -2102,7 +2105,10 @@ class RequestHandler(BaseRequestHandler):
 					print(f"Request: {command!r}")
 					# print(f"Request: {command!r} {headers!r}")
 
-					self.handle_request()
+					try:
+						self.handle_request()
+					finally:
+						self.purge_temp_files()
 
 			except ServerException as e:
 
@@ -2295,6 +2301,7 @@ class RequestHandler(BaseRequestHandler):
 
 		# Set save id
 		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id)
+		self.save_id = save_id
 
 		# Receive files
 		count = 0
@@ -2418,6 +2425,17 @@ class RequestHandler(BaseRequestHandler):
 			# Delete savegame arrays to avoid file deletion errors
 			savegames = None
 			new_savegames = None
+
+
+	def purge_temp_files(self):
+		"""Deletes the temporary files of a save push that was never passed to the regions manager."""
+
+		# Saves passed to the regions manager are cleaned up by the regions manager
+		if self.save_id is not None and self.save_id not in sc4mp_regions_manager.outputs:
+			shutil.rmtree(os.path.join(sc4mp_server_path, "_Temp", "inbound", self.save_id), ignore_errors=True)
+
+		# The connection can be reused for more requests
+		self.save_id = None
 
 
 	def res_add_server(self):
