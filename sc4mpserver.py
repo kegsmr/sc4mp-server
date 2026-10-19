@@ -481,6 +481,8 @@ def export(export_type):
 	try:
 		if export_type == "regions":
 			for region in os.listdir(target):
+				if region.lower() == "downloads":
+					continue	# SC4 creates a `Downloads` folder that isn't a region
 				if os.path.isdir(os.path.join(target, region)):
 					data_filename = os.path.join(target, region, "_Database", "region.json")
 					data = load_json(data_filename)
@@ -520,6 +522,10 @@ def export(export_type):
 	
 	# Copy recursively
 	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups')) #, '_Database'))	
+
+	# Don't send the `Downloads` folder to clients, since it isn't a region
+	if export_type == "regions":
+		shutil.rmtree(os.path.join(destination, "Downloads"), ignore_errors=True)
 
 	# Generate filetable
 	sc4mp_filetables_manager.generate(destination)
@@ -1345,6 +1351,8 @@ class Server(th.Thread):
 		regions_directory = os.path.join(sc4mp_server_path, "Regions")
 		items = os.listdir(regions_directory)
 		for item in items:
+			if item.lower() == "downloads":
+				continue	# SC4 creates a `Downloads` folder that isn't a region
 			path = os.path.join(regions_directory, item)
 			if not os.path.isfile(path):
 				regions.append(item)
