@@ -480,7 +480,9 @@ def export(export_type):
 	try:
 		if export_type == "regions":
 			for region in os.listdir(target):
-				if os.path.isdir(os.path.join(target, region)) and region.lower() != "downloads":
+				if region.lower() == "downloads":
+					continue	# SC4 creates a `Downloads` folder that isn't a region
+				if os.path.isdir(os.path.join(target, region)):
 					data_filename = os.path.join(target, region, "_Database", "region.json")
 					data = load_json(data_filename)
 					update_database = False
@@ -1348,8 +1350,10 @@ class Server(th.Thread):
 		regions_directory = os.path.join(sc4mp_server_path, "Regions")
 		items = os.listdir(regions_directory)
 		for item in items:
+			if item.lower() == "downloads":
+				continue	# SC4 creates a `Downloads` folder that isn't a region
 			path = os.path.join(regions_directory, item)
-			if not os.path.isfile(path) and item.lower() != "downloads":	# SC4 creates a `Downloads` folder that isn't a region
+			if not os.path.isfile(path):
 				regions.append(item)
 
 		# Create databases for each region
