@@ -2194,6 +2194,9 @@ class RequestHandler(th.Thread):
 		
 		self.c = c
 
+		# Set by `save()`, so its temporary files can be purged if the save is rejected
+		self.save_id = None
+
 
 	def run(self):
 		
@@ -2244,7 +2247,10 @@ class RequestHandler(th.Thread):
 					self.send_regions(c)
 				elif request == "save":
 					self.request_header(c, args)
-					self.save(c)
+					try:
+						self.save(c)
+					finally:
+						self.purge_temp_files()
 				elif request == "add_server":
 					try:
 						self.add_server(c, args[1])
@@ -2450,6 +2456,7 @@ class RequestHandler(th.Thread):
 
 		# Set save id
 		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id)
+		self.save_id = save_id
 
 		# Receive files
 		count = 0
@@ -2593,6 +2600,16 @@ class RequestHandler(th.Thread):
 		#	shutil.rmtree(path)
 		#except Exception:
 		#	pass
+
+
+	def purge_temp_files(self):
+		"""Deletes the temporary files of a save push that was never passed to the regions manager."""
+
+		# Saves passed to the regions manager are cleaned up by the regions manager
+		if self.save_id is None or self.save_id in sc4mp_regions_manager.outputs:
+			return
+
+		shutil.rmtree(os.path.join(sc4mp_server_path, "_Temp", "inbound", self.save_id), ignore_errors=True)
 
 
 	def add_server(self, c, port):
