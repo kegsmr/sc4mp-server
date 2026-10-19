@@ -2123,8 +2123,8 @@ class FileTablesManager(th.Thread):
 		# Loop through all file tables
 		for rootpath, filetable in self.filetables.items():
 			
-			# Loop through file table and check for missing files and files which have changed size
-			for entry in filetable:
+			# Loop through file table and check for missing files and files which have changed size (iterate over a copy since entries are removed)
+			for entry in list(filetable):
 				checksum, size, relpath = entry
 				fullpath = os.path.join(rootpath, relpath)
 				if not os.path.exists(fullpath):
@@ -2143,9 +2143,9 @@ class FileTablesManager(th.Thread):
 			# Add new files to the file table
 			relpaths = [entry[2] for entry in filetable]
 			for fullpath in fullpaths:
-				relpath = os.path.relpath(fullpath, rootpath)
+				relpath = Path(os.path.relpath(fullpath, rootpath)).as_posix()
 				if not relpath in relpaths:
-					filetable.append((md5(fullpath), os.path.getsize(fullpath), Path(relpath).as_posix()))
+					filetable.append((md5(fullpath), os.path.getsize(fullpath), relpath))
 					print(f"Added new file \"{fullpath}\" to file table.")
 				
 
@@ -2158,7 +2158,7 @@ class FileTablesManager(th.Thread):
 			for file in files:
 				fullpaths.append(os.path.join(path, file))
 
-		self.filetables[rootpath] = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
+		self.filetables[rootpath] = [(md5(fullpath), os.path.getsize(fullpath), Path(os.path.relpath(fullpath, rootpath)).as_posix()) for fullpath in fullpaths]
 
 		#print(self.filetables[path])
 
