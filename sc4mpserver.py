@@ -2592,11 +2592,15 @@ class RequestHandler(BaseRequestHandler):
 		if not sc4mp_config["CHAT"]["chat_enabled"]:
 			self.error("Chat is disabled on this server.")
 
+		message = self.headers.get('message')
+		if not isinstance(message, str) or len(message) > 10 * SC4MP_CHAT_MAX_LENGTH:
+			self.error("Invalid message.")
+
 		# Remove control characters and extra whitespace
 		message = " ".join(
 			"".join(
 				character if character.isprintable() else " "
-				for character in self.get_header('message', str)
+				for character in message
 			).split()
 		)
 
