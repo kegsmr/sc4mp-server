@@ -2544,7 +2544,8 @@ class RequestHandler(BaseRequestHandler):
 			chat_history = list(sc4mp_chat_history)
 
 		subscription_id = sc4mp_event_channel.subscribe(
-			self.user_id, events=chat_history
+			self.user_id, events=chat_history,
+			context={'name': self.get_chat_name(self.user_id)}	# so other players' chats can say who joined and left
 		)
 
 		try:
