@@ -928,6 +928,10 @@ class Server(th.Thread):
 			report("- creating socket...")
 			s = socket.socket()
 
+			# Allow binding the port again right after a restart, while connections from before are in TIME_WAIT (not on Windows, where this would let other programs bind the same port)
+			if os.name != "nt":
+				s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
 			report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
 			while True:
 				try:
