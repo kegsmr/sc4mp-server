@@ -2648,6 +2648,12 @@ class RequestHandler(BaseRequestHandler):
 			'message': message,
 			'time': now	# seconds since the epoch, so clients can show it in their own time zone
 		}
+
+		# The city the player saved most recently, shown next to their name
+		region, entry = self.get_latest_claim(self.user_id, "city_name")
+		city = self.filter_chat(" ".join(str((entry or {}).get("city_name") or "").split())[:SC4MP_CHAT_MAX_LENGTH])
+		if city:
+			event.update(city=city, region=region)
 		self.push_chat_event('chat', event)
 
 		self.respond(status='success')
@@ -2762,7 +2768,16 @@ class RequestHandler(BaseRequestHandler):
 
 	def get_mayor_name(self, user_id):
 
-		name = None
+		_, entry = self.get_latest_claim(user_id, "mayor_name")
+
+		return entry["mayor_name"] if entry else None
+
+
+	@staticmethod
+	def get_latest_claim(user_id, key):
+		"""Returns the region and database entry of the user's most recently saved city that has a value for `key` (eg. "mayor_name"), or `(None, None)`."""
+
+		latest = (None, None)
 		modified = ""
 
 		regions_path = os.path.join(sc4mp_server_path, "Regions")
@@ -2772,13 +2787,13 @@ class RequestHandler(BaseRequestHandler):
 			except Exception:
 				continue
 			for entry in data.values():
-				if entry is None or entry.get("owner") != user_id or not entry.get("mayor_name"):
+				if entry is None or entry.get("owner") != user_id or not entry.get(key):
 					continue
 				if (entry.get("modified") or "") >= modified:
-					name = entry["mayor_name"]
+					latest = (region, entry)
 					modified = entry.get("modified") or ""
 
-		return name
+		return latest
 
 
 class ServerList(th.Thread):
