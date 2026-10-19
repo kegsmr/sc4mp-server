@@ -226,7 +226,7 @@ def parse_args() -> Namespace:
 
 	parser.add_argument("-s", "--server-path", help="specify server directory relative path")
 
-	parser.add_argument("-t", "--stop", help="terminate the server currectly running from the specified server path (Windows-only)", action="store_true")
+	parser.add_argument("-t", "--stop", help="terminate the server currently running from the specified server path (Windows-only)", action="store_true")
 
 	parser.add_argument("-k", "--skip-update", help="skip the update check at startup", action="store_true")
 
@@ -273,8 +273,9 @@ def prevent_multiple():
 						o_p_c = None
 
 					if other_process_creation == o_p_c:
-						if subprocess.call(f"TASKKILL /F /PID {other_process_pid}", shell=True) != 0:
-							raise ServerException("`TASKKILL` did not return exit code 0.")
+						# `TASKKILL` returns 128 if the process isn't running anymore (e.g. it exited but its process object still exists)
+						if subprocess.call(f"TASKKILL /F /PID {other_process_pid}", shell=True) not in (0, 128):
+							raise ServerException("`TASKKILL` failed to terminate the server process already running.")
 
 			this_process_pid = os.getpid()
 			this_process_creation = datetime.strftime(get_process_creation_time(this_process_pid), DATETIME_FORMAT)
@@ -408,10 +409,19 @@ def set_savegame_data(entry, savegame: SC4Savegame):
 
 def update_json(filename, data):
 	
-	with open(filename, 'w') as file:
-		file.seek(0)
+	# Write to a temporary file first so a crash or error mid-write can't truncate the original
+	temp_filename = f"{filename}.tmp"
+	with open(temp_filename, 'w') as file:
 		json.dump(data, file, indent=4)
-		file.truncate()
+		file.flush()
+		os.fsync(file.fileno())
+	try:
+		os.replace(temp_filename, filename)
+	except PermissionError:
+		# On Windows, the replace fails while another process or thread has the file open, so fall back to writing in place
+		with open(filename, 'w') as file:
+			json.dump(data, file, indent=4)
+		os.unlink(temp_filename)
 
 
 def package_plugins_and_regions():
@@ -473,6 +483,8 @@ def export(export_type):
 	try:
 		if export_type == "regions":
 			for region in os.listdir(target):
+				if region.lower() == "downloads":
+					continue	# SC4 creates a `Downloads` folder that isn't a region
 				if os.path.isdir(os.path.join(target, region)):
 					data_filename = os.path.join(target, region, "_Database", "region.json")
 					data = load_json(data_filename)
@@ -513,6 +525,10 @@ def export(export_type):
 	# Copy recursively
 	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups')) #, '_Database'))	
 
+	# Don't send the `Downloads` folder to clients, since it isn't a region
+	if export_type == "regions":
+		shutil.rmtree(os.path.join(destination, "Downloads"), ignore_errors=True)
+
 	# Generate filetable
 	sc4mp_filetables_manager.generate(destination)
 
@@ -546,6 +562,7 @@ def send_filestream(c, rootpath):
 	for item in ft:
 		if not item in file_table:
 			c.close()
+			return
 	filetable = ft
 
 	# Loop through the filetable and send the respective data
@@ -590,8 +607,8 @@ def receive_file(c, filename, filesize):
 			filesize_remaining = filesize - filesize_read
 			buffersize = SC4MP_BUFFER_SIZE if filesize_remaining > SC4MP_BUFFER_SIZE else filesize_remaining
 			bytes_read = c.recv(buffersize)
-			#if not bytes_read:    
-			#	break
+			if not bytes_read:
+				raise ServerException("Connection closed by client.")
 			f.write(bytes_read)
 			filesize_read += len(bytes_read)
 			#print('Downloading "' + filename + '" (' + str(filesize_read) + " / " + str(filesize) + " bytes)...", int(filesize_read), int(filesize)) #os.path.basename(os.path.normpath(filename))
@@ -1267,6 +1284,8 @@ class Server(th.Thread):
 		regions_directory = os.path.join(sc4mp_server_path, "Regions")
 		items = os.listdir(regions_directory)
 		for item in items:
+			if item.lower() == "downloads":
+				continue	# SC4 creates a `Downloads` folder that isn't a region
 			path = os.path.join(regions_directory, item)
 			if not os.path.isfile(path):
 				regions.append(item)
@@ -1551,10 +1570,19 @@ class BackupsManager(th.Thread):
 
 	def update_json(self, filename, data):
 		
-		with open(filename, 'w') as file:
-			file.seek(0)
+		# Write to a temporary file first so a crash or error mid-write can't truncate the original
+		temp_filename = f"{filename}.tmp"
+		with open(temp_filename, 'w') as file:
 			json.dump(data, file, indent=4)
-			file.truncate()
+			file.flush()
+			os.fsync(file.fileno())
+		try:
+			os.replace(temp_filename, filename)
+		except PermissionError:
+			# On Windows, the replace fails while another process or thread has the file open, so fall back to writing in place
+			with open(filename, 'w') as file:
+				json.dump(data, file, indent=4)
+			os.unlink(temp_filename)
 
 
 	def backup(self): #TODO stop backing up the backups subdirectory
@@ -1564,7 +1592,7 @@ class BackupsManager(th.Thread):
 		try:
 			self.prune()
 		except Exception as e:
-			show_error("An error occured while pruning backups.")
+			show_error("An error occurred while pruning backups.")
 
 		# Report creating backups
 		report("Creating backup...", self)
@@ -1794,6 +1822,11 @@ class RegionsManager(th.Thread):
 								# Get city entry or get & set as empty dict if key does not exist
 								entry = data.setdefault(coords, {})
 
+								# Filter out cities that don't match the region configuration
+								if entry is None:
+									self.outputs[save_id] = "Invalid city location."
+									entry = {}
+
 								# Filter out claims on locked tiles
 								if entry.get("locked", False):
 									self.outputs[save_id] = "Tile is locked."
@@ -1803,10 +1836,6 @@ class RegionsManager(th.Thread):
 									if savegameModeFlag == 0:
 										self.outputs[save_id] = "You must establish a city before claiming a tile."
 								
-								# Filter out cities that don't match the region configuration
-								if entry is None:
-									self.outputs[save_id] = "Invalid city location."
-
 								# Filter out cities of the wrong size
 								if "size" in entry:
 									if (savegameSizeX != savegameSizeY or savegameSizeX != entry["size"]):
@@ -1955,15 +1984,24 @@ class RegionsManager(th.Thread):
 	
 	def update_json(self, filename, data):
 		
-		with open(filename, 'w') as file:
-			file.seek(0)
+		# Write to a temporary file first so a crash or error mid-write can't truncate the original
+		temp_filename = f"{filename}.tmp"
+		with open(temp_filename, 'w') as file:
 			json.dump(data, file, indent=4)
-			file.truncate()
+			file.flush()
+			os.fsync(file.fileno())
+		try:
+			os.replace(temp_filename, filename)
+		except PermissionError:
+			# On Windows, the replace fails while another process or thread has the file open, so fall back to writing in place
+			with open(filename, 'w') as file:
+				json.dump(data, file, indent=4)
+			os.unlink(temp_filename)
 
 
 	def get_mtime(self):
 
-		os.path.getmtime(os.path.join(sc4mp_server_path, "Regions"))
+		return os.path.getmtime(os.path.join(sc4mp_server_path, "Regions"))
 			
 
 class FileTablesManager(th.Thread):
@@ -2007,8 +2045,8 @@ class FileTablesManager(th.Thread):
 		# Loop through all file tables
 		for rootpath, filetable in self.filetables.items():
 			
-			# Loop through file table and check for missing files and files which have changed size
-			for entry in filetable:
+			# Loop through file table and check for missing files and files which have changed size (iterate over a copy since entries are removed)
+			for entry in list(filetable):
 				checksum, size, relpath = entry
 				fullpath = os.path.join(rootpath, relpath)
 				if not os.path.exists(fullpath):
@@ -2027,9 +2065,9 @@ class FileTablesManager(th.Thread):
 			# Add new files to the file table
 			relpaths = [entry[2] for entry in filetable]
 			for fullpath in fullpaths:
-				relpath = os.path.relpath(fullpath, rootpath)
+				relpath = Path(os.path.relpath(fullpath, rootpath)).as_posix()
 				if not relpath in relpaths:
-					filetable.append((md5(fullpath), os.path.getsize(fullpath), Path(relpath).as_posix()))
+					filetable.append((md5(fullpath), os.path.getsize(fullpath), relpath))
 					print(f"Added new file \"{fullpath}\" to file table.")
 				
 
@@ -2042,7 +2080,7 @@ class FileTablesManager(th.Thread):
 			for file in files:
 				fullpaths.append(os.path.join(path, file))
 
-		self.filetables[rootpath] = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
+		self.filetables[rootpath] = [(md5(fullpath), os.path.getsize(fullpath), Path(os.path.relpath(fullpath, rootpath)).as_posix()) for fullpath in fullpaths]
 
 		#print(self.filetables[path])
 
@@ -2270,7 +2308,7 @@ class RequestHandler(BaseRequestHandler):
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Enforce max file count and file sizes
-		if len(file_sizes) > 17 or max(file_sizes) > 500000000:
+		if len(file_sizes) > 17 or max(file_sizes or [0]) > 500_000_000:
 			return
 
 		# Set save id
@@ -2297,7 +2335,8 @@ class RequestHandler(BaseRequestHandler):
 
 		# Only allow save pushes of one region
 		if len(regions) > 1:
-			self.respond("Too many regions.")	
+			self.respond(result="Too many regions.")
+			return
 
 		# Loop through regions. Should only loop once since save pushes of multiple regions are filtered out.
 		for region in regions:
@@ -2357,8 +2396,8 @@ class RequestHandler(BaseRequestHandler):
 					coords = str(savegameX) + "_" + str(savegameY)
 					data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json"))
 					if coords in data:
-						entry = data[coords]
-						date_subfile_hashes = entry["date_subfile_hashes"]
+						entry = data[coords] or {}
+						date_subfile_hashes = entry.get("date_subfile_hashes", [])
 						new_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
 						if new_date_subfile_hash not in date_subfile_hashes:
 							new_savegames.append(savegame)
