@@ -2197,7 +2197,7 @@ class RequestHandler(th.Thread):
 					try:
 						self.save(c)
 					finally:
-						self.delete_rejected_save()
+						self.purge_temp_files()
 				elif request == "add_server":
 					try:
 						self.add_server(c, args[1])
@@ -2549,7 +2549,7 @@ class RequestHandler(th.Thread):
 		#	pass
 
 
-	def delete_rejected_save(self):
+	def purge_temp_files(self):
 		"""Deletes the temporary files of a save push that was never passed to the regions manager."""
 
 		save_id = getattr(self, "save_id", None)
