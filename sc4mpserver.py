@@ -1918,6 +1918,11 @@ class RegionsManager(th.Thread):
 								# Raise the exception so that it appears in the server's output
 								raise e
 
+							finally:
+
+								# Close the savegame so its temporary file can be deleted (Windows can't delete open files)
+								savegame.close()
+
 							report("- done.", self)
 
 						else:
