@@ -2326,15 +2326,20 @@ class RequestHandler(BaseRequestHandler):
 			# Get region path
 			region_path = os.path.join(path, region)
 
-			# Create DBPF objects for each file
+			# Create DBPF objects for each file, and extract the region subfile from each DBPF
 			savegames = []
-			for filename in os.listdir(region_path):
-				filename = os.path.join(region_path, filename)
-				savegames.append(SC4Savegame(filename, error_callback=show_error))
-
-			# Extract the region subfile from each DBPF
-			for savegame in savegames:
-				savegame.get_SC4ReadRegionalCity()
+			try:
+				for filename in os.listdir(region_path):
+					filename = os.path.join(region_path, filename)
+					savegames.append(SC4Savegame(filename, error_callback=show_error))
+				for savegame in savegames:
+					savegame.get_SC4ReadRegionalCity()
+			except Exception as e:
+				print(f"[WARNING] Invalid savegame: {e!r}")
+				for savegame in savegames:
+					savegame.close()
+				self.respond(result="Invalid savegame.")
+				return
 			
 			# Filter out tiles that do not border every other tile
 			report("Savegame filter 1", self)
