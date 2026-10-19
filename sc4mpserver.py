@@ -2705,7 +2705,7 @@ class RequestHandler(th.Thread):
 		# Loop through regions
 		regions_directory = os.path.join(sc4mp_server_path, "Regions")
 		for region in os.listdir(regions_directory):
-			if os.path.isdir(os.path.join(regions_directory, region)) and region.lower() != "downloads":
+			if os.path.isdir(os.path.join(regions_directory, region)):
 				#print(region)
 				region_data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json"))
 				for city_entry in region_data.values():
