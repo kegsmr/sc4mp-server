@@ -2576,9 +2576,9 @@ class RequestHandler(BaseRequestHandler):
 			'user_id': self.user_id,
 			'name': name,
 			'message': message,
-			'time': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+			'time': now	# seconds since the epoch, so clients can show it in their own time zone
 		}
-		sc4mp_chat_history.append({'event': 'chat', **event})
+		sc4mp_chat_history.append({'event': 'chat', **event, 'history': True})	# not new for players who join later
 		sc4mp_event_channel.push('chat', event)
 
 		self.respond(status='success')
