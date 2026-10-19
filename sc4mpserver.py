@@ -412,7 +412,13 @@ def update_json(filename, data):
 		json.dump(data, file, indent=4)
 		file.flush()
 		os.fsync(file.fileno())
-	os.replace(temp_filename, filename)
+	try:
+		os.replace(temp_filename, filename)
+	except PermissionError:
+		# On Windows, the replace fails while another process or thread has the file open, so fall back to writing in place
+		with open(filename, 'w') as file:
+			json.dump(data, file, indent=4)
+		os.unlink(temp_filename)
 
 
 def package_plugins_and_regions():
@@ -1618,7 +1624,13 @@ class BackupsManager(th.Thread):
 			json.dump(data, file, indent=4)
 			file.flush()
 			os.fsync(file.fileno())
-		os.replace(temp_filename, filename)
+		try:
+			os.replace(temp_filename, filename)
+		except PermissionError:
+			# On Windows, the replace fails while another process or thread has the file open, so fall back to writing in place
+			with open(filename, 'w') as file:
+				json.dump(data, file, indent=4)
+			os.unlink(temp_filename)
 
 
 	def backup(self): #TODO stop backing up the backups subdirectory
@@ -1803,7 +1815,13 @@ class DatabaseManager(th.Thread):
 			json.dump(data, file, indent=4)
 			file.flush()
 			os.fsync(file.fileno())
-		os.replace(temp_filename, filename)
+		try:
+			os.replace(temp_filename, filename)
+		except PermissionError:
+			# On Windows, the replace fails while another process or thread has the file open, so fall back to writing in place
+			with open(filename, 'w') as file:
+				json.dump(data, file, indent=4)
+			os.unlink(temp_filename)
 
 
 class RegionsManager(th.Thread):
@@ -2049,7 +2067,13 @@ class RegionsManager(th.Thread):
 			json.dump(data, file, indent=4)
 			file.flush()
 			os.fsync(file.fileno())
-		os.replace(temp_filename, filename)
+		try:
+			os.replace(temp_filename, filename)
+		except PermissionError:
+			# On Windows, the replace fails while another process or thread has the file open, so fall back to writing in place
+			with open(filename, 'w') as file:
+				json.dump(data, file, indent=4)
+			os.unlink(temp_filename)
 
 
 	def get_mtime(self):
