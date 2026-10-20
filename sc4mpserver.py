@@ -1953,6 +1953,7 @@ class RegionsManager(th.Thread):
 
 									# Set entry values
 									new_claim = entry.get("owner") != user_id
+									founded = not entry.get("gamemode")	# the tile had no city yet (eg. not an existing city nobody had claimed)
 									entry["filename"] = new_filename
 									entry["owner"] = user_id
 									entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1967,8 +1968,8 @@ class RegionsManager(th.Thread):
 									# Mark regions as modified
 									self.regions_modified = True
 
-									# Report success (and new claims, which are announced in chat)
-									if new_claim:
+									# Report success (and new cities and cities taken over from other mayors, which are announced in chat)
+									if new_claim and (founded or reclaimed):
 										self.claims[save_id] = {
 											'city': savegameCityName,
 											'region': region,
