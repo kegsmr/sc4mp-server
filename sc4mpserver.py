@@ -9,6 +9,7 @@ import re
 import shutil
 import socket
 import string
+import struct
 import subprocess
 import sys
 import threading as th
@@ -740,6 +741,15 @@ def fatal_error(e):
 		sc4mp_system_tray_icon_manager.status("Stopped", "A fatal error has occurred. Please check the logs at \"Documents\\SimCity 4\\SC4MP Server\\sc4mpserver.log\" for more details.")
 
 	#sys.exit()
+
+
+def get_bitmap_dimensions(filename):
+	"""Returns the width and height of a bitmap file."""
+
+	with open(filename, "rb") as file:
+		data = file.read(26)
+
+	return struct.unpack_from("<i", data, 18)[0], abs(struct.unpack_from("<i", data, 22)[0])
 
 
 def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag):
@@ -1834,6 +1844,15 @@ class RegionsManager(th.Thread):
 								# Filter out claims on locked tiles
 								if entry.get("locked", False):
 									self.outputs[save_id] = "Tile is locked."
+
+								# Filter out cities outside the bounds of the region (each pixel of `config.bmp` is one tile)
+								try:
+									region_width, region_height = get_bitmap_dimensions(os.path.join(sc4mp_server_path, "Regions", region, "config.bmp"))
+								except Exception as e:
+									show_error(f"Unable to read the region configuration for \"{region}\", skipping bounds check.\n\n{e}")
+									region_width, region_height = None, None
+								if region_width is not None and (savegameX + savegameSizeX > region_width or savegameY + savegameSizeY > region_height):
+									self.outputs[save_id] = "Invalid city location."
 
 								# Filter out godmode savegames if required
 								if sc4mp_config["RULES"]["godmode_filter"]:
