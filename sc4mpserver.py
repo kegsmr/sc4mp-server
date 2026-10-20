@@ -9,6 +9,7 @@ import re
 import shutil
 import socket
 import string
+import struct
 import subprocess
 import sys
 import threading as th
@@ -668,6 +669,17 @@ def get_file_table(rootpath):
 	return filetable
 
 
+def discard_bytes(c, size):
+	"""Receives and discards `size` bytes, eg. the files of a rejected save push, so the client gets to read the response."""
+
+	size_read = 0
+	while size_read < size:
+		data = c.recv(min(size - size_read, SC4MP_BUFFER_SIZE))
+		if not data:
+			raise ServerException("Connection closed by client.")
+		size_read += len(data)
+
+
 def receive_file(c, filename, filesize):
 
 
@@ -807,6 +819,15 @@ def fatal_error(e):
 	#sys.exit()
 
 
+def get_bitmap_dimensions(filename):
+	"""Returns the width and height of a bitmap file."""
+
+	with open(filename, "rb") as file:
+		data = file.read(26)
+
+	return struct.unpack_from("<i", data, 18)[0], abs(struct.unpack_from("<i", data, 22)[0])
+
+
 def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag):
 
 	prefix = f"({savegameX:0>{3}}-{savegameY:0>{3}})"
@@ -928,6 +949,10 @@ class Server(th.Thread):
 
 			report("- creating socket...")
 			s = self.socket()
+
+			# Allow binding the port again right after a restart, while connections from before are in TIME_WAIT (not on Windows, where this would let other programs bind the same port)
+			if os.name != "nt":
+				s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
 			report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
 			while True:
@@ -1936,6 +1961,15 @@ class RegionsManager(th.Thread):
 								if entry.get("locked", False):
 									self.outputs[save_id] = "Tile is locked."
 
+								# Filter out cities outside the bounds of the region (each pixel of `config.bmp` is one tile)
+								try:
+									region_width, region_height = get_bitmap_dimensions(os.path.join(sc4mp_server_path, "Regions", region, "config.bmp"))
+								except Exception as e:
+									show_error(f"Unable to read the region configuration for \"{region}\", skipping bounds check.\n\n{e}")
+									region_width, region_height = None, None
+								if region_width is not None and (savegameX + savegameSizeX > region_width or savegameY + savegameSizeY > region_height):
+									self.outputs[save_id] = "Invalid city location."
+
 								# Filter out godmode savegames if required
 								if sc4mp_config["RULES"]["godmode_filter"]:
 									if savegameModeFlag == 0:
@@ -2033,6 +2067,11 @@ class RegionsManager(th.Thread):
 
 								# Raise the exception so that it appears in the server's output
 								raise e
+
+							finally:
+
+								# Close the savegame so its temporary file can be deleted (Windows can't delete open files)
+								savegame.close()
 
 							report("- done.", self)
 
@@ -2406,11 +2445,21 @@ class RequestHandler(BaseRequestHandler):
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Enforce max file count and file sizes
-		if len(file_sizes) > 17 or max(file_sizes or [0]) > 500_000_000:
+		error = None
+		if not file_sizes:
+			error = "No files."
+		elif len(file_sizes) > 17:
+			error = "Too many files."
+		elif max(file_sizes) > 500_000_000:
+			error = "File too large."
+
+		if error is not None:
+			discard_bytes(c, sum(file_sizes))
+			self.respond(result=error)
 			return
 
 		# Set save id
-		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id)
+		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id + "_" + os.urandom(4).hex())	# unique, even for pushes by the same user in the same second
 
 		# Receive files
 		count = 0
@@ -2442,15 +2491,20 @@ class RequestHandler(BaseRequestHandler):
 			# Get region path
 			region_path = os.path.join(path, region)
 
-			# Create DBPF objects for each file
+			# Create DBPF objects for each file, and extract the region subfile from each DBPF
 			savegames = []
-			for filename in os.listdir(region_path):
-				filename = os.path.join(region_path, filename)
-				savegames.append(SC4Savegame(filename, error_callback=show_error))
-
-			# Extract the region subfile from each DBPF
-			for savegame in savegames:
-				savegame.get_SC4ReadRegionalCity()
+			try:
+				for filename in os.listdir(region_path):
+					filename = os.path.join(region_path, filename)
+					savegames.append(SC4Savegame(filename, error_callback=show_error))
+				for savegame in savegames:
+					savegame.get_SC4ReadRegionalCity()
+			except Exception as e:
+				print(f"[WARNING] Invalid savegame: {e!r}")
+				for savegame in savegames:
+					savegame.close()
+				self.respond(result="Invalid savegame.")
+				return
 			
 			# Filter out tiles that do not border every other tile
 			report("Savegame filter 1", self)
@@ -3083,6 +3137,8 @@ class Logger():
 	def __init__(self):
 		
 		self.terminal = sys.stdout
+		if self.terminal is not None:
+			self.terminal.reconfigure(errors="replace")	# characters the console can't show (eg. emoji on a cp1252 console) are printed as "?"
 		self.log = SC4MP_LOG_PATH if sc4mp_server_path == "_SC4MP" else os.path.join(sc4mp_server_path, SC4MP_LOG_PATH)
 		if os.path.exists(self.log):
 			os.remove(self.log)
