@@ -679,6 +679,17 @@ def send_file(c, filename):
 			c.sendall(bytes_read)
 
 
+def discard_bytes(c, size):
+	"""Receives and discards `size` bytes, eg. the files of a rejected save push, so the client gets to read the response."""
+
+	size_read = 0
+	while size_read < size:
+		data = c.recv(min(size - size_read, SC4MP_BUFFER_SIZE))
+		if not data:
+			raise ServerException("Connection closed by client.")
+		size_read += len(data)
+
+
 def receive_file(c, filename, filesize):
 	
 
@@ -2466,7 +2477,18 @@ class RequestHandler(th.Thread):
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Enforce max file count and file sizes
-		if len(file_sizes) > 17 or max(file_sizes) > 500000000:
+		error = None
+		if not file_sizes:
+			error = b"No files."
+		elif len(file_sizes) > 17:
+			error = b"Too many files."
+		elif max(file_sizes) > 500000000:
+			error = b"File too large."
+
+		if error is not None:
+			c.sendall(b"ok")
+			discard_bytes(c, sum(file_sizes))
+			c.sendall(error)
 			return
 
 		# Separator
