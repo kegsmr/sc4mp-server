@@ -11,6 +11,7 @@ from server.errors import ServerException, show_error
 from server.utils import load_json, report, update_json
 
 
+# Not used at the moment
 def package_plugins_and_regions():
 
     report("Packaging plugins and regions...")
@@ -39,7 +40,9 @@ def package(package_type):
         directory = "Regions"
 
     target = os.path.join(state.sc4mp_server_path, directory)
-    destination = os.path.join(state.sc4mp_server_path, "_Temp", "outbound", directory)
+    destination = os.path.join(
+        state.sc4mp_server_path, "_Temp", "outbound", directory
+    )
 
     if os.path.exists(destination):
         os.remove(destination)
@@ -48,6 +51,8 @@ def package(package_type):
 
 
 def export(export_type):
+    """Copies the plugins or regions folder to the outbound folder, which is
+    what clients download, and makes its file table."""
 
     # Select directory name from input
     directory = None
@@ -58,7 +63,9 @@ def export(export_type):
 
     # Set target and destination directories
     target = os.path.join(state.sc4mp_server_path, directory)
-    destination = os.path.join(state.sc4mp_server_path, "_Temp", "outbound", directory)
+    destination = os.path.join(
+        state.sc4mp_server_path, "_Temp", "outbound", directory
+    )
 
     # Erase file table if exists
     if destination in state.sc4mp_filetables_manager.filetables.keys():
@@ -66,38 +73,11 @@ def export(export_type):
 
     # TODO delete old abandoned savegames
 
-    # Replace missing savegame files with the reset savegame file if it exists, and reset the claim
+    # Replace missing savegame files with the reset savegame file if it
+    # exists, and reset the claim
     try:
         if export_type == "regions":
-            for region in os.listdir(target):
-                if region.lower() == "downloads":
-                    continue  # SC4 creates a `Downloads` folder that isn't a region
-                if os.path.isdir(os.path.join(target, region)):
-                    data_filename = os.path.join(target, region, "_Database", "region.json")
-                    data = load_json(data_filename)
-                    update_database = False
-                    for entry in data.values():
-                        if entry is not None:
-                            filename = entry.get("filename", None)
-                            if filename is not None:
-                                filename = os.path.join(target, region, filename)
-                                if not os.path.exists(filename):
-                                    print(f"[WARNING] Savegame at \"{filename}\" is missing!")
-                                    reset_filename = entry.get("reset_filename", None)
-                                    if reset_filename is not None:
-                                        reset_filename = os.path.join(target, region, reset_filename)
-                                        if os.path.exists(reset_filename):
-                                            print(f"[WARNING] - replacing with \"{reset_filename}\"...")
-                                            shutil.copy(reset_filename, filename)
-                                        else:
-                                            print(f"[WARNING] - cannot replace with \"{reset_filename}\", since the file does not exist.")
-                                    else:
-                                        entry["filename"] = None
-                                    print("[WARNING] - resetting claim...")
-                                    entry["owner"] = None
-                                    update_database = True
-                    if update_database:
-                        update_json(data_filename, data)
+            reset_missing_savegames(target)
     except Exception as e:
         show_error(e)
 
@@ -107,27 +87,86 @@ def export(export_type):
 
     # Create the parent directories if they do not yet exist
     # if (not os.path.exists(destination)):
-    # os.makedirs(destination)
+    #     os.makedirs(destination)
 
     # Copy recursively
-    shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups'))  # , '_Database'))
+    # (was `shutil.ignore_patterns('_Backups', '_Database')`)
+    ignore = shutil.ignore_patterns('_Backups')
+    shutil.copytree(target, destination, ignore=ignore)
 
     # Don't send the `Downloads` folder to clients, since it isn't a region
     if export_type == "regions":
-        shutil.rmtree(os.path.join(destination, "Downloads"), ignore_errors=True)
+        downloads_path = os.path.join(destination, "Downloads")
+        shutil.rmtree(downloads_path, ignore_errors=True)
 
     # Generate filetable
     state.sc4mp_filetables_manager.generate(destination)
+
+
+def reset_missing_savegames(regions_path):
+    """Replaces each savegame that is missing from a region with its reset
+    savegame (if there is one) and frees the claim on its tile."""
+
+    for region in os.listdir(regions_path):
+
+        # SC4 creates a `Downloads` folder that isn't a region
+        if region.lower() == "downloads":
+            continue
+        if not os.path.isdir(os.path.join(regions_path, region)):
+            continue
+
+        data_filename = os.path.join(
+            regions_path, region, "_Database", "region.json"
+        )
+        data = load_json(data_filename)
+        update_database = False
+
+        for entry in data.values():
+
+            if entry is None:
+                continue
+            filename = entry.get("filename", None)
+            if filename is None:
+                continue
+            filename = os.path.join(regions_path, region, filename)
+            if os.path.exists(filename):
+                continue
+
+            print(f"[WARNING] Savegame at \"{filename}\" is missing!")
+            reset_filename = entry.get("reset_filename", None)
+            if reset_filename is not None:
+                reset_filename = os.path.join(
+                    regions_path, region, reset_filename
+                )
+                if os.path.exists(reset_filename):
+                    print(
+                        f"[WARNING] - replacing with \"{reset_filename}\"..."
+                    )
+                    shutil.copy(reset_filename, filename)
+                else:
+                    print(
+                        f"[WARNING] - cannot replace with "
+                        f"\"{reset_filename}\", since the file does not "
+                        f"exist."
+                    )
+            else:
+                entry["filename"] = None
+            print("[WARNING] - resetting claim...")
+            entry["owner"] = None
+            update_database = True
+
+        if update_database:
+            update_json(data_filename, data)
 
 
 def purge_directory(directory):
     """TODO
 
     Arguments:
-            TODO
+        TODO
 
     Returns:
-            TODO
+        TODO
     """
     for filename in os.listdir(directory):
         file_path = os.path.join(directory, filename)
@@ -137,7 +176,11 @@ def purge_directory(directory):
             elif os.path.isdir(file_path):
                 shutil.rmtree(file_path)
         except PermissionError as e:
-            raise ServerException('Failed to delete "' + file_path + '" because the file is being used by another process.') from e  # \n\n' + str(e)
+            # (the message used to end with `\n\n' + str(e)`)
+            raise ServerException(
+                'Failed to delete "' + file_path + '" because the file is '
+                'being used by another process.'
+            ) from e
 
 
 def send_filestream(c, rootpath):
@@ -147,7 +190,7 @@ def send_filestream(c, rootpath):
     # Receive the filetable from the client and verify it
     ft = [tuple(item) for item in c.recv_json()]
     for item in ft:
-        if not item in file_table:
+        if item not in file_table:
             c.close()
             return
     filetable = ft
@@ -180,7 +223,8 @@ def get_file_table(rootpath):
 
 
 def discard_bytes(c, size):
-    """Receives and discards `size` bytes, eg. the files of a rejected save push, so the client gets to read the response."""
+    """Receives and discards `size` bytes, eg. the files of a rejected save
+    push, so the client gets to read the response."""
 
     size_read = 0
     while size_read < size:
@@ -202,9 +246,17 @@ def receive_file(c, filename, filesize):
     with open(filename, "wb") as f:
         while filesize_read < filesize:
             filesize_remaining = filesize - filesize_read
-            buffersize = SC4MP_BUFFER_SIZE if filesize_remaining > SC4MP_BUFFER_SIZE else filesize_remaining
+            if filesize_remaining > SC4MP_BUFFER_SIZE:
+                buffersize = SC4MP_BUFFER_SIZE
+            else:
+                buffersize = filesize_remaining
             bytes_read = c.recv(buffersize)
             if not bytes_read:
                 raise ServerException("Connection closed by client.")
             f.write(bytes_read)
             filesize_read += len(bytes_read)
+            # print(
+            #     'Downloading "' + filename + '" (' + str(filesize_read)
+            #     + " / " + str(filesize) + " bytes)...",
+            #     int(filesize_read), int(filesize)
+            # )  # os.path.basename(os.path.normpath(filename))

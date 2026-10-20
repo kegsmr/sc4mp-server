@@ -26,6 +26,8 @@ from server.errors import fatal_error, show_error
 
 
 class SystemTrayIconManager(th.Thread):
+    """The system tray icon and its menu. The icon runs its own loop, so it
+    gets its own thread."""
 
     def __init__(self):
 
@@ -56,8 +58,6 @@ class SystemTrayIconManager(th.Thread):
             if public_address:
                 address = public_address
 
-        port = state.sc4mp_config["NETWORK"]['port']
-
         if address == "localhost":
             connect = Item("Connect", lambda: self.connect("localhost"))
         else:
@@ -71,13 +71,15 @@ class SystemTrayIconManager(th.Thread):
         title = self.server_name
         menu = Menu(
             # Item("Details...", Menu(*details)),
-                Item("Actions...", Menu(
-                    connect,
-                    # Item("Trigger FATAL ERROR", lambda: fatal_error(Exception())),
-                        # Item("Update", self.update),
-                        Item("Restart", self.restart),
-                        Item("Stop", self.stop),
-                )),
+            Item("Actions...", Menu(
+                connect,
+                # Item(
+                #     "Trigger FATAL ERROR", lambda: fatal_error(Exception())
+                # ),
+                # Item("Update", self.update),
+                Item("Restart", self.restart),
+                Item("Stop", self.stop),
+            )),
             Item("Manage...", Menu(
                 Item("Plugins", self.plugins),
                 Item("Regions", self.regions),
@@ -93,8 +95,8 @@ class SystemTrayIconManager(th.Thread):
                 Item("Readme", self.readme),
             )),
             # Item("Help...", Menu(
-                #     Item("Readme", self.readme),
-                # )),
+            #     Item("Readme", self.readme),
+            # )),
         )
 
         self.icon = Icon(name, icon, title, menu)
@@ -116,7 +118,11 @@ class SystemTrayIconManager(th.Thread):
         show_error(e)
 
         if not notification:
-            notification = "An error occurred. Please check the logs at \"Documents\\SimCity 4\\SC4MP Server\\sc4mpserver.log\" for more details."
+            notification = (
+                "An error occurred. Please check the logs at "
+                "\"Documents\\SimCity 4\\SC4MP Server\\sc4mpserver.log\" "
+                "for more details."
+            )
 
         self.status(notification=notification)
 
@@ -136,7 +142,8 @@ class SystemTrayIconManager(th.Thread):
 
         try:
 
-            subprocess.Popen([os.path.join(self.helper_batch_directory, "start.bat")])
+            start_bat = os.path.join(self.helper_batch_directory, "start.bat")
+            subprocess.Popen([start_bat])
 
         except Exception as e:
 
@@ -146,7 +153,8 @@ class SystemTrayIconManager(th.Thread):
 
         try:
 
-            subprocess.Popen([os.path.join(self.helper_batch_directory, "stop.bat")])
+            stop_bat = os.path.join(self.helper_batch_directory, "stop.bat")
+            subprocess.Popen([stop_bat])
 
         except Exception as e:
 
@@ -156,11 +164,19 @@ class SystemTrayIconManager(th.Thread):
 
         try:
 
-            os.startfile(f"sc4mp://{address}:{state.sc4mp_config['NETWORK']['port']}")
+            # The launcher handles sc4mp:// links
+            port = state.sc4mp_config['NETWORK']['port']
+            os.startfile(f"sc4mp://{address}:{port}")
 
         except Exception as e:
 
-            self.error(e, notification="Unable to connect. Ensure the SC4MP Launcher is installed, then try again.")
+            self.error(
+                e,
+                notification=(
+                    "Unable to connect. Ensure the SC4MP Launcher is "
+                    "installed, then try again."
+                )
+            )
 
     def logs(self, icon, item):
 
@@ -168,7 +184,9 @@ class SystemTrayIconManager(th.Thread):
 
             logs_bat = os.path.join(self.helper_batch_directory, "logs.bat")
 
-            if int(platform.version().split('.')[0]) >= 10 and os.path.exists(logs_bat):
+            # logs.bat uses PowerShell, which needs Windows 10 or later
+            windows_version = int(platform.version().split('.')[0])
+            if windows_version >= 10 and os.path.exists(logs_bat):
                 os.startfile(logs_bat)
             else:
                 os.startfile(SC4MP_LOG_PATH)
@@ -181,7 +199,9 @@ class SystemTrayIconManager(th.Thread):
 
         try:
 
-            self.status(notification="Add plugins by pasting the plugin files here.")
+            self.status(
+                notification="Add plugins by pasting the plugin files here."
+            )
 
             os.startfile(os.path.join(state.sc4mp_server_path, "Plugins"))
 
@@ -193,7 +213,13 @@ class SystemTrayIconManager(th.Thread):
 
         try:
 
-            self.status(notification="Add regions by pasting the region folders here. When you're done, restart the server for the changes to take effect.")
+            self.status(
+                notification=(
+                    "Add regions by pasting the region folders here. When "
+                    "you're done, restart the server for the changes to take "
+                    "effect."
+                )
+            )
 
             os.startfile(os.path.join(state.sc4mp_server_path, "Regions"))
 
@@ -205,9 +231,17 @@ class SystemTrayIconManager(th.Thread):
 
         try:
 
-            self.status(notification="Edit the server configuration settings here, then restart the server for the changes to take effect.")
+            self.status(
+                notification=(
+                    "Edit the server configuration settings here, then "
+                    "restart the server for the changes to take effect."
+                )
+            )
 
-            os.startfile(os.path.join(state.sc4mp_server_path, "serverconfig.ini"))
+            config_path = os.path.join(
+                state.sc4mp_server_path, "serverconfig.ini"
+            )
+            os.startfile(config_path)
 
         except Exception as e:
 
@@ -217,7 +251,8 @@ class SystemTrayIconManager(th.Thread):
 
         try:
 
-            os.startfile(f"https://{SC4MP_INVITES_DOMAIN}/{state.sc4mp_config['INFO']['server_id']}")
+            server_id = state.sc4mp_config['INFO']['server_id']
+            os.startfile(f"https://{SC4MP_INVITES_DOMAIN}/{server_id}")
 
         except Exception as e:
 
@@ -248,7 +283,9 @@ class SystemTrayIconManager(th.Thread):
         try:
 
             # Run 'ipconfig' and capture the output
-            output = subprocess.run("ipconfig", capture_output=True, text=True, check=True)
+            output = subprocess.run(
+                "ipconfig", capture_output=True, text=True, check=True
+            )
 
             # Search for 'Default Gateway' in the output
             match = re.search(r"Default Gateway[ .:]+([\d.]+)", output.stdout)
@@ -265,7 +302,7 @@ class SystemTrayIconManager(th.Thread):
 
         try:
 
-            os.startfile("C:\Windows\system32\WF.msc")
+            os.startfile("C:\\Windows\\system32\\WF.msc")
 
         except Exception as e:
 

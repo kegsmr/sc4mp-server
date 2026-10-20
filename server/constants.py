@@ -20,7 +20,9 @@ SC4MP_SERVERS = get_server_list()
 SC4MP_GITHUB_REPO = "kegsmr/sc4mp-server"
 
 SC4MP_URL = "www.sc4mp.org"
-SC4MP_CONTRIBUTORS_URL = f"https://github.com/{SC4MP_GITHUB_REPO}/contributors/"
+SC4MP_CONTRIBUTORS_URL = (
+    f"https://github.com/{SC4MP_GITHUB_REPO}/contributors/"
+)
 SC4MP_ISSUES_URL = f"https://github.com/{SC4MP_GITHUB_REPO}/issues/"
 SC4MP_RELEASES_URL = f"https://github.com/{SC4MP_GITHUB_REPO}/releases/"
 
@@ -28,7 +30,7 @@ SC4MP_AUTHOR_NAME = "SimCity 4 Multiplayer Project"
 SC4MP_WEBSITE_NAME = "www.sc4mp.org"
 SC4MP_LICENSE_NAME = "MIT-0"
 
-SC4MP_LOG_PATH = "sc4mpserver.log"  # -" + datetime.now().strftime("%Y%m%d%H%M%S") + ".log"
+SC4MP_LOG_PATH = "sc4mpserver.log"
 SC4MP_README_PATH = "readme.html"
 SC4MP_RESOURCES_PATH = "resources"
 
@@ -52,7 +54,13 @@ SC4MP_CONFIG_DEFAULTS = [
     ("INFO", [
         ("server_id", generate_server_id()),
         ("server_name", generate_server_name()),
-        ("server_description", "Join and build your city.\n\nRules:\n- Feed the llamas\n- Balance your budget\n- Do uncle Vinny some favors"),
+        ("server_description", (
+            "Join and build your city.\n\n"
+            "Rules:\n"
+            "- Feed the llamas\n"
+            "- Balance your budget\n"
+            "- Do uncle Vinny some favors"
+        )),
         ("server_url", SC4MP_URL),
     ]),
     ("SECURITY", [
@@ -87,6 +95,7 @@ SC4MP_CONFIG_DEFAULTS = [
     ])
 ]
 
+# The system tray icon only exists in the Windows build
 if is_windows() and is_frozen():
     SC4MP_CONFIG_DEFAULTS += [
         ("UI", [

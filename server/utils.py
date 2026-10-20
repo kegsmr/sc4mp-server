@@ -14,13 +14,14 @@ from server.constants import SC4MP_RESOURCES_PATH, SC4MP_VERSION
 
 
 def get_sc4mp_path(filename):
-    """TODO Gives the path of a given file in the SC4MP "resources" subdirectory
+    """TODO Gives the path of a given file in the SC4MP "resources"
+    subdirectory
 
     Arguments:
-            filename (str)
+        filename (str)
 
     Returns:
-            TODO type: the path to the given file
+        TODO type: the path to the given file
     """
     return os.path.join(SC4MP_RESOURCES_PATH, filename)
 
@@ -28,10 +29,10 @@ def get_sc4mp_path(filename):
 def md5(filename):
     """TODO Creates the hashcode for a given file.
 
-            filename (str)
+        filename (str)
 
     Returns:
-            TODO type: hashcode
+        TODO type: hashcode
     """
     hash_md5 = hashlib.md5()
     with open(filename, "rb") as f:
@@ -80,7 +81,8 @@ def set_savegame_data(entry, savegame: SC4Savegame):
     entry.setdefault("owner", None)
     entry.setdefault("modified", None)
     entry.setdefault("locked", False)
-    entry.setdefault("filename", os.path.basename(os.path.normpath(savegame.filename)))
+    filename = os.path.basename(os.path.normpath(savegame.filename))
+    entry.setdefault("filename", filename)
     entry.setdefault("reset_filename", None)
     entry.setdefault("date_subfile_hashes", [])
     entry.setdefault("last_mayor_name", None)
@@ -92,19 +94,27 @@ def set_savegame_data(entry, savegame: SC4Savegame):
         date_subfile_hashes.append(date_subfile_hash)
 
     # Overwrite
+    city = savegame.SC4ReadRegionalCity
     entry["hashcode"] = md5(savegame.filename)
-    entry["size"] = savegame.SC4ReadRegionalCity["citySizeX"]
-    entry["city_name"] = savegame.SC4ReadRegionalCity["cityName"]
-    entry["mayor_name"] = savegame.SC4ReadRegionalCity["mayorName"]
-    entry["gamemode"] = savegame.SC4ReadRegionalCity["modeFlag"]
-    entry["difficulty"] = savegame.SC4ReadRegionalCity["starCount"]
-    entry["mayor_rating"] = savegame.SC4ReadRegionalCity["mayorRating"]
-    entry["residential_population"] = savegame.SC4ReadRegionalCity["residentialPopulation"]
-    entry["commercial_population"] = savegame.SC4ReadRegionalCity["commercialPopulation"]
-    entry["industrial_population"] = savegame.SC4ReadRegionalCity["industrialPopulation"]
-    entry["population"] = entry["residential_population"] + entry["commercial_population"] + entry["industrial_population"]
-    entry["population_density"] = round(entry["population"] / (entry["size"] * entry["size"]))
-    entry["residential_population_density"] = round(entry["residential_population"] / (entry["size"] * entry["size"]))
+    entry["size"] = city["citySizeX"]
+    entry["city_name"] = city["cityName"]
+    entry["mayor_name"] = city["mayorName"]
+    entry["gamemode"] = city["modeFlag"]
+    entry["difficulty"] = city["starCount"]
+    entry["mayor_rating"] = city["mayorRating"]
+    entry["residential_population"] = city["residentialPopulation"]
+    entry["commercial_population"] = city["commercialPopulation"]
+    entry["industrial_population"] = city["industrialPopulation"]
+    entry["population"] = (
+        entry["residential_population"]
+        + entry["commercial_population"]
+        + entry["industrial_population"]
+    )
+    area = entry["size"] * entry["size"]
+    entry["population_density"] = round(entry["population"] / area)
+    entry["residential_population_density"] = round(
+        entry["residential_population"] / area
+    )
     entry["total_funds"] = savegame.cSC4BudgetSimulator["totalFunds"]
 
     # Log mayor name
@@ -115,14 +125,16 @@ def set_savegame_data(entry, savegame: SC4Savegame):
             if mayor_name is not None:
                 last_mayor_name = entry.get("last_mayor_name", None)
                 if mayor_name != last_mayor_name:
-                    mayor_names = state.sc4mp_users_database_manager[owner]["mayors"]
+                    users = state.sc4mp_users_database_manager
+                    mayor_names = users[owner]["mayors"]
                     if mayor_name not in mayor_names:
                         mayor_names.append(mayor_name)
 
 
 def update_json(filename, data):
 
-    # Write to a temporary file first so a crash or error mid-write can't truncate the original
+    # Write to a temporary file first so a crash or error mid-write can't
+    # truncate the original
     temp_filename = f"{filename}.tmp"
     with open(temp_filename, 'w') as file:
         json.dump(data, file, indent=4)
@@ -131,13 +143,15 @@ def update_json(filename, data):
     try:
         os.replace(temp_filename, filename)
     except PermissionError:
-        # On Windows, the replace fails while another process or thread has the file open, so fall back to writing in place
+        # On Windows, the replace fails while another process or thread has
+        # the file open, so fall back to writing in place
         with open(filename, 'w') as file:
             json.dump(data, file, indent=4)
         os.unlink(temp_filename)
 
 
-def report(message, obj=None, msg_type="INFO", ):  # TODO do this in the logger to make sure output prints correctly
+# TODO do this in the logger to make sure output prints correctly
+def report(message, obj=None, msg_type="INFO", ):
     # color = '\033[94m '
     # output = datetime.now().strftime("[%H:%M:%S] [SC4MP")
     # obj = None
@@ -161,7 +175,7 @@ def report(message, obj=None, msg_type="INFO", ):  # TODO do this in the logger 
 
 
 def update_config_constants(config):
-
+    """Copies a few config values to `state`. Called by Config.update()."""
 
     state.SC4MP_HOST = config['NETWORK']['host']
     state.SC4MP_PORT = config['NETWORK']['port']
@@ -176,10 +190,15 @@ def get_bitmap_dimensions(filename):
     with open(filename, "rb") as file:
         data = file.read(26)
 
-    return struct.unpack_from("<i", data, 18)[0], abs(struct.unpack_from("<i", data, 22)[0])
+    width = struct.unpack_from("<i", data, 18)[0]
+    # The height is negative for bitmaps stored top-down
+    height = abs(struct.unpack_from("<i", data, 22)[0])
+
+    return width, height
 
 
-def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag):
+def set_savegame_filename(savegameX, savegameY, savegameCityName,
+                          savegameMayorName, savegameModeFlag):
 
     prefix = f"({savegameX:0>{3}}-{savegameY:0>{3}})"
 
@@ -208,17 +227,19 @@ def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorN
 
 def set_headers(s):
 
+    # The socket adds these headers to every message it sends
+    config = state.sc4mp_config
     return s.set_headers(
-        server_id=state.sc4mp_config["INFO"]["server_id"],
-        server_name=state.sc4mp_config["INFO"]["server_name"],
-        server_description=state.sc4mp_config["INFO"]["server_description"],
-        server_url=state.sc4mp_config["INFO"]["server_url"],
+        server_id=config["INFO"]["server_id"],
+        server_name=config["INFO"]["server_name"],
+        server_description=config["INFO"]["server_description"],
+        server_url=config["INFO"]["server_url"],
         server_version=SC4MP_VERSION,
-        private=state.sc4mp_config["SECURITY"]["private"],
-        password_enabled=state.sc4mp_config["SECURITY"]["password_enabled"],
-        user_plugins_enabled=state.sc4mp_config["RULES"]["user_plugins"],
-        claim_duration=state.sc4mp_config["RULES"]["claim_duration"],
-        max_region_claims=state.sc4mp_config["RULES"]["max_region_claims"],
-        godmode_filter=state.sc4mp_config["RULES"]["godmode_filter"],
+        private=config["SECURITY"]["private"],
+        password_enabled=config["SECURITY"]["password_enabled"],
+        user_plugins_enabled=config["RULES"]["user_plugins"],
+        claim_duration=config["RULES"]["claim_duration"],
+        max_region_claims=config["RULES"]["max_region_claims"],
+        godmode_filter=config["RULES"]["godmode_filter"],
         time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )

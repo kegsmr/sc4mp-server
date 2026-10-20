@@ -28,15 +28,17 @@ from server.utils import file_md5, load_json, report
 
 
 class RequestHandler(BaseRequestHandler):
+    """Runs in its own thread and answers the requests sent on one client
+    connection until the client closes it."""
 
     def __init__(self, c):
 
-        super().__init__(c, private=state.sc4mp_config["SECURITY"]["private"])
+        private = state.sc4mp_config["SECURITY"]["private"]
+        super().__init__(c, private=private)
 
     def run(self):
 
         try:
-
 
             set_thread_name("ReqThread")
 
@@ -70,13 +72,17 @@ class RequestHandler(BaseRequestHandler):
 
     def authenticate(self):
 
+        # Only the major and minor version numbers have to match
         version = self.get_header('version', str)
-        if unformat_version(version)[:2] < unformat_version(SC4MP_VERSION)[:2]:
+        client_version = unformat_version(version)[:2]
+        server_version = unformat_version(SC4MP_VERSION)[:2]
+        if client_version < server_version:
             self.error("Incorrect version.")
 
-        if state.sc4mp_config["SECURITY"]["password_enabled"]:
+        security = state.sc4mp_config["SECURITY"]
+        if security["password_enabled"]:
             password = self.get_header('password', str)
-            if password != state.sc4mp_config["SECURITY"]["password"]:
+            if password != security["password"]:
                 self.error("Incorrect password.")
 
         self.user_id = \
@@ -98,7 +104,9 @@ class RequestHandler(BaseRequestHandler):
 
         # Check if the client has exceeded the user limit
         if user_id not in client_entry["users"]:
-            if (state.sc4mp_config["SECURITY"]["max_ip_users"] is None or len(client_entry["users"]) < state.sc4mp_config["SECURITY"]["max_ip_users"]):
+            max_ip_users = state.sc4mp_config["SECURITY"]["max_ip_users"]
+            if (max_ip_users is None
+                    or len(client_entry["users"]) < max_ip_users):
                 client_entry["users"].append(user_id)
             else:
                 self.error("User limit exceeded.")
@@ -113,14 +121,17 @@ class RequestHandler(BaseRequestHandler):
         user_entry.setdefault("clients", [])
         user_entry.setdefault("mayors", [])
         user_entry.setdefault("ban", False)
-        user_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        first_contact = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        user_entry.setdefault("first_contact", first_contact)
 
         # Close connection and throw error if the user is banned
-        if (user_entry["ban"] or client_entry["ban"]):  # TODO check for client bans in server loop
+        # TODO check for client bans in server loop
+        if (user_entry["ban"] or client_entry["ban"]):
             self.error("You are banned from this server.")
 
         # Log the time
-        user_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        last_contact = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        user_entry["last_contact"] = last_contact
 
         # Log the IP
         clients_entry = user_entry["clients"]
@@ -145,13 +156,15 @@ class RequestHandler(BaseRequestHandler):
         # Get database
         data = state.sc4mp_users_database_manager
 
-        # Get the user_id that matches the hash
+        # Get the user_id that matches the hash. The client sends a hash of
+        # its user id and token, so neither is sent in plain text.
         found = False
         user_id = None
         for user_id in data:
             try:
                 token = data[user_id]["token"]
-                if hashlib.sha256((user_id + token).encode()).hexdigest() == in_hash:
+                user_hash = hashlib.sha256((user_id + token).encode())
+                if user_hash.hexdigest() == in_hash:
                     found = True
                     break
             except Exception:
@@ -167,7 +180,10 @@ class RequestHandler(BaseRequestHandler):
 
         user_id = self.user_id
 
-        token = ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))
+        characters = string.ascii_letters + string.digits
+        token = ''.join(
+            random.SystemRandom().choice(characters) for i in range(32)
+        )
 
         # Get database
         data = state.sc4mp_users_database_manager
@@ -195,10 +211,13 @@ class RequestHandler(BaseRequestHandler):
     def res_plugins_data(self):
 
         self.respond()
-        send_filestream(self.c, os.path.join(state.sc4mp_server_path, "Plugins"))
+        plugins_path = os.path.join(state.sc4mp_server_path, "Plugins")
+        send_filestream(self.c, plugins_path)
 
     def res_regions_data(self):
 
+        # If a save was pushed since the last export, ask the regions manager
+        # for a fresh export and wait for it
         if state.sc4mp_regions_manager.regions_modified:
             state.sc4mp_regions_manager.export_regions = True
             while state.sc4mp_regions_manager.export_regions:
@@ -206,16 +225,18 @@ class RequestHandler(BaseRequestHandler):
             time.sleep(SC4MP_DELAY * 2)
 
         self.respond()
-        send_filestream(self.c, os.path.join(state.sc4mp_server_path, "_Temp", "outbound", "Regions"))
+        regions_path = os.path.join(
+            state.sc4mp_server_path, "_Temp", "outbound", "Regions"
+        )
+        send_filestream(self.c, regions_path)
 
     def res_regions_table(self):
 
         self.respond()
-        self.c.send_json(
-            get_file_table(
-                os.path.join(state.sc4mp_server_path, "_Temp", "outbound", "Regions")
-            )
+        regions_path = os.path.join(
+            state.sc4mp_server_path, "_Temp", "outbound", "Regions"
         )
+        self.c.send_json(get_file_table(regions_path))
 
     def res_save(self):
 
@@ -243,15 +264,22 @@ class RequestHandler(BaseRequestHandler):
             self.respond(result=error)
             return
 
-        # Set save id
-        save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id + "_" + os.urandom(4).hex())  # unique, even for pushes by the same user in the same second
+        # Set save id (unique, even for pushes by the same user in the same
+        # second)
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        random_part = os.urandom(4).hex()
+        save_id = sanitize_directory_name(
+            timestamp + "_" + user_id + "_" + random_part
+        )
 
         # Receive files
         count = 0
         for file_size in file_sizes:
 
             # Receive file
-            path = os.path.join(state.sc4mp_server_path, "_Temp", "inbound", save_id, region)
+            path = os.path.join(
+                state.sc4mp_server_path, "_Temp", "inbound", save_id, region
+            )
             if not os.path.exists(path):
                 os.makedirs(path)
             filename = os.path.join(path, str(count) + ".sc4")
@@ -260,7 +288,9 @@ class RequestHandler(BaseRequestHandler):
             count += 1
 
         # Get path to save directory
-        path = os.path.join(state.sc4mp_server_path, "_Temp", "inbound", save_id)
+        path = os.path.join(
+            state.sc4mp_server_path, "_Temp", "inbound", save_id
+        )
 
         # Get regions in save directory
         regions = os.listdir(path)
@@ -270,18 +300,21 @@ class RequestHandler(BaseRequestHandler):
             self.respond(result="Too many regions.")
             return
 
-        # Loop through regions. Should only loop once since save pushes of multiple regions are filtered out.
+        # Loop through regions. Should only loop once since save pushes of
+        # multiple regions are filtered out.
         for region in regions:
 
             # Get region path
             region_path = os.path.join(path, region)
 
-            # Create DBPF objects for each file, and extract the region subfile from each DBPF
+            # Create DBPF objects for each file, and extract the region
+            # subfile from each DBPF
             savegames = []
             try:
                 for filename in os.listdir(region_path):
                     filename = os.path.join(region_path, filename)
-                    savegames.append(SC4Savegame(filename, error_callback=show_error))
+                    savegame = SC4Savegame(filename, error_callback=show_error)
+                    savegames.append(savegame)
                 for savegame in savegames:
                     savegame.get_SC4ReadRegionalCity()
             except Exception as e:
@@ -296,74 +329,96 @@ class RequestHandler(BaseRequestHandler):
             new_savegames = []
             for savegame in savegames:
                 add = True
-                savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
-                savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
-                savegameSizeX = savegame.SC4ReadRegionalCity["citySizeX"]
-                savegameSizeY = savegame.SC4ReadRegionalCity["citySizeY"]
+                city = savegame.SC4ReadRegionalCity
+                savegameX = city["tileXLocation"]
+                savegameY = city["tileYLocation"]
+                savegameSizeX = city["citySizeX"]
+                savegameSizeY = city["citySizeY"]
                 for neighbor in savegames:
                     if neighbor == savegame:
                         continue
-                    neighborX = neighbor.SC4ReadRegionalCity["tileXLocation"]
-                    neighborY = neighbor.SC4ReadRegionalCity["tileYLocation"]
-                    neighborSizeX = neighbor.SC4ReadRegionalCity["citySizeX"]
-                    neighborSizeY = neighbor.SC4ReadRegionalCity["citySizeY"]
+                    neighbor_city = neighbor.SC4ReadRegionalCity
+                    neighborX = neighbor_city["tileXLocation"]
+                    neighborY = neighbor_city["tileYLocation"]
+                    neighborSizeX = neighbor_city["citySizeX"]
+                    neighborSizeY = neighbor_city["citySizeY"]
                     conditionX1 = (neighborX == savegameX - neighborSizeX)
                     conditionX2 = (neighborX == savegameX + savegameSizeX)
                     conditionY1 = (neighborY == savegameY - neighborSizeY)
                     conditionY2 = (neighborY == savegameY + savegameSizeY)
-                    conditionX = xor(conditionX1, conditionX2) and ((neighborY + neighborSizeY > savegameY) or (neighborY < savegameY + savegameSizeY))
-                    conditionY = xor(conditionY1, conditionY2) and ((neighborX + neighborSizeX > savegameX) or (neighborX < savegameX + savegameSizeX))
+                    conditionX = xor(conditionX1, conditionX2) and (
+                        (neighborY + neighborSizeY > savegameY)
+                        or (neighborY < savegameY + savegameSizeY)
+                    )
+                    conditionY = xor(conditionY1, conditionY2) and (
+                        (neighborX + neighborSizeX > savegameX)
+                        or (neighborX < savegameX + savegameSizeX)
+                    )
                     condition = xor(conditionX, conditionY)
                     if not condition:
                         add = False
+                coords_text = \
+                    "(" + str(savegameX) + ", " + str(savegameY) + ")"
                 if add:
                     new_savegames.append(savegame)
-                    report("YES (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+                    report("YES " + coords_text, self)
                 else:
-                    report("NO (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+                    report("NO " + coords_text, self)
             savegames = new_savegames
 
-            # Filter out tiles which have identical date subfiles as their previous versions
+            # Filter out tiles which have identical date subfiles as their
+            # previous versions (their game date did not move on)
             if len(savegames) > 1:
                 report("Savegame filter 2", self)
                 new_savegames = []
+                database_path = os.path.join(
+                    state.sc4mp_server_path, "Regions", region, "_Database",
+                    "region.json"
+                )
                 for savegame in savegames:
                     savegameX = savegame.SC4ReadRegionalCity["tileXLocation"]
                     savegameY = savegame.SC4ReadRegionalCity["tileYLocation"]
                     coords = str(savegameX) + "_" + str(savegameY)
-                    data = load_json(os.path.join(state.sc4mp_server_path, "Regions", region, "_Database", "region.json"))
+                    coords_text = \
+                        "(" + str(savegameX) + ", " + str(savegameY) + ")"
+                    data = load_json(database_path)
                     if coords in data:
                         entry = data[coords] or {}
-                        date_subfile_hashes = entry.get("date_subfile_hashes", [])
-                        new_date_subfile_hash = file_md5(savegame.decompress_subfile("2990c1e5"))
+                        date_subfile_hashes = \
+                            entry.get("date_subfile_hashes", [])
+                        date_subfile = savegame.decompress_subfile("2990c1e5")
+                        new_date_subfile_hash = file_md5(date_subfile)
                         if new_date_subfile_hash not in date_subfile_hashes:
                             new_savegames.append(savegame)
-                            report("YES (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+                            report("YES " + coords_text, self)
                         else:
-                            report("NO (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+                            report("NO " + coords_text, self)
                     else:
                         new_savegames.append(savegame)
-                        report("YES (" + str(savegameX) + ", " + str(savegameY) + ")", self)
+                        report("YES " + coords_text, self)
                     savegame = None
                 savegames = new_savegames
             else:
                 report("Skipping savegame filter 2", self)
 
-            # If one savegame remains, pass it to the regions manager, otherwise report to the client that the save push is invalid
+            # If one savegame remains, pass it to the regions manager,
+            # otherwise report to the client that the save push is invalid
             if len(savegames) == 1:
 
                 # Get the savegame
                 savegame = savegames[0]
 
                 # Send the task to the regions manager
-                state.sc4mp_regions_manager.tasks.append((save_id, user_id, region, savegame))
+                regions_manager = state.sc4mp_regions_manager
+                task = (save_id, user_id, region, savegame)
+                regions_manager.tasks.append(task)
 
                 # Wait for the output
-                while save_id not in state.sc4mp_regions_manager.outputs:
+                while save_id not in regions_manager.outputs:
                     time.sleep(SC4MP_DELAY)
 
                 # Send the output to the client
-                self.respond(result=state.sc4mp_regions_manager.outputs[save_id])
+                self.respond(result=regions_manager.outputs[save_id])
 
             else:
 
@@ -383,8 +438,10 @@ class RequestHandler(BaseRequestHandler):
 
             server = (host, port)
 
-            if len(state.sc4mp_server_list.server_queue) < state.sc4mp_server_list.SERVER_LIMIT:
-                state.sc4mp_server_list.server_queue.enqueue(server, left=True)  # skip to the front of the queue
+            server_list = state.sc4mp_server_list
+            if len(server_list.server_queue) < server_list.SERVER_LIMIT:
+                # Skip to the front of the queue
+                server_list.server_queue.enqueue(server, left=True)
 
             self.respond(status='success')
 

@@ -11,6 +11,8 @@ from server.errors import fatal_error, show_error
 
 
 class DatabaseManager(th.Thread, Database):
+    """A Database (a dictionary saved as JSON) with a thread that writes it
+    to disk every SC4MP_DELAY seconds while the server runs."""
 
     def __init__(self, filename):
 
@@ -20,7 +22,6 @@ class DatabaseManager(th.Thread, Database):
     def run(self):
 
         try:
-
 
             while not state.sc4mp_server_running:
                 time.sleep(SC4MP_DELAY)

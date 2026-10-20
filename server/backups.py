@@ -19,12 +19,15 @@ from server.utils import load_json, md5, report
 
 
 def restore(filename):
+    """Copies the files of a backup (a `_Backups/<timestamp>.json` record)
+    to `_Backups/restores/<timestamp>/`."""
 
+    server_path = state.sc4mp_server_path
     possible_paths = [
-        os.path.join(state.sc4mp_server_path, "_Backups", filename),
-        os.path.join(state.sc4mp_server_path, "_Backups", filename + ".json"),
-        os.path.join(state.sc4mp_server_path, filename),
-        os.path.join(state.sc4mp_server_path, filename + ".json"),
+        os.path.join(server_path, "_Backups", filename),
+        os.path.join(server_path, "_Backups", filename + ".json"),
+        os.path.join(server_path, filename),
+        os.path.join(server_path, filename + ".json"),
         filename,
         filename + ".json",
     ]
@@ -41,9 +44,16 @@ def restore(filename):
             for original_filename, file_entry in files_entry.items():
                 hashcode = file_entry["hashcode"]
                 size = file_entry["size"]
-                data_filename = os.path.join(directory, "data", hashcode + "_" + str(size))
-                restore_filename = os.path.join(directory, "restores", filename[:-5], original_filename)
-                print("Copying \"" + data_filename + "\" to \"" + restore_filename + "\"")
+                data_filename = os.path.join(
+                    directory, "data", hashcode + "_" + str(size)
+                )
+                restore_filename = os.path.join(
+                    directory, "restores", filename[:-5], original_filename
+                )
+                print(
+                    "Copying \"" + data_filename + "\" to \""
+                    + restore_filename + "\""
+                )
                 restore_directory = os.path.split(restore_filename)[0]
                 if not os.path.exists(restore_directory):
                     os.makedirs(restore_directory)
@@ -54,6 +64,9 @@ def restore(filename):
 
 
 class BackupsManager(th.Thread):
+    """Backs up every file in the server folder every few hours. Each file
+    is stored once per content (named by its hash and size), and a JSON
+    record lists the files of each backup."""
 
     def __init__(self):
 
@@ -64,7 +77,6 @@ class BackupsManager(th.Thread):
 
         try:
 
-
             set_thread_name("BakThread", enumerate=False)
 
             while not state.sc4mp_server_running:
@@ -73,8 +85,10 @@ class BackupsManager(th.Thread):
 
             while state.sc4mp_server_running:
 
-                # Delay
-                time.sleep(3600 * state.sc4mp_config["BACKUPS"]["server_backup_interval"])
+                # Delay (the interval is in hours)
+                backups_config = state.sc4mp_config["BACKUPS"]
+                interval = backups_config["server_backup_interval"]
+                time.sleep(3600 * interval)
 
                 while state.sc4mp_server_running:
 
@@ -108,7 +122,8 @@ class BackupsManager(th.Thread):
 
     def update_json(self, filename, data):
 
-        # Write to a temporary file first so a crash or error mid-write can't truncate the original
+        # Write to a temporary file first so a crash or error mid-write can't
+        # truncate the original
         temp_filename = f"{filename}.tmp"
         with open(temp_filename, 'w') as file:
             json.dump(data, file, indent=4)
@@ -117,41 +132,56 @@ class BackupsManager(th.Thread):
         try:
             os.replace(temp_filename, filename)
         except PermissionError:
-            # On Windows, the replace fails while another process or thread has the file open, so fall back to writing in place
+            # On Windows, the replace fails while another process or thread
+            # has the file open, so fall back to writing in place
             with open(filename, 'w') as file:
                 json.dump(data, file, indent=4)
             os.unlink(temp_filename)
 
-    def backup(self):  # TODO stop backing up the backups subdirectory
+    # TODO stop backing up the backups subdirectory
+    def backup(self):
 
         # Prune backups
         try:
             self.prune()
-        except Exception as e:
+        except Exception:
             show_error("An error occurred while pruning backups.")
 
         # Report creating backups
         report("Creating backup...", self)
 
-        # Loop through all files in server directory and append them to a list
+        # Loop through all files in server directory and append them to a
+        # list
+        backups_path = os.path.abspath(
+            os.path.join(state.sc4mp_server_path, "_Backups")
+        )
         fullpaths = []
         for path, directories, files in os.walk(state.sc4mp_server_path):
             for file in files:
-                if not os.path.abspath(os.path.join(state.sc4mp_server_path, "_Backups")) in os.path.abspath(path):
+                if backups_path not in os.path.abspath(path):
                     fullpaths.append(os.path.join(path, file))
 
         # Create a files entry for the backup dictionary
         files_entry = {}
 
-        # Loop through fullpaths and backup the files and add them to the files entry
+        # Loop through fullpaths and backup the files and add them to the
+        # files entry
         for fullpath in fullpaths:
             hashcode = md5(fullpath)
             filesize = os.path.getsize(fullpath)
-            directory = os.path.join(state.sc4mp_server_path, "_Backups", "data")
+            directory = os.path.join(
+                state.sc4mp_server_path, "_Backups", "data"
+            )
             if not os.path.exists(directory):
                 os.makedirs(directory)
             filename = os.path.join(directory, hashcode + "_" + str(filesize))
-            if not os.path.exists(filename) or hashcode != md5(filename) or filesize != os.path.getsize(filename):
+            # Only copy the file if there isn't already a good copy
+            needs_copy = (
+                not os.path.exists(filename)
+                or hashcode != md5(filename)
+                or filesize != os.path.getsize(filename)
+            )
+            if needs_copy:
                 report('- copying "' + fullpath + '"...', self)
                 if os.path.exists(filename):
                     os.remove(filename)
@@ -167,7 +197,10 @@ class BackupsManager(th.Thread):
         backup_data["files"] = files_entry
 
         # Update database
-        backup_filename = os.path.join(state.sc4mp_server_path, "_Backups", datetime.now().strftime("%Y%m%d%H%M%S") + ".json")
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        backup_filename = os.path.join(
+            state.sc4mp_server_path, "_Backups", timestamp + ".json"
+        )
         self.update_json(backup_filename, backup_data)
 
         # Report done
@@ -180,7 +213,8 @@ class BackupsManager(th.Thread):
         files to the entries in the remaining json files.
         """
         report('Pruning backups...', self)
-        max_server_backup_days = state.sc4mp_config["BACKUPS"]["max_server_backup_days"]
+        backups_config = state.sc4mp_config["BACKUPS"]
+        max_server_backup_days = backups_config["max_server_backup_days"]
 
         if max_server_backup_days is not None:
             self.prune_backup_records(max_server_backup_days)
@@ -216,10 +250,15 @@ class BackupsManager(th.Thread):
                     file.unlink()
 
     def get_referenced_files(self) -> set[tuple[str, int]]:
-        """Return all referenced backup files as a set of tuples of (hashcode, size)"""
+        """Return all referenced backup files as a set of tuples of
+        (hashcode, size)"""
         # # types
-        # FileDetail = TypedDict('FileDetail', {'hashcode': str, 'size': int})
-        # BackupJSON = TypedDict('BackupJSON', {'files': "dict[str, FileDetail]"})
+        # FileDetail = TypedDict(
+        #     'FileDetail', {'hashcode': str, 'size': int}
+        # )
+        # BackupJSON = TypedDict(
+        #     'BackupJSON', {'files': "dict[str, FileDetail]"}
+        # )
 
         referenced_files: set[tuple[str, int]] = set()
 

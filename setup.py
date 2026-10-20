@@ -2,14 +2,18 @@ import os
 import platform
 import shutil
 import struct
-import subprocess
+import subprocess  # noqa: F401 (for the commented-out pip install below)
 import sys
 from datetime import datetime
 
 if sys.version_info[:2] != (3, 8):
-    raise RuntimeError(f"Unsupported Python version: {sys.version}. Please use Python 3.8.")
+    raise RuntimeError(
+        f"Unsupported Python version: {sys.version}. Please use Python 3.8."
+    )
 
-# subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+# subprocess.run(
+#     [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"]
+# )
 
 import PyInstaller.__main__ as pyinstaller
 from pyinstaller_versionfile import create_versionfile
@@ -19,7 +23,10 @@ import core.util as utils
 
 TITLE = "SC4MP Server"
 NAME = "sc4mpserver.exe"
-VERSION = sc4mpserver.SC4MP_VERSION + "." + datetime.now().strftime("%Y%m%d%H%M%S")
+VERSION = (
+    sc4mpserver.SC4MP_VERSION + "."
+    + datetime.now().strftime("%Y%m%d%H%M%S")
+)
 PUBLISHER = "SimCity 4 Multiplayer Project"
 DESCRIPTION = "Multiplayer gameserver for SimCity 4"
 LICENSE = "MIT-0"
@@ -53,7 +60,7 @@ def main():
             shutil.rmtree(item)
 
     # Create version file
-    print(f"Creating version file...")
+    print("Creating version file...")
     create_versionfile(
         output_file="version.rc",
         version=VERSION,
@@ -68,40 +75,49 @@ def main():
     # Run setup
     print("Running setup...")
     pyinstaller.run([
-        f"sc4mpserver.py",
-        f"--specpath",
+        "sc4mpserver.py",
+        "--specpath",
         f"{os.path.join('temp', 'spec')}",
-        f"--distpath",
-        f"dist",
-        f"--workpath",
+        "--distpath",
+        "dist",
+        "--workpath",
         f"{os.path.join('temp', 'build')}",
-        f"--onedir",
-        f"--contents-directory",
-        f"resources",
-        f"--noconfirm",
-        f"--noupx",
-        f"--console",
-        f"--hide-console",
-        f"hide-early",
-        f"-i",
+        "--onedir",
+        "--contents-directory",
+        "resources",
+        "--noconfirm",
+        "--noupx",
+        "--console",
+        "--hide-console",
+        "hide-early",
+        "-i",
         f"{os.path.abspath(os.path.join('resources', 'icon.ico'))}",
-        f"--version-file",
+        "--version-file",
         f"{os.path.abspath('version.rc')}",
-        f"--exclude=numpy",
-        f"--exclude=cryptography",
+        "--exclude=numpy",
+        "--exclude=cryptography",
     ])
 
     # Copy binary files to distribution directory
-    shutil.copytree(os.path.join("dist", "sc4mpserver"), DIST, dirs_exist_ok=True)
+    shutil.copytree(
+        os.path.join("dist", "sc4mpserver"), DIST, dirs_exist_ok=True
+    )
 
     # Copy extra files to distribution directory
     print(f'Copying extra files to "{DIST}"...')
-    shutil.copytree("resources", os.path.join(DIST, "resources"), dirs_exist_ok=True)
+    shutil.copytree(
+        "resources", os.path.join(DIST, "resources"), dirs_exist_ok=True
+    )
     shutil.copy("License.txt", DIST)
     shutil.copy("Readme.html", DIST)
 
     # Create a zip archive of the distribution
-    destination = os.path.join(os.path.join("builds", "sc4mp-server-" + platform.system().lower() + "-" + str(8 * struct.calcsize("P")) + "-v" + VERSION))
+    bits = str(8 * struct.calcsize("P"))
+    archive_name = (
+        "sc4mp-server-" + platform.system().lower() + "-" + bits
+        + "-v" + VERSION
+    )
+    destination = os.path.join(os.path.join("builds", archive_name))
     print('Creating zip archive of "' + DIST + '" at "' + destination + '"')
     shutil.make_archive(destination, "zip", DIST)
 

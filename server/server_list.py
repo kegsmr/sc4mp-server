@@ -19,11 +19,14 @@ from server.utils import load_json, set_headers, update_json
 
 
 class ServerList(th.Thread):
+    """Every minute or so, contacts one known server: asks it to add this
+    server to its list and adds the servers it knows to the queue. The
+    servers found are saved in `_Database/servers.json`."""
 
     class ServerQueue:
         """
-        Queue for server scanning that implements membership check before enqueuing.
-        Can optionally enqueue to the front (left) of the queue.
+        Queue for server scanning that implements membership check before
+        enqueuing. Can optionally enqueue to the front (left) of the queue.
         The queue contains (host, port) tuples.
         """
 
@@ -54,14 +57,19 @@ class ServerList(th.Thread):
 
         super().__init__()
 
-        self.SERVER_LIMIT = 1 + len(SC4MP_SERVERS) + 100  # TODO make configurable
+        # TODO make configurable
+        self.SERVER_LIMIT = 1 + len(SC4MP_SERVERS) + 100
 
         try:
-            self.servers = load_json(os.path.join(state.sc4mp_server_path, "_Database", "servers.json"))
+            servers_path = os.path.join(
+                state.sc4mp_server_path, "_Database", "servers.json"
+            )
+            self.servers = load_json(servers_path)
         except Exception:
             self.servers = {}
 
-        self.servers["root"] = {"host": SC4MP_SERVERS[0][0], "port": SC4MP_SERVERS[0][1]}
+        root_host, root_port = SC4MP_SERVERS[0]
+        self.servers["root"] = {"host": root_host, "port": root_port}
 
         self.server_queue = self.ServerQueue(SC4MP_SERVERS.copy())
 
@@ -81,10 +89,13 @@ class ServerList(th.Thread):
                 # Wait to ping the next server
                 time.sleep(random.randint(1, 60))
 
-                # Remove servers from the server list if the limit has been reached
+                # Remove servers from the server list if the limit has been
+                # reached (but never the default servers)
                 while len(self.servers) > self.SERVER_LIMIT:
                     server_id = random.choice(list(self.servers.keys()))
-                    if (self.servers[server_id]["host"], self.servers[server_id]["port"]) not in SC4MP_SERVERS:
+                    candidate = self.servers[server_id]
+                    address = (candidate["host"], candidate["port"])
+                    if address not in SC4MP_SERVERS:
                         self.servers.pop(server_id)
 
                 if len(self.server_queue) > 0 or len(self.servers) > 0:
@@ -97,7 +108,10 @@ class ServerList(th.Thread):
                         server_id = random.choice(list(self.servers.keys()))
                         server_entry = self.servers.pop(server_id)
                         server = (server_entry["host"], server_entry["port"])
-                    print("Synchronizing server list with " + server[0] + ":" + str(server[1]) + "...")
+                    print(
+                        "Synchronizing server list with " + server[0] + ":"
+                        + str(server[1]) + "..."
+                    )
 
                     # Ping the next server
                     try:
@@ -106,36 +120,69 @@ class ServerList(th.Thread):
                         server_id = self.request_server_id(server)
 
                         # Skip it if it matches the server id of this server
-                        if server_id == state.sc4mp_config["INFO"]["server_id"]:
-                            # print("- \"" + server_id + "\" is our server_id!")
+                        # (this also skips updating the database below)
+                        own_server_id = state.sc4mp_config["INFO"]["server_id"]
+                        if server_id == own_server_id:
+                            # print(
+                            #     "- \"" + server_id + "\" is our server_id!"
+                            # )
                             continue
+
+                        new_address = f"{server[0]}:{server[1]}"
+                        new_entry = {"host": server[0], "port": server[1]}
 
                         # Resolve server id confilcts
                         if server_id in self.servers:
-                            # print("- \"" + server_id + "\" already found in our server list")
-                            old_server = (self.servers[server_id]["host"], self.servers[server_id]["port"])
+                            # print(
+                            #     "- \"" + server_id + "\" already found in "
+                            #     "our server list"
+                            # )
+                            old_entry = self.servers[server_id]
+                            old_server = (old_entry["host"], old_entry["port"])
+                            old_address = f"{old_server[0]}:{old_server[1]}"
 
                             if server != old_server:
 
-                                print(f"[WARNING] The server at {server[0]}:{server[1]} is using a server ID, \"{server_id}\", which is already used by {old_server[0]}:{old_server[1]}. Resolving server ID conflict...")
+                                print(
+                                    f"[WARNING] The server at {new_address} "
+                                    f"is using a server ID, \"{server_id}\", "
+                                    f"which is already used by "
+                                    f"{old_address}. Resolving server ID "
+                                    f"conflict..."
+                                )
 
                                 try:
-                                    old_server_id = self.request_server_id(old_server)
+                                    old_server_id = \
+                                        self.request_server_id(old_server)
                                 except Exception:
                                     old_server_id = None
 
                                 if old_server_id == server_id:
-                                    print(f"[WARNING] - keeping the old server ({old_server[0]}:{old_server[1]}) and discarding the new one ({server[0]}:{server[1]}).")
+                                    print(
+                                        f"[WARNING] - keeping the old server "
+                                        f"({old_address}) and discarding the "
+                                        f"new one ({new_address})."
+                                    )
                                 else:
-                                    print(f"[WARNING] - keeping the new server ({server[0]}:{server[1]}) and discarding the old one ({old_server[0]}:{old_server[1]}).")
-                                    self.servers[server_id] = {"host": server[0], "port": server[1]}
+                                    print(
+                                        f"[WARNING] - keeping the new server "
+                                        f"({new_address}) and discarding the "
+                                        f"old one ({old_address})."
+                                    )
+                                    self.servers[server_id] = new_entry
 
                         else:
-                            # print("- adding \"" + server_id + "\" to our server list")
-                            self.servers[server_id] = {"host": server[0], "port": server[1]}
+                            # print(
+                            #     "- adding \"" + server_id + "\" to our "
+                            #     "server list"
+                            # )
+                            self.servers[server_id] = new_entry
 
                         # Request to be added to the server's server list
-                        # print("- requesting to be added to their server list...")
+                        # print(
+                        #     "- requesting to be added to their server "
+                        #     "list..."
+                        # )
                         self.add_server(server)
 
                         # Get the server's server list
@@ -148,11 +195,17 @@ class ServerList(th.Thread):
 
                         # show_error(e)
 
-                        print(f"[WARNING] Failed to synchronize server list with {server[0]}:{server[1]}! " + str(e))
+                        print(
+                            f"[WARNING] Failed to synchronize server list "
+                            f"with {server[0]}:{server[1]}! " + str(e)
+                        )
 
                 # Update database
-                # report('Updating "' + os.path.join(sc4mp_server_path, "_Database", "servers.json") + '"...')
-                update_json(os.path.join(state.sc4mp_server_path, "_Database", "servers.json"), self.servers)
+                servers_path = os.path.join(
+                    state.sc4mp_server_path, "_Database", "servers.json"
+                )
+                # report('Updating "' + servers_path + '"...')
+                update_json(servers_path, self.servers)
                 # print("- done.")
 
         except Exception as e:

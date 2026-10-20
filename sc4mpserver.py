@@ -76,7 +76,8 @@ def main():
 
         # -v / --verbose argument
         if args.verbose:
-            # TODO: use this flag to set logger level to debug once the logger PR is merged
+            # TODO: use this flag to set logger level to debug once the
+            # logger PR is merged
             pass
 
         # If there's another server running from the same directory, kill it
@@ -109,15 +110,24 @@ def parse_args() -> Namespace:
     parser = ArgumentParser(prog="SC4MP Server",
                             description="SimCity 4 Multiplayer Server")
 
-    parser.add_argument("-s", "--server-path", help="specify server directory relative path")
+    parser.add_argument("-s", "--server-path",
+                        help="specify server directory relative path")
 
-    parser.add_argument("-t", "--stop", help="terminate the server currently running from the specified server path (Windows-only)", action="store_true")
+    parser.add_argument("-t", "--stop",
+                        help="terminate the server currently running from the "
+                             "specified server path (Windows-only)",
+                        action="store_true")
 
-    parser.add_argument("-k", "--skip-update", help="skip the update check at startup", action="store_true")
+    parser.add_argument("-k", "--skip-update",
+                        help="skip the update check at startup",
+                        action="store_true")
 
-    parser.add_argument("-u", "--force-update", help="force update at startup (Windows-only)", action="store_true")
+    parser.add_argument("-u", "--force-update",
+                        help="force update at startup (Windows-only)",
+                        action="store_true")
 
-    parser.add_argument("-r", "--restore", help="restore the server to the specified backup")
+    parser.add_argument("-r", "--restore",
+                        help="restore the server to the specified backup")
 
     parser.add_argument("-v", "--verbose",
                         help="increase stdout/log verbosity",
@@ -134,6 +144,10 @@ def parse_args() -> Namespace:
 
 
 def prevent_multiple():
+    """Stops the server that is already running from the same server folder,
+    if any (Windows build only). The PID and start time of the running
+    server are kept in `process.json`; the start time is compared too, so a
+    different process that got the same PID later is not stopped."""
 
     if is_windows() and is_frozen():
 
@@ -141,40 +155,62 @@ def prevent_multiple():
 
             DATETIME_FORMAT = "%Y%m%d%H%M%S"
 
-            process_info_path = os.path.join(state.sc4mp_server_path, "process.json")
+            process_info_path = os.path.join(
+                state.sc4mp_server_path, "process.json"
+            )
 
             if os.path.exists(process_info_path):
 
                 process_info = load_json(process_info_path)
 
-                if "pid" in process_info.keys() and "creation" in process_info.keys():
+                if ("pid" in process_info.keys()
+                        and "creation" in process_info.keys()):
 
                     other_process_pid = process_info["pid"]
                     other_process_creation = process_info["creation"]
 
                     try:
-                        o_p_c = datetime.strftime(get_process_creation_time(other_process_pid), DATETIME_FORMAT)
+                        creation_time = \
+                            get_process_creation_time(other_process_pid)
+                        o_p_c = datetime.strftime(
+                            creation_time, DATETIME_FORMAT
+                        )
                     except Exception:
                         o_p_c = None
 
                     if other_process_creation == o_p_c:
-                        # `TASKKILL` returns 128 if the process isn't running anymore (e.g. it exited but its process object still exists)
-                        if subprocess.call(f"TASKKILL /F /PID {other_process_pid}", shell=True) not in (0, 128):
-                            raise ServerException("`TASKKILL` failed to terminate the server process already running.")
+                        # `TASKKILL` returns 128 if the process isn't running
+                        # anymore (e.g. it exited but its process object
+                        # still exists)
+                        result = subprocess.call(
+                            f"TASKKILL /F /PID {other_process_pid}",
+                            shell=True
+                        )
+                        if result not in (0, 128):
+                            raise ServerException(
+                                "`TASKKILL` failed to terminate the server "
+                                "process already running."
+                            )
 
             this_process_pid = os.getpid()
-            this_process_creation = datetime.strftime(get_process_creation_time(this_process_pid), DATETIME_FORMAT)
+            creation_time = get_process_creation_time(this_process_pid)
+            this_process_creation = datetime.strftime(
+                creation_time, DATETIME_FORMAT
+            )
 
             os.makedirs(state.sc4mp_server_path, exist_ok=True)
 
             update_json(process_info_path, {
                 "pid": this_process_pid,
-                    "creation": this_process_creation
+                "creation": this_process_creation
             })
 
         except Exception as e:
 
-            raise ServerException(f"Failed to terminate the server process already running.\n\n{e}") from e
+            raise ServerException(
+                f"Failed to terminate the server process already "
+                f"running.\n\n{e}"
+            ) from e
 
 
 def prep():
