@@ -3247,6 +3247,8 @@ class Logger():
 	def __init__(self):
 		
 		self.terminal = sys.stdout
+		if self.terminal is not None:
+			self.terminal.reconfigure(errors="replace")	# characters the console can't show (eg. emoji on a cp1252 console) are printed as "?"
 		self.log = SC4MP_LOG_PATH if sc4mp_server_path == "_SC4MP" else os.path.join(sc4mp_server_path, SC4MP_LOG_PATH)
 		if os.path.exists(self.log):
 			os.remove(self.log)
@@ -3297,12 +3299,7 @@ class Logger():
 			output = color + timestamp + label + msg_type + message
 
 		# Print
-		try:
-			self.terminal.write(output)
-		except UnicodeEncodeError:
-			# The console can't show some characters (eg. emoji on a cp1252 console)
-			encoding = getattr(self.terminal, "encoding", None) or "ascii"
-			self.terminal.write(output.encode(encoding, errors="replace").decode(encoding))
+		self.terminal.write(output)
 		with open(self.log, "a", encoding='utf-8') as log:
 			log.write(output)
 			log.close()  
