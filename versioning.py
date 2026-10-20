@@ -1,3 +1,5 @@
+import os
+
 import requests
 
 import core.util as utils
@@ -5,22 +7,24 @@ from sc4mpserver import SC4MP_GITHUB_REPO, SC4MP_VERSION
 
 
 def main():
-	
-	github_online: bool = requests.head(
-		"https://github.com/"
-	).ok
 
-	release_exists: bool = requests.head(
-		f"https://github.com/{SC4MP_GITHUB_REPO}/releases/tag/v{SC4MP_VERSION}"
-	).ok
+    github_online: bool = requests.head(
+        "https://github.com/"
+    ).ok
 
-	if github_online and release_exists:
+    release_exists: bool = requests.head(
+        f"https://github.com/{SC4MP_GITHUB_REPO}/releases/tag/v{SC4MP_VERSION}"
+    ).ok
 
-		v: tuple = utils.unformat_version(SC4MP_VERSION)
-		version: str = utils.format_version(v[:-1] + (v[-1] + 1,))
+    if github_online and release_exists:
 
-		utils.update_python_version("sc4mpserver.py", version)
+        v: tuple = utils.unformat_version(SC4MP_VERSION)
+        version: str = utils.format_version(v[:-1] + (v[-1] + 1,))
+
+        # SC4MP_VERSION is defined in server/constants.py
+        constants_path = os.path.join("server", "constants.py")
+        utils.update_python_version(constants_path, version)
 
 
 if __name__ == '__main__':
-	main()
+    main()
