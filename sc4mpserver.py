@@ -592,6 +592,17 @@ def get_file_table(rootpath):
 	return filetable
 
 
+def discard_bytes(c, size):
+	"""Receives and discards `size` bytes, eg. the files of a rejected save push, so the client gets to read the response."""
+
+	size_read = 0
+	while size_read < size:
+		data = c.recv(min(size - size_read, SC4MP_BUFFER_SIZE))
+		if not data:
+			raise ServerException("Connection closed by client.")
+		size_read += len(data)
+
+
 def receive_file(c, filename, filesize):
 
 
@@ -2294,7 +2305,9 @@ class RequestHandler(BaseRequestHandler):
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Enforce max file count and file sizes
-		if len(file_sizes) > 17 or max(file_sizes or [0]) > 500_000_000:
+		if not file_sizes or len(file_sizes) > 17 or max(file_sizes) > 500_000_000:
+			discard_bytes(c, sum(file_sizes))
+			self.respond(result="No files." if not file_sizes else "Too many files." if len(file_sizes) > 17 else "File too large.")
 			return
 
 		# Set save id
