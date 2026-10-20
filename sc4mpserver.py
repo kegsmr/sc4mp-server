@@ -2468,10 +2468,18 @@ class RequestHandler(th.Thread):
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Enforce max file count and file sizes
-		if not file_sizes or len(file_sizes) > 17 or max(file_sizes) > 500000000:
+		error = None
+		if not file_sizes:
+			error = b"No files."
+		elif len(file_sizes) > 17:
+			error = b"Too many files."
+		elif max(file_sizes) > 500000000:
+			error = b"File too large."
+
+		if error is not None:
 			c.sendall(b"ok")
 			discard_bytes(c, sum(file_sizes))
-			c.sendall(b"No files." if not file_sizes else b"Too many files." if len(file_sizes) > 17 else b"File too large.")
+			c.sendall(error)
 			return
 
 		# Separator
