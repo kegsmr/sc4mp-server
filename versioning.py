@@ -1,3 +1,5 @@
+import os
+
 import requests
 
 import core.util as utils
@@ -19,7 +21,9 @@ def main():
         v: tuple = utils.unformat_version(SC4MP_VERSION)
         version: str = utils.format_version(v[:-1] + (v[-1] + 1,))
 
-        utils.update_python_version("sc4mpserver.py", version)
+        # SC4MP_VERSION is defined in server/constants.py
+        constants_path = os.path.join("server", "constants.py")
+        utils.update_python_version(constants_path, version)
 
 
 if __name__ == '__main__':
