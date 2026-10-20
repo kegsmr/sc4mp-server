@@ -3283,6 +3283,8 @@ class Logger():
 	def __init__(self):
 		
 		self.terminal = sys.stdout
+		if self.terminal is not None:
+			self.terminal.reconfigure(errors="replace")	# characters the console can't show (eg. emoji on a cp1252 console) are printed as "?"
 		self.log = SC4MP_LOG_PATH if sc4mp_server_path == "_SC4MP" else os.path.join(sc4mp_server_path, SC4MP_LOG_PATH)
 		if os.path.exists(self.log):
 			os.remove(self.log)
