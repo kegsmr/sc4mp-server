@@ -601,6 +601,17 @@ def get_file_table(rootpath):
 	return filetable
 
 
+def discard_bytes(c, size):
+	"""Receives and discards `size` bytes, eg. the files of a rejected save push, so the client gets to read the response."""
+
+	size_read = 0
+	while size_read < size:
+		data = c.recv(min(size - size_read, SC4MP_BUFFER_SIZE))
+		if not data:
+			raise ServerException("Connection closed by client.")
+		size_read += len(data)
+
+
 def receive_file(c, filename, filesize):
 
 
@@ -863,6 +874,10 @@ class Server(th.Thread):
 
 			report("- creating socket...")
 			s = self.socket()
+
+			# Allow binding the port again right after a restart, while connections from before are in TIME_WAIT (not on Windows, where this would let other programs bind the same port)
+			if os.name != "nt":
+				s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
 			report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
 			while True:
@@ -1982,6 +1997,11 @@ class RegionsManager(th.Thread):
 								# Raise the exception so that it appears in the server's output
 								raise e
 
+							finally:
+
+								# Close the savegame so its temporary file can be deleted (Windows can't delete open files)
+								savegame.close()
+
 							report("- done.", self)
 
 						else:
@@ -2357,7 +2377,9 @@ class RequestHandler(BaseRequestHandler):
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Enforce max file count and file sizes
-		if len(file_sizes) > 17 or max(file_sizes or [0]) > 500_000_000:
+		if not file_sizes or len(file_sizes) > 17 or max(file_sizes) > 500_000_000:
+			discard_bytes(c, sum(file_sizes))
+			self.respond(result="No files." if not file_sizes else "Too many files." if len(file_sizes) > 17 else "File too large.")
 			return
 
 		# Set save id
@@ -2393,15 +2415,20 @@ class RequestHandler(BaseRequestHandler):
 			# Get region path
 			region_path = os.path.join(path, region)
 
-			# Create DBPF objects for each file
+			# Create DBPF objects for each file, and extract the region subfile from each DBPF
 			savegames = []
-			for filename in os.listdir(region_path):
-				filename = os.path.join(region_path, filename)
-				savegames.append(SC4Savegame(filename, error_callback=show_error))
-
-			# Extract the region subfile from each DBPF
-			for savegame in savegames:
-				savegame.get_SC4ReadRegionalCity()
+			try:
+				for filename in os.listdir(region_path):
+					filename = os.path.join(region_path, filename)
+					savegames.append(SC4Savegame(filename, error_callback=show_error))
+				for savegame in savegames:
+					savegame.get_SC4ReadRegionalCity()
+			except Exception as e:
+				print(f"[WARNING] Invalid savegame: {e!r}")
+				for savegame in savegames:
+					savegame.close()
+				self.respond(result="Invalid savegame.")
+				return
 			
 			# Filter out tiles that do not border every other tile
 			report("Savegame filter 1", self)
