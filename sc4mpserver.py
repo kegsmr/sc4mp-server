@@ -479,9 +479,12 @@ def export(export_type):
 	elif export_type == "regions":
 		directory = "Regions"
 
-	# Set target and destination directories
+	# Set target and destination directories (each regions export gets a new folder, so requests can finish reading the old one)
 	target = os.path.join(sc4mp_server_path, directory)
-	destination = os.path.join(sc4mp_server_path, "_Temp", "outbound", directory)
+	if export_type == "regions":
+		destination = sc4mp_regions_exports.new_path()
+	else:
+		destination = os.path.join(sc4mp_server_path, "_Temp", "outbound", directory)
 
 	# Erase file table if exists
 	if destination in sc4mp_filetables_manager.filetables.keys():
@@ -541,6 +544,11 @@ def export(export_type):
 
 	# Generate filetable
 	sc4mp_filetables_manager.generate(destination)
+
+	# Serve the new export from now on, and delete old ones nothing is reading from
+	if export_type == "regions":
+		sc4mp_regions_exports.publish(destination)
+		sc4mp_regions_exports.delete_old()
 
 
 def purge_directory(directory):
@@ -1451,6 +1459,9 @@ class Server(th.Thread):
 
 		report("Preparing regions...")
 
+		global sc4mp_regions_exports
+		sc4mp_regions_exports = RegionsExports()
+
 		export("regions")
 
 		# Regions manager
@@ -2055,6 +2066,9 @@ class RegionsManager(th.Thread):
 
 							except Exception as e:
 								pass
+
+							# Delete old exports once the requests reading from them are done
+							sc4mp_regions_exports.delete_old()
 							
 							time.sleep(SC4MP_DELAY)
 
@@ -2138,8 +2152,8 @@ class FileTablesManager(th.Thread):
 
 	def update(self):
 
-		# Loop through all file tables
-		for rootpath, filetable in self.filetables.items():
+		# Loop through all file tables (iterate over a copy since regions exports add and remove them)
+		for rootpath, filetable in list(self.filetables.items()):
 			
 			# Loop through file table and check for missing files and files which have changed size (iterate over a copy since entries are removed)
 			for entry in list(filetable):
@@ -2190,6 +2204,87 @@ class FileTablesManager(th.Thread):
 		self.filetables.pop(rootpath)
 
 		print("- done.")
+
+
+class RegionsExports():
+	"""Keeps each regions export in its own folder (`_Temp/outbound/Regions-<n>`). Requests pin the export they read from, so a
+	new export never changes files that are still being sent. Old exports are deleted once no request is using them."""
+
+
+	def __init__(self):
+
+		self.lock = th.Lock()
+		self.outbound = os.path.join(sc4mp_server_path, "_Temp", "outbound")
+		self.count = 0
+		self.current = None
+		self.users = {}		# export path -> number of requests reading from it
+		self.retry_time = 0
+
+		# Old exports left over from the last run get deleted after the first export
+		os.makedirs(self.outbound, exist_ok=True)
+		for name in os.listdir(self.outbound):
+			path = os.path.join(self.outbound, name)
+			if name.startswith("Regions-") and os.path.isdir(path):
+				self.users[path] = 0
+
+
+	def new_path(self):
+		"""Returns a new folder for an export. It's tracked right away, so it gets deleted if the export fails. Exports and
+		`delete_old` both run on the regions manager thread, so an export can't be deleted while it's being made."""
+
+		while True:
+			self.count += 1
+			path = os.path.join(self.outbound, f"Regions-{self.count}")
+			if not os.path.exists(path):
+				with self.lock:
+					self.users[path] = 0
+				return path
+
+
+	def publish(self, path):
+
+		with self.lock:
+			self.current = path
+
+
+	def pin(self):
+		"""Returns the current export and keeps it from being deleted until `unpin` is called."""
+
+		with self.lock:
+			path = self.current
+			self.users[path] += 1
+			return path
+
+
+	def unpin(self, path):
+
+		with self.lock:
+			self.users[path] -= 1
+
+
+	def delete_old(self):
+		"""Deletes exports that are not current and that no request is using. Requests only pin the current export, so nothing
+		can start using these. If a deletion fails (eg. a file is still open on Windows), it's retried later."""
+
+		if time.time() < self.retry_time:
+			return
+
+		with self.lock:
+			old = [path for path, users in self.users.items() if path != self.current and users == 0]
+
+		for path in old:
+			if path in sc4mp_filetables_manager.filetables:
+				sc4mp_filetables_manager.erase(path)
+			try:
+				shutil.rmtree(path)
+			except FileNotFoundError:
+				pass
+			except Exception as e:
+				report(f"Failed to delete old regions export \"{path}\", will retry later. ({e})", self, "WARNING")
+				self.retry_time = time.time() + 10
+				continue
+			with self.lock:
+				self.users.pop(path)
 
 
 class RequestHandler(BaseRequestHandler):
@@ -2373,20 +2468,25 @@ class RequestHandler(BaseRequestHandler):
 
 		self.export_regions()
 
-		self.respond()
-		send_filestream(self.c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
+		# Send the files from one export, even if a newer one is made meanwhile
+		path = sc4mp_regions_exports.pin()
+		try:
+			self.respond()
+			send_filestream(self.c, path)
+		finally:
+			sc4mp_regions_exports.unpin(path)
 
 
 	def res_regions_table(self):
 
 		self.export_regions()	# so the table includes saves pushed since the last export
-	
-		self.respond()
-		self.c.send_json(
-			get_file_table(
-				os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions")
-			)
-		)
+
+		path = sc4mp_regions_exports.pin()
+		try:
+			self.respond()
+			self.c.send_json(get_file_table(path))
+		finally:
+			sc4mp_regions_exports.unpin(path)
 
 
 	def export_regions(self):
