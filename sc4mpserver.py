@@ -1512,10 +1512,11 @@ class Server(th.Thread):
 		sc4mp_event_channel = EventChannel()
 
 		# Recent chat messages (sent to players when they subscribe), kept in `_Database/chat.jsonl` across restarts, and when each user last sent one
-		global sc4mp_chat_history, sc4mp_chat_times, sc4mp_chat_lock, sc4mp_chat_filter
+		global sc4mp_chat_history, sc4mp_chat_times, sc4mp_chat_lock, sc4mp_chat_filter, sc4mp_chat_appended
 		sc4mp_chat_filter = None
 		sc4mp_chat_history = deque(maxlen=max(0, int(sc4mp_config["CHAT"]["chat_history"] or 0)))
 		sc4mp_chat_times = {}
+		sc4mp_chat_appended = 0	# messages added to `chat.jsonl` since it was last rewritten
 		sc4mp_chat_lock = th.Lock()
 		chat_filename = os.path.join(sc4mp_server_path, "_Database", "chat.jsonl")
 		try:
@@ -2697,13 +2698,22 @@ class RequestHandler(BaseRequestHandler):
 	def push_chat_event(event_type, event):
 		"""Adds an event to the chat history (and `chat.jsonl`) and pushes it to every player."""
 
+		global sc4mp_chat_appended
+
 		with sc4mp_chat_lock:
 			sc4mp_chat_history.append({'event': event_type, **event, 'history': True})	# not new for players who join later
 			try:
-				with open(os.path.join(sc4mp_server_path, "_Database", "chat.jsonl"), "a", encoding="utf-8") as file:
-					file.write(json.dumps(sc4mp_chat_history[-1]) + "\n")
-			except IndexError:
-				pass	# chat history turned off
+				chat_filename = os.path.join(sc4mp_server_path, "_Database", "chat.jsonl")
+				sc4mp_chat_appended += 1
+				if sc4mp_chat_appended < sc4mp_chat_history.maxlen:
+					with open(chat_filename, "a", encoding="utf-8") as file:
+						file.write(json.dumps(sc4mp_chat_history[-1]) + "\n")
+				else:
+					# Keep only the recent messages every so often, so the file doesn't keep growing while the server runs
+					with open(chat_filename, "w", encoding="utf-8") as file:
+						for history_event in sc4mp_chat_history:
+							file.write(json.dumps(history_event) + "\n")
+					sc4mp_chat_appended = 0
 			except Exception as e:
 				show_error(f"An error occurred while saving the chat history.\n\n{e}")
 		sc4mp_event_channel.push(event_type, event)
