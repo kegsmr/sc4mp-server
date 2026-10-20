@@ -116,6 +116,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		("chat_enabled", True),
 		("chat_history", 1000),		# recent chat messages sent to players when they join
 		("chat_filter", True),		# hide the words in `chat_filter.txt`
+		("chat_motd", ""),		# message of the day, shown in chat to players when they join
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 6),
@@ -2545,8 +2546,13 @@ class RequestHandler(BaseRequestHandler):
 		with sc4mp_chat_lock:
 			chat_history = list(sc4mp_chat_history)
 
+		# After the recent messages, welcome the player (only them) with the message of the day
+		welcome = {'event': 'welcome', 'server_name': sc4mp_config["INFO"]["server_name"]}
+		if sc4mp_config["CHAT"]["chat_motd"]:
+			welcome['motd'] = str(sc4mp_config["CHAT"]["chat_motd"])
+
 		subscription_id = sc4mp_event_channel.subscribe(
-			self.user_id, events=chat_history,
+			self.user_id, events=chat_history + [welcome],
 			context={'name': self.get_chat_name(self.user_id)}	# so other players' chats can say who joined and left
 		)
 
