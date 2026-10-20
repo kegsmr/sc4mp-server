@@ -602,6 +602,17 @@ def get_file_table(rootpath):
 	return filetable
 
 
+def discard_bytes(c, size):
+	"""Receives and discards `size` bytes, eg. the files of a rejected save push, so the client gets to read the response."""
+
+	size_read = 0
+	while size_read < size:
+		data = c.recv(min(size - size_read, SC4MP_BUFFER_SIZE))
+		if not data:
+			raise ServerException("Connection closed by client.")
+		size_read += len(data)
+
+
 def receive_file(c, filename, filesize):
 
 
@@ -864,6 +875,10 @@ class Server(th.Thread):
 
 			report("- creating socket...")
 			s = self.socket()
+
+			# Allow binding the port again right after a restart, while connections from before are in TIME_WAIT (not on Windows, where this would let other programs bind the same port)
+			if os.name != "nt":
+				s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
 			report("- binding host " + SC4MP_HOST + " and port " + str(SC4MP_PORT) + "...")
 			while True:
@@ -1498,10 +1513,11 @@ class Server(th.Thread):
 		sc4mp_event_channel = EventChannel()
 
 		# Recent chat messages (sent to players when they subscribe), kept in `_Database/chat.jsonl` across restarts, and when each user last sent one
-		global sc4mp_chat_history, sc4mp_chat_times, sc4mp_chat_lock, sc4mp_chat_filter
+		global sc4mp_chat_history, sc4mp_chat_times, sc4mp_chat_lock, sc4mp_chat_filter, sc4mp_chat_appended
 		sc4mp_chat_filter = None
 		sc4mp_chat_history = deque(maxlen=max(0, int(sc4mp_config["CHAT"]["chat_history"] or 0)))
 		sc4mp_chat_times = {}
+		sc4mp_chat_appended = 0	# messages added to `chat.jsonl` since it was last rewritten
 		sc4mp_chat_lock = th.Lock()
 		chat_filename = os.path.join(sc4mp_server_path, "_Database", "chat.jsonl")
 		try:
@@ -1970,6 +1986,7 @@ class RegionsManager(th.Thread):
 
 									# Set entry values
 									new_claim = entry.get("owner") != user_id
+									founded = not entry.get("gamemode")	# the tile had no city yet (eg. not an existing city nobody had claimed)
 									entry["filename"] = new_filename
 									entry["owner"] = user_id
 									entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1984,8 +2001,8 @@ class RegionsManager(th.Thread):
 									# Mark regions as modified
 									self.regions_modified = True
 
-									# Report success (and new claims, which are announced in chat)
-									if new_claim:
+									# Report success (and new cities and cities taken over from other mayors, which are announced in chat)
+									if new_claim and (founded or reclaimed):
 										self.claims[save_id] = {
 											'city': savegameCityName,
 											'region': region,
@@ -2013,6 +2030,11 @@ class RegionsManager(th.Thread):
 
 								# Raise the exception so that it appears in the server's output
 								raise e
+
+							finally:
+
+								# Close the savegame so its temporary file can be deleted (Windows can't delete open files)
+								savegame.close()
 
 							report("- done.", self)
 
@@ -2389,7 +2411,9 @@ class RequestHandler(BaseRequestHandler):
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Enforce max file count and file sizes
-		if len(file_sizes) > 17 or max(file_sizes or [0]) > 500_000_000:
+		if not file_sizes or len(file_sizes) > 17 or max(file_sizes) > 500_000_000:
+			discard_bytes(c, sum(file_sizes))
+			self.respond(result="No files." if not file_sizes else "Too many files." if len(file_sizes) > 17 else "File too large.")
 			return
 
 		# Set save id
@@ -2425,15 +2449,20 @@ class RequestHandler(BaseRequestHandler):
 			# Get region path
 			region_path = os.path.join(path, region)
 
-			# Create DBPF objects for each file
+			# Create DBPF objects for each file, and extract the region subfile from each DBPF
 			savegames = []
-			for filename in os.listdir(region_path):
-				filename = os.path.join(region_path, filename)
-				savegames.append(SC4Savegame(filename, error_callback=show_error))
-
-			# Extract the region subfile from each DBPF
-			for savegame in savegames:
-				savegame.get_SC4ReadRegionalCity()
+			try:
+				for filename in os.listdir(region_path):
+					filename = os.path.join(region_path, filename)
+					savegames.append(SC4Savegame(filename, error_callback=show_error))
+				for savegame in savegames:
+					savegame.get_SC4ReadRegionalCity()
+			except Exception as e:
+				print(f"[WARNING] Invalid savegame: {e!r}")
+				for savegame in savegames:
+					savegame.close()
+				self.respond(result="Invalid savegame.")
+				return
 			
 			# Filter out tiles that do not border every other tile
 			report("Savegame filter 1", self)
@@ -2668,10 +2697,13 @@ class RequestHandler(BaseRequestHandler):
 
 		now = time.time()
 		count, seconds = SC4MP_CHAT_RATE
-		times = [t for t in sc4mp_chat_times.get(self.user_id, []) if now - t < seconds]
-		if len(times) >= count:
+		with sc4mp_chat_lock:	# so simultaneous requests can't get past the rate limit
+			times = [t for t in sc4mp_chat_times.get(self.user_id, []) if now - t < seconds]
+			too_fast = len(times) >= count
+			if not too_fast:
+				sc4mp_chat_times[self.user_id] = times + [now]
+		if too_fast:
 			self.error("You're sending messages too quickly. Wait a few seconds.")
-		sc4mp_chat_times[self.user_id] = times + [now]
 
 		message = self.filter_chat(message)
 
@@ -2701,13 +2733,22 @@ class RequestHandler(BaseRequestHandler):
 	def push_chat_event(event_type, event):
 		"""Adds an event to the chat history (and `chat.jsonl`) and pushes it to every player."""
 
+		global sc4mp_chat_appended
+
 		with sc4mp_chat_lock:
 			sc4mp_chat_history.append({'event': event_type, **event, 'history': True})	# not new for players who join later
 			try:
-				with open(os.path.join(sc4mp_server_path, "_Database", "chat.jsonl"), "a", encoding="utf-8") as file:
-					file.write(json.dumps(sc4mp_chat_history[-1]) + "\n")
-			except IndexError:
-				pass	# chat history turned off
+				chat_filename = os.path.join(sc4mp_server_path, "_Database", "chat.jsonl")
+				sc4mp_chat_appended += 1
+				if sc4mp_chat_appended < sc4mp_chat_history.maxlen:
+					with open(chat_filename, "a", encoding="utf-8") as file:
+						file.write(json.dumps(sc4mp_chat_history[-1]) + "\n")
+				else:
+					# Keep only the recent messages every so often, so the file doesn't keep growing while the server runs
+					with open(chat_filename, "w", encoding="utf-8") as file:
+						for history_event in sc4mp_chat_history:
+							file.write(json.dumps(history_event) + "\n")
+					sc4mp_chat_appended = 0
 			except Exception as e:
 				show_error(f"An error occurred while saving the chat history.\n\n{e}")
 		sc4mp_event_channel.push(event_type, event)
@@ -2777,11 +2818,17 @@ class RequestHandler(BaseRequestHandler):
 	def get_chat_name(self, user_id):
 		"""Returns the user's name in chat: the mayor name of their latest claim (or "Defacto", SC4's default mayor name), with a number if another user already has that name (eg. "Defacto (1)")."""
 
-		mayor_name = self.filter_chat(self.get_mayor_name(user_id) or "") or "Defacto"
+		mayor_name = self.get_mayor_name(user_id)
 
 		with sc4mp_chat_lock:
 
 			entry = sc4mp_users_database_manager.get(user_id) or {}
+
+			# Keep the name if no claim was found, since a `region.json` may not be readable while it's being written
+			if mayor_name is None and entry.get("chat_name"):
+				return entry["chat_name"]
+
+			mayor_name = self.filter_chat(mayor_name or "") or "Defacto"
 
 			# Keep the name while the mayor name doesn't change
 			if entry.get("chat_mayor_name") == mayor_name and entry.get("chat_name"):
