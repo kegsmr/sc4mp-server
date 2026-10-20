@@ -1254,16 +1254,21 @@ class Server(th.Thread):
 									args.remove("-u")
 								if "--force-update" in args:
 									args.remove("--force-update")
+								if "-k" not in args and "--skip-update" not in args:
+									args.append("-k")	# so a failed install relaunches the current version instead of updating again in a loop
 								with open("updater.bat", "w") as batch_file:
 									batch_file.writelines([
 										"@echo off\n",
 										f"cd /d \"{os.getcwd()}\"\n",
+										"echo Waiting for the server to exit...\n",
+										":wait\n",
+										f"tasklist /fi \"PID eq {os.getpid()}\" | find \"{os.getpid()}\" >nul && (timeout /t 1 /nobreak >nul & goto wait)\n",	# the installer can't replace files the server still has open
 										"echo Running installer...\n",
 										f"cd {destination.parent}\n",
 										f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",
 										"cd ..\n",
 										"echo Relaunching server...\n",
-										f"{PROCESS_NAME} {' '.join(args)}\n"
+										f"{PROCESS_NAME} {subprocess.list2cmdline(args)}\n"
 									])
 
 								# Start installer in very silent mode and exit
@@ -1275,6 +1280,10 @@ class Server(th.Thread):
 
 						# Run update function
 						update()
+
+						# Stop the system tray icon, since its thread would otherwise keep the process running after `sys.exit()`
+						if sc4mp_system_tray_icon_manager:
+							sc4mp_system_tray_icon_manager.icon.stop()
 
 						# Exit when complete
 						sys.exit()
@@ -2329,13 +2338,21 @@ class RequestHandler(BaseRequestHandler):
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Enforce max file count and file sizes
-		if not file_sizes or len(file_sizes) > 17 or max(file_sizes) > 500_000_000:
+		error = None
+		if not file_sizes:
+			error = "No files."
+		elif len(file_sizes) > 17:
+			error = "Too many files."
+		elif max(file_sizes) > 500_000_000:
+			error = "File too large."
+
+		if error is not None:
 			discard_bytes(c, sum(file_sizes))
-			self.respond(result="No files." if not file_sizes else "Too many files." if len(file_sizes) > 17 else "File too large.")
+			self.respond(result=error)
 			return
 
 		# Set save id
-		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id)
+		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id + "_" + os.urandom(4).hex())	# unique, even for pushes by the same user in the same second
 
 		# Receive files
 		count = 0
@@ -3013,6 +3030,8 @@ class Logger():
 	def __init__(self):
 		
 		self.terminal = sys.stdout
+		if self.terminal is not None:
+			self.terminal.reconfigure(errors="replace")	# characters the console can't show (eg. emoji on a cp1252 console) are printed as "?"
 		self.log = SC4MP_LOG_PATH if sc4mp_server_path == "_SC4MP" else os.path.join(sc4mp_server_path, SC4MP_LOG_PATH)
 		if os.path.exists(self.log):
 			os.remove(self.log)
