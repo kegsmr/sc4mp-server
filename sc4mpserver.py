@@ -2773,11 +2773,17 @@ class RequestHandler(BaseRequestHandler):
 	def get_chat_name(self, user_id):
 		"""Returns the user's name in chat: the mayor name of their latest claim (or "Defacto", SC4's default mayor name), with a number if another user already has that name (eg. "Defacto (1)")."""
 
-		mayor_name = self.filter_chat(self.get_mayor_name(user_id) or "") or "Defacto"
+		mayor_name = self.get_mayor_name(user_id)
 
 		with sc4mp_chat_lock:
 
 			entry = sc4mp_users_database_manager.get(user_id) or {}
+
+			# Keep the name if no claim was found, since a `region.json` may not be readable while it's being written
+			if mayor_name is None and entry.get("chat_name"):
+				return entry["chat_name"]
+
+			mayor_name = self.filter_chat(mayor_name or "") or "Defacto"
 
 			# Keep the name while the mayor name doesn't change
 			if entry.get("chat_mayor_name") == mayor_name and entry.get("chat_name"):
