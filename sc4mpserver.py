@@ -2665,10 +2665,13 @@ class RequestHandler(BaseRequestHandler):
 
 		now = time.time()
 		count, seconds = SC4MP_CHAT_RATE
-		times = [t for t in sc4mp_chat_times.get(self.user_id, []) if now - t < seconds]
-		if len(times) >= count:
+		with sc4mp_chat_lock:	# so simultaneous requests can't get past the rate limit
+			times = [t for t in sc4mp_chat_times.get(self.user_id, []) if now - t < seconds]
+			too_fast = len(times) >= count
+			if not too_fast:
+				sc4mp_chat_times[self.user_id] = times + [now]
+		if too_fast:
 			self.error("You're sending messages too quickly. Wait a few seconds.")
-		sc4mp_chat_times[self.user_id] = times + [now]
 
 		message = self.filter_chat(message)
 
