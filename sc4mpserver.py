@@ -2147,7 +2147,9 @@ class RequestHandler(BaseRequestHandler):
 					except ConnectionClosedException:
 						break
 
-					print(f"Request: {command!r}")
+					# Not pings, which every launcher sends every few seconds, so they'd flood the log
+					if command != "Ping":
+						print(f"Request: {command!r}")
 					# print(f"Request: {command!r} {headers!r}")
 
 					self.handle_request()
