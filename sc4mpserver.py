@@ -2281,7 +2281,9 @@ class RequestHandler(BaseRequestHandler):
 
 				self.recv_request()
 
-				print(f"{self.address} - {self.command}")
+				# Not pings, which every launcher sends every few seconds, so they'd flood the log
+				if self.command != "Ping":
+					print(f"{self.address} - {self.command}")
 
 				self.handle_request()
 
