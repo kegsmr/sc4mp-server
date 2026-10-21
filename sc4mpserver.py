@@ -73,7 +73,7 @@ SC4MP_BUFFER_SIZE = 4096
 
 SC4MP_DELAY = .1
 
-SC4MP_CHAT_MAX_LENGTH = 200
+SC4MP_CHAT_MAX_LENGTH = 500
 SC4MP_CHAT_RATE = (5, 5)	# players can send this many chat messages in this many seconds
 
 SC4MP_CONFIG_DEFAULTS = [
