@@ -1807,7 +1807,7 @@ class RegionsManager(th.Thread):
 		self.export_regions = False
 		self.tasks = []
 		self.outputs = {}
-		self.claims = {}	# accepted save pushes that claimed a tile the user didn't own before, by save ID
+		self.claims = {}	# accepted save pushes that founded or took over a city, by save ID
 		#self.lastmtime = self.get_mtime()
 
 
@@ -1964,8 +1964,8 @@ class RegionsManager(th.Thread):
 									#TODO delete old backups
 
 									# Set entry values
-									new_claim = entry.get("owner") != user_id
-									founded = not entry.get("gamemode")	# the tile had no city yet (eg. not an existing city nobody had claimed)
+									# A city is new if it's established on a tile that never had one: no established savegame (`gamemode`) and no mayor name, which only established cities have
+									founded = savegameModeFlag != 0 and not entry.get("gamemode") and not entry.get("mayor_name")
 									entry["filename"] = new_filename
 									entry["owner"] = user_id
 									entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1981,12 +1981,12 @@ class RegionsManager(th.Thread):
 									self.regions_modified = True
 
 									# Report success (and new cities and cities taken over from other mayors, which are announced in chat)
-									if new_claim and (founded or reclaimed):
+									if founded or reclaimed:
 										self.claims[save_id] = {
 											'city': savegameCityName,
 											'region': region,
 											'coords': (savegameX, savegameY),
-											'reclaimed': reclaimed
+											'reclaimed': not founded
 										}
 									self.outputs[save_id] = "ok"
 
