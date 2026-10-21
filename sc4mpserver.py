@@ -2947,14 +2947,17 @@ class RequestHandler(BaseRequestHandler):
 	def get_mayor_name(self, user_id):
 
 		# The name given when founding a city, since cities taken over keep the previous mayor's name
-		mayor_name = (sc4mp_users_database_manager.get(user_id) or {}).get("founded_mayor_name")
+		user_entry = sc4mp_users_database_manager.get(user_id) or {}
+		mayor_name = user_entry.get("founded_mayor_name")
 		if mayor_name:
 			return mayor_name
 
-		# Players who haven't founded a city since the server started keeping track
-		_, entry = self.get_latest_claim(user_id, "mayor_name")
+		# Players who haven't founded a city since the server started keeping track: the latest of the mayor names they've saved with
+		mayor_names = user_entry.get("mayors")
+		if mayor_names:
+			return mayor_names[-1]
 
-		return entry["mayor_name"] if entry else None
+		return None
 
 
 	@staticmethod
