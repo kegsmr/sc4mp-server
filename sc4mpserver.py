@@ -1980,6 +1980,10 @@ class RegionsManager(th.Thread):
 									# Mark regions as modified
 									self.regions_modified = True
 
+									# Players are called in chat by the mayor name of the last city they founded, since cities they take over keep the previous mayor's name
+									if founded and savegameMayorName:
+										sc4mp_users_database_manager[user_id]["founded_mayor_name"] = savegameMayorName
+
 									# Report success (and new cities and cities taken over from other mayors, which are announced in chat)
 									if founded or reclaimed:
 										self.claims[save_id] = {
@@ -2884,7 +2888,7 @@ class RequestHandler(BaseRequestHandler):
 
 
 	def get_chat_name(self, user_id):
-		"""Returns the user's name in chat: the mayor name of their latest claim (or "Defacto", SC4's default mayor name). Players with the same name are told apart by their name colors, which come from their user IDs."""
+		"""Returns the user's name in chat: the mayor name of the last city they founded, or else of their latest claim (or "Defacto", SC4's default mayor name). Players with the same name are told apart by their name colors, which come from their user IDs."""
 
 		mayor_name = self.get_mayor_name(user_id)
 
@@ -2908,6 +2912,12 @@ class RequestHandler(BaseRequestHandler):
 
 	def get_mayor_name(self, user_id):
 
+		# The name given when founding a city, since cities taken over keep the previous mayor's name
+		mayor_name = (sc4mp_users_database_manager.get(user_id) or {}).get("founded_mayor_name")
+		if mayor_name:
+			return mayor_name
+
+		# Players who haven't founded a city since the server started keeping track
 		_, entry = self.get_latest_claim(user_id, "mayor_name")
 
 		return entry["mayor_name"] if entry else None
