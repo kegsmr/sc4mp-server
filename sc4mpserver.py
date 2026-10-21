@@ -2247,7 +2247,9 @@ class RequestHandler(th.Thread):
 
 				request = args[0]
 
-				report("Request: " + request, self)
+				# Not pings, which every launcher sends every few seconds, so they'd flood the log
+				if request != "ping":
+					report("Request: " + request, self)
 
 				if request == "ping":
 					self.ping(c)
