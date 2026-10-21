@@ -2816,7 +2816,7 @@ class RequestHandler(BaseRequestHandler):
 		# The name comes from the user's claims, so players can't pretend to be someone else
 		name = self.get_chat_name(self.user_id)
 
-		report(f"[CHAT] {name} ({self.user_id[:8]}): {message}")
+		report(f"{name} ({self.user_id[:8]}): {message}")
 
 		event = {
 			'user_id': self.user_id,
@@ -2869,7 +2869,10 @@ class RequestHandler(BaseRequestHandler):
 		name = self.get_chat_name(self.user_id)
 		city = self.filter_chat(" ".join(str(claim['city'] or "").split())[:SC4MP_CHAT_MAX_LENGTH]) or "a city"
 
-		report(f"[CHAT] {name} ({self.user_id[:8]}) {'took over' if claim['reclaimed'] else 'founded'} {city} in {claim['region']}.")
+		action = "founded"
+		if claim['reclaimed']:
+			action = "took over"
+		report(f"{name} ({self.user_id[:8]}) {action} {city} in {claim['region']}.")
 
 		self.push_chat_event('city_founded', {
 			'user_id': self.user_id,
