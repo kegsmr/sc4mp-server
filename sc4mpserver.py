@@ -2733,6 +2733,15 @@ class RequestHandler(BaseRequestHandler):
 		self.c.send_json(list(servers))
 
 
+	def res_info(self):
+
+		# Launchers in game on the server are subscribed to chat, so the players online can be counted when chat is on
+		if sc4mp_config["CHAT"]["chat_enabled"]:
+			self.respond(players_online=sc4mp_event_channel.user_count())
+		else:
+			self.respond()
+
+
 	def res_check_password(self):
 
 		password = self.get_header('password', str)
