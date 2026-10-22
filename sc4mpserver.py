@@ -829,6 +829,12 @@ def open_upnp_port(port, protocol="TCP", description="Port Forwarding via UPnP")
         )
 
 
+def guest_chat_enabled():
+	"""Whether players who join without the password (guests) can chat: only on public servers with a password and chat turned on."""
+
+	return sc4mp_config["CHAT"]["guest_chat"] and sc4mp_config["CHAT"]["chat_enabled"] and sc4mp_config["SECURITY"]["password_enabled"] and not sc4mp_config["SECURITY"]["private"]
+
+
 def set_headers(s):
 
 	return s.set_headers(
@@ -844,7 +850,7 @@ def set_headers(s):
 		max_region_claims=sc4mp_config["RULES"]["max_region_claims"],
 		godmode_filter=sc4mp_config["RULES"]["godmode_filter"],
 		chat_enabled=sc4mp_config["CHAT"]["chat_enabled"],
-		guest_chat=sc4mp_config["CHAT"]["guest_chat"],
+		guest_chat=guest_chat_enabled(),
 		time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 	)
 
@@ -2346,7 +2352,7 @@ class RequestHandler(BaseRequestHandler):
 		if sc4mp_config["SECURITY"]["password_enabled"]:
 			password = self.headers.get('password')
 			if password != sc4mp_config["SECURITY"]["password"]:
-				if self.command in [COMMAND_SUBSCRIBE, COMMAND_CHAT] and sc4mp_config["CHAT"]["chat_enabled"] and sc4mp_config["CHAT"]["guest_chat"]:
+				if self.command in [COMMAND_SUBSCRIBE, COMMAND_CHAT] and guest_chat_enabled():
 					self.user_id = self.authenticate_guest(self.c, self.headers.get('user_id'))
 					return
 				self.error("Incorrect password.")
@@ -2368,6 +2374,11 @@ class RequestHandler(BaseRequestHandler):
 		user_entry = sc4mp_users_database_manager.get(user_id) or {}
 		if user_entry.get("ban") or client_entry.get("ban"):
 			self.error("You are banned from this server.")
+
+		# Banned mayors can't chat as guests from the same IP
+		for ip_user_id in client_entry.get("users", []):
+			if (sc4mp_users_database_manager.get(ip_user_id) or {}).get("ban"):
+				self.error("You are banned from this server.")
 
 		self.guest = True
 
