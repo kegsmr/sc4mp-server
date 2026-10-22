@@ -59,6 +59,11 @@
                 <p><b>backup_server_on_startup:</b> when this setting is set to "True", the server will always backup when starting up. Set this value to "False" if you would like the server to backup only after the backup interval.</p>
                 <p><b>max_server_backup_days:</b> the maximum amount of days to keep server backups.</p>
 				<p><b>max_savegame_backups:</b> the maximum amount of backups to keep of one savegame in the region directory backups. Set the value to "None" for no limit.</p>
+			<h3>Sc4pac</h3>
+                <p>These settings let the server install and update its plugins with <a href="https://memo33.github.io/sc4pac/">sc4pac</a> every time it starts. First make an sc4pac profile whose Plugins folder is your server's "Plugins" folder, as explained in "Installing plugins with sc4pac" above, and add the packages you want to it.</p>
+                <p><b>update_on_startup:</b> when this setting is set to "True", the server runs "sc4pac update" in the profile when it starts, before it lists its plugins for players. If sc4pac fails, the server starts anyway with the plugins it already has, and the log says why.</p>
+                <p><b>path:</b> the sc4pac command line tool, for example "C:\sc4pac\sc4pac.bat". Leave it as "sc4pac" if sc4pac is on your PATH. It needs Java 17 or newer.</p>
+                <p><b>profile:</b> the folder of your sc4pac profile (the folder with its "sc4pac-plugins.json" file). The server only updates a profile whose Plugins folder is the server's. To go past Simtropolis's limit of 20 downloads a day, set the environment variable "SC4PAC_SIMTROPOLIS_TOKEN" to your <a href="https://community.simtropolis.com/sc4pac/my-token/">personal Simtropolis token</a> before starting the server.</p>
         <!--<h2>Managing your server</h2>
             <h3>Restoring backups</h3>
             <h3>Server logs</h3>
