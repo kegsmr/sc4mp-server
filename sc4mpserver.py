@@ -137,6 +137,8 @@ sc4mp_server_running = False
 
 sc4mp_request_threads = 0
 
+sc4mp_system_tray_icon_manager = None
+
 
 # Functions
 
@@ -1092,6 +1094,9 @@ class Server(th.Thread):
 		SC4MP_CONFIG_PATH = os.path.join(sc4mp_server_path, "serverconfig.ini")
 
 		report("Loading config...")
+
+		# The config is written into the server folder, which doesn't exist yet the first time the server runs
+		os.makedirs(sc4mp_server_path, exist_ok=True)
 		
 		sc4mp_config = Config(SC4MP_CONFIG_PATH, SC4MP_CONFIG_DEFAULTS, error_callback=show_error, update_constants_callback=update_config_constants)
 
