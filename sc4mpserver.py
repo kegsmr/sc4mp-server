@@ -2645,6 +2645,12 @@ class RequestHandler(BaseRequestHandler):
 		self.c.send_json(list(servers))
 
 
+	def res_time(self):
+
+		# The time in the headers is from when the server started, so respond with the time now
+		self.respond(time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+
 	def res_check_password(self):
 
 		password = self.get_header('password', str)
