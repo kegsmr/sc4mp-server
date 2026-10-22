@@ -2346,7 +2346,7 @@ class RequestHandler(BaseRequestHandler):
 		if sc4mp_config["SECURITY"]["password_enabled"]:
 			password = self.headers.get('password')
 			if password != sc4mp_config["SECURITY"]["password"]:
-				if self.command in [COMMAND_SUBSCRIBE, COMMAND_CHAT] and sc4mp_config["CHAT"]["guest_chat"]:
+				if self.command in [COMMAND_SUBSCRIBE, COMMAND_CHAT] and sc4mp_config["CHAT"]["chat_enabled"] and sc4mp_config["CHAT"]["guest_chat"]:
 					self.user_id = self.authenticate_guest(self.c, self.headers.get('user_id'))
 					return
 				self.error("Incorrect password.")
