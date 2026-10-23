@@ -115,6 +115,11 @@ SC4MP_CONFIG_DEFAULTS = [
 		("backup_server_on_startup", True),
 		("max_server_backup_days", 30),
 		("max_savegame_backups", 20),
+	]),
+	("SC4PAC", [
+		("update_on_startup", False),	# install and update the server's plugins with sc4pac when the server starts
+		("path", "sc4pac"),				# the sc4pac command line tool (eg. its sc4pac.bat on Windows), or "sc4pac" if it's on the PATH
+		("profile", ""),				# the folder of the sc4pac profile (with its sc4pac-plugins.json) whose Plugins folder is the server's
 	])
 ]
 
@@ -937,6 +942,7 @@ class Server(th.Thread):
 
 		self.load_config()
 		self.create_subdirectories()
+		self.update_sc4pac()
 		self.check_updates()
 		self.prep_database()
 		self.clear_temp()
@@ -1071,6 +1077,54 @@ class Server(th.Thread):
 		client_entry.setdefault("ban", False)
 		client_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 		client_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+	def update_sc4pac(self):
+		"""Installs and updates the server's plugins with sc4pac, if it's turned on: runs `sc4pac update` in the profile set in the config, whose Plugins folder must be the server's. Before the file tables are made, so they include the new plugins. If it fails, the server carries on with the plugins it has."""
+
+		if not sc4mp_config["SC4PAC"]["update_on_startup"]:
+			return
+
+		report("Updating plugins with sc4pac...")
+
+		if not sc4mp_config["SC4PAC"]["profile"]:
+			report("No sc4pac profile is set. Set \"profile\" in the SC4PAC section of the config to the folder of an sc4pac profile whose Plugins folder is the server's.", None, "WARNING")
+			return
+		profile = Path(sc4mp_config["SC4PAC"]["profile"])
+		profile_path = profile / "sc4pac-plugins.json"
+		if not profile_path.exists():
+			report(f"There's no sc4pac profile in \"{profile}\" (no sc4pac-plugins.json).", None, "WARNING")
+			return
+
+		# Only the server's own Plugins folder, so sc4pac never installs into another one
+		try:
+			plugins_root = load_json(profile_path)["config"]["pluginsRoot"]
+		except Exception:
+			plugins_root = None
+		plugins_path = Path(sc4mp_server_path) / "Plugins"
+		if plugins_root is None or os.path.normcase(os.path.abspath(profile / plugins_root)) != os.path.normcase(os.path.abspath(plugins_path)):
+			report(f"The sc4pac profile in \"{profile}\" installs into \"{plugins_root}\", not the server's Plugins folder (\"{os.path.abspath(plugins_path)}\"), so it wasn't updated.", None, "WARNING")
+			return
+
+		# Without a terminal sc4pac doesn't ask anything, and `--yes` accepts its usual questions (eg. the list of changes)
+		try:
+			process = subprocess.Popen(
+				[sc4mp_config["SC4PAC"]["path"], "update", "--yes"], cwd=profile,
+				stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace"
+			)
+		except OSError as e:
+			report(f"Unable to run sc4pac (\"{sc4mp_config['SC4PAC']['path']}\"). Check that it's installed (it needs Java 17 or newer), and set \"path\" in the SC4PAC section of the config.\n\n{e}", None, "WARNING")
+			return
+
+		for line in process.stdout:
+			line = line.rstrip()
+			if line:
+				report(f"- {line}")
+
+		if process.wait() != 0:
+			report(f"sc4pac couldn't update the plugins (exit code {process.returncode}), so the server keeps the plugins it has.", None, "WARNING")
+		else:
+			report("- done.")
 
 
 	def create_subdirectories(self):
