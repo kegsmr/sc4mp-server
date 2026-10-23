@@ -2262,6 +2262,9 @@ class RequestHandler(BaseRequestHandler):
 						print(f"Request: {command!r}")
 					# print(f"Request: {command!r} {headers!r}")
 
+					# The headers are copied from the listening socket, so their time is from when the server started
+					self.c.set_headers(time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
 					try:
 						self.handle_request()
 					finally:
@@ -2643,12 +2646,6 @@ class RequestHandler(BaseRequestHandler):
 			servers.add((server_info["host"], server_info["port"]))
 
 		self.c.send_json(list(servers))
-
-
-	def res_time(self):
-
-		# The time in the headers is from when the server started, so respond with the time now
-		self.respond(time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 
 	def res_check_password(self):
