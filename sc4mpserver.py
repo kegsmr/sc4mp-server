@@ -118,6 +118,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		("chat_history", 1000),		# recent chat messages sent to players when they join
 		("chat_filter", True),		# hide the words in `chat_filter.txt`
 		("chat_motd", ""),		# message of the day, shown in chat to players when they join
+		("chat_motd_interval", 0),	# minutes between showing the message of the day again to everyone online (0 to only show it when players join)
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 6),
@@ -1671,6 +1672,10 @@ class Server(th.Thread):
 		except Exception as e:
 			show_error(f"An error occurred while loading the chat history.\n\n{e}")
 
+		# Message of the day, shown again every `chat_motd_interval` minutes
+		if sc4mp_config["CHAT"]["chat_motd"] and sc4mp_config["CHAT"]["chat_motd_interval"]:
+			MotdManager().start()
+
 
 	def prep_upnp(self):
 
@@ -1690,6 +1695,33 @@ class Server(th.Thread):
 			except Exception as e:
 
 				raise ServerException(f"An error occurred while opening a port with UPnP. Disable UPnP in `serverconfig.ini`, forward port {port} manually, then restart the server.\n\n{e}") from e
+
+
+class MotdManager(th.Thread):
+	"""Shows the message of the day in chat again, to everyone online, every `chat_motd_interval` minutes."""
+
+
+	def __init__(self):
+
+		super().__init__(daemon=True)
+
+
+	def run(self):
+
+		try:
+
+			set_thread_name("MotdThread", enumerate=False)
+
+			while not sc4mp_server_running:
+				time.sleep(SC4MP_DELAY)
+
+			while sc4mp_server_running:
+				time.sleep(60 * sc4mp_config["CHAT"]["chat_motd_interval"])
+				sc4mp_event_channel.push('motd', {'motd': str(sc4mp_config["CHAT"]["chat_motd"])})
+
+		except Exception as e:
+
+			show_error(e)
 
 
 class BackupsManager(th.Thread):
