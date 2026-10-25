@@ -115,6 +115,12 @@ SC4MP_CONFIG_DEFAULTS = [
 		("backup_server_on_startup", True),
 		("max_server_backup_days", 30),
 		("max_savegame_backups", 20),
+	]),
+	("ALBUMS", [
+		("enabled", True),
+		("max_picture_size", 10),		# MB
+		("max_region_size", 500),		# MB
+		("max_user_pictures", 50),		# per region
 	])
 ]
 
@@ -136,6 +142,9 @@ sc4mp_server_path = "_SC4MP"
 sc4mp_server_running = False
 
 sc4mp_request_threads = 0
+
+# Album uploads and deletions rewrite a region's `album.json`, so they're done one at a time
+sc4mp_albums_lock = th.Lock()
 
 
 # Functions
@@ -482,6 +491,21 @@ def set_savegame_data(entry, savegame: SC4Savegame):
 					mayor_names = sc4mp_users_database_manager[owner]["mayors"]
 					if mayor_name not in mayor_names:
 						mayor_names.append(mayor_name)
+
+
+def load_album(region):
+	"""Returns a region's album, without the pictures the host deleted."""
+
+	path = os.path.join(sc4mp_server_path, "Albums", region)
+
+	album = load_json(os.path.join(path, "album.json"))
+
+	# Hosts delete pictures by deleting their files
+	for picture in list(album.keys()):
+		if not os.path.exists(os.path.join(path, f"{picture}.png")):
+			del album[picture]
+
+	return album
 
 
 def update_json(filename, data):
@@ -1078,7 +1102,7 @@ class Server(th.Thread):
 
 		report("Creating subdirectories...")
 
-		directories = ["_Backups", "_Database", "_Temp", "Plugins", "Regions"]
+		directories = ["_Backups", "_Database", "_Temp", "Albums", "Plugins", "Regions"]
 
 		for directory in directories:
 			new_directory = os.path.join(sc4mp_server_path, directory)
@@ -2826,6 +2850,173 @@ class RequestHandler(BaseRequestHandler):
 			sc4mp_event_channel.unsubscribe(subscription_id)
 
 
+	def get_album_region(self):
+		"""Returns the requested region, after checking albums are enabled and the region exists."""
+
+		if not sc4mp_config["ALBUMS"]["enabled"]:
+			self.error("Albums are disabled on this server.")
+
+		region = sanitize_directory_name(self.get_header('region', str))
+
+		if not region or not os.path.isdir(os.path.join(sc4mp_server_path, "Regions", region)):
+			self.error("Region not found.")
+
+		return region
+
+
+	def get_album_picture(self):
+		"""Returns the requested picture id, which is checked so it can't be used as a path."""
+
+		picture = self.get_header('picture', str)
+
+		if not re.fullmatch(r"[0-9a-f]{32}", picture):
+			self.error("Picture not found.")
+
+		return picture
+
+
+	def res_album(self):
+
+		region = self.get_album_region()
+
+		with sc4mp_albums_lock:
+			album = load_album(region)
+
+		self.respond()
+		self.c.send_json(
+			[{"picture": picture, **entry} for picture, entry in album.items()]
+		)
+
+
+	def res_album_picture(self):
+
+		region = self.get_album_region()
+		picture = self.get_album_picture()
+
+		filename = os.path.join(sc4mp_server_path, "Albums", region, f"{picture}.png")
+
+		if not os.path.exists(filename):
+			self.error("Picture not found.")
+
+		with open(filename, "rb") as file:
+			data = file.read()
+
+		self.respond(size=len(data))
+		self.c.sendall(data)
+
+
+	def res_album_upload(self):
+
+		region = self.get_album_region()
+		user_id = self.user_id
+
+		album_name = sanitize_directory_name(self.get_header('album', str))
+		filename = sanitize_directory_name(self.get_header('filename', str))
+		size = self.get_header('size', int)
+
+		# Shown in SC4's album (the description, and the city's date, population and funds)
+		description = str(self.headers.get('description') or "")[:1000]
+		info = str(self.headers.get('info') or "")[:1000]
+
+		max_picture_size = sc4mp_config["ALBUMS"]["max_picture_size"]
+		max_region_size = sc4mp_config["ALBUMS"]["max_region_size"]
+		max_user_pictures = sc4mp_config["ALBUMS"]["max_user_pictures"]
+
+		with sc4mp_albums_lock:
+			album = load_album(region)
+
+		region_size = sum(entry["size"] for entry in album.values())
+		user_pictures = len([entry for entry in album.values() if entry["owner"] == user_id])
+
+		# Checked before the picture is sent, so a rejected picture isn't uploaded for nothing
+		if not album_name or not filename.lower().endswith(".png") or size < 1:
+			self.error("Invalid picture.")
+		if max_picture_size is not None and size > max_picture_size * 1_000_000:
+			self.error("Picture too large.")
+		if max_region_size is not None and region_size + size > max_region_size * 1_000_000:
+			self.error("This region's album is full.")
+		if max_user_pictures is not None and user_pictures >= max_user_pictures:
+			self.error("You've shared too many pictures in this region.")
+
+		self.respond()
+
+		data = self.c.recv_exact(size)
+
+		if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+			self.error("Invalid picture.")
+
+		hashcode = hashlib.md5(data).hexdigest()
+
+		# Mayors' names are shown with their pictures in the launcher
+		mayor_name = None
+		mayor_names = sc4mp_users_database_manager[user_id].get("mayors", [])
+		if mayor_names:
+			mayor_name = mayor_names[-1]
+
+		path = os.path.join(sc4mp_server_path, "Albums", region)
+
+		with sc4mp_albums_lock:
+
+			album = load_album(region)
+
+			# The same picture is only stored once
+			for picture, entry in album.items():
+				if entry["md5"] == hashcode:
+					self.respond(picture=picture)
+					return
+
+			picture = os.urandom(16).hex()
+
+			os.makedirs(path, exist_ok=True)
+			with open(os.path.join(path, f"{picture}.png"), "wb") as file:
+				file.write(data)
+
+			album[picture] = {
+				"owner": user_id,
+				"mayor": mayor_name,
+				"album": album_name,
+				"filename": filename,
+				"size": size,
+				"md5": hashcode,
+				"uploaded": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+				"description": description,
+				"info": info,
+			}
+
+			update_json(os.path.join(path, "album.json"), album)
+
+		print(f"{self.address} shared {filename!r} in {region!r}.")
+
+		self.respond(picture=picture)
+
+
+	def res_album_delete(self):
+
+		region = self.get_album_region()
+		picture = self.get_album_picture()
+
+		path = os.path.join(sc4mp_server_path, "Albums", region)
+
+		with sc4mp_albums_lock:
+
+			album = load_album(region)
+
+			entry = album.get(picture)
+
+			if entry is None:
+				self.error("Picture not found.")
+
+			if entry["owner"] != self.user_id:
+				self.error("You can only delete your own pictures.")
+
+			os.remove(os.path.join(path, f"{picture}.png"))
+			del album[picture]
+
+			update_json(os.path.join(path, "album.json"), album)
+
+		self.respond(status='success')
+
+
 class ServerList(th.Thread):
 
 
@@ -3081,6 +3272,7 @@ class SystemTrayIconManager(th.Thread):
 			Item("Manage...", Menu(
 				Item("Plugins", self.plugins),
 				Item("Regions", self.regions),
+				Item("Albums", self.albums),
 			)),
 			Item("Edit...", Menu(
 				Item("Config", self.config),
@@ -3205,6 +3397,19 @@ class SystemTrayIconManager(th.Thread):
 			self.status(notification="Add regions by pasting the region folders here. When you're done, restart the server for the changes to take effect.")
 
 			os.startfile(os.path.join(sc4mp_server_path, "Regions"))
+
+		except Exception as e:
+
+			self.error(e)
+
+
+	def albums(self, icon, item):
+
+		try:
+
+			self.status(notification="Each region's shared pictures are here. Delete a picture by deleting its file.")
+
+			os.startfile(os.path.join(sc4mp_server_path, "Albums"))
 
 		except Exception as e:
 
