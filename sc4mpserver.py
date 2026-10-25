@@ -1981,6 +1981,11 @@ class RegionsManager(th.Thread):
 												self.outputs[save_id] = "City already claimed."
 										reclaimed = True
 
+								# Filter out claims of savegames SC4 only rewrote as neighbours of the saved city, since their simulation date doesn't change (an older launcher can push one on its own, which skips savegame filter 2)
+								if entry.get("owner") != user_id:
+									if file_md5(savegame.decompress_subfile("2990c1e5")) in entry.get("date_subfile_hashes", []):
+										self.outputs[save_id] = "Unpause the game, then retry."
+
 								# Filter out cliams of users who have exhausted their region claims
 								if ("owner" not in entry or entry["owner"] != user_id):
 									if sc4mp_config["RULES"]["max_region_claims"] is not None:
