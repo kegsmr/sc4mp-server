@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import inspect
 import json
@@ -71,6 +72,8 @@ SC4MP_PORT = None
 SC4MP_BUFFER_SIZE = 4096
 
 SC4MP_DELAY = .1
+
+SC4MP_STOP_TIMEOUT = 30	# seconds to wait for a running server to stop before ending it by force
 
 SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
@@ -273,9 +276,22 @@ def prevent_multiple():
 						o_p_c = None
 
 					if other_process_creation == o_p_c:
-						# `TASKKILL` returns 128 if the process isn't running anymore (e.g. it exited but its process object still exists)
-						if subprocess.call(f"TASKKILL /F /PID {other_process_pid}", shell=True) not in (0, 128):
-							raise ServerException("`TASKKILL` failed to terminate the server process already running.")
+
+						# Ask it to stop, so it finishes the requests it's handling and removes its tray icon (see `StopRequestsManager`)
+						update_json(get_stop_request_path(), {"pid": other_process_pid})
+						stop_time = time.time()
+						while time.time() - stop_time < SC4MP_STOP_TIMEOUT and process_is_running(other_process_pid, other_process_creation):
+							time.sleep(.5)
+
+						# End it by force if it didn't stop (e.g. an older version, which doesn't check for stop requests)
+						if process_is_running(other_process_pid, other_process_creation):
+							# `TASKKILL` returns 128 if the process isn't running anymore (e.g. it exited but its process object still exists)
+							if subprocess.call(f"TASKKILL /F /PID {other_process_pid}", shell=True) not in (0, 128):
+								raise ServerException("`TASKKILL` failed to terminate the server process already running.")
+
+						# So this server doesn't take the request as its own
+						if os.path.exists(get_stop_request_path()):
+							os.unlink(get_stop_request_path())
 
 			this_process_pid = os.getpid()
 			this_process_creation = datetime.strftime(get_process_creation_time(this_process_pid), DATETIME_FORMAT)
@@ -290,6 +306,37 @@ def prevent_multiple():
 		except Exception as e:
 
 			raise ServerException(f"Failed to terminate the server process already running.\n\n{e}") from e
+
+
+def get_stop_request_path():
+	"""The file that asks the server running from `sc4mp_server_path` to stop (see `StopRequestsManager`)."""
+
+	return os.path.join(sc4mp_server_path, "stop.json")
+
+
+def process_is_running(pid, creation):
+	"""Whether the process with this ID and creation time (as in `process.json`) is still running (Windows-only)."""
+
+	# The ID may have been reused by another process
+	try:
+		if datetime.strftime(get_process_creation_time(pid), "%Y%m%d%H%M%S") != creation:
+			return False
+	except Exception:
+		return False	# no such process
+
+	PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+	STILL_ACTIVE = 259
+
+	# The process object can outlive the process, so check it hasn't exited
+	handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+	if not handle:
+		return False
+	try:
+		exit_code = ctypes.c_ulong()
+		ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+		return exit_code.value == STILL_ACTIVE
+	finally:
+		ctypes.windll.kernel32.CloseHandle(handle)
 
 
 def prep():
@@ -927,6 +974,7 @@ class Server(th.Thread):
 		self.prep_regions() 
 		self.prep_backups()
 		self.prep_server_list()
+		self.prep_stop_requests()
 		# self.prep_upnp()
 
 	
@@ -1557,6 +1605,19 @@ class Server(th.Thread):
 			sc4mp_filetables_manager.start()
 
 
+	def prep_stop_requests(self):
+
+
+		if sc4mp_nostart:
+			return
+
+		# A request left over from a server that was ended by force is not for this one
+		if os.path.exists(get_stop_request_path()):
+			os.unlink(get_stop_request_path())
+
+		StopRequestsManager().start()
+
+
 	def prep_server_list(self):
 		
 
@@ -1591,6 +1652,60 @@ class Server(th.Thread):
 			except Exception as e:
 
 				raise ServerException(f"An error occurred while opening a port with UPnP. Disable UPnP in `serverconfig.ini`, forward port {port} manually, then restart the server.\n\n{e}") from e
+
+
+class StopRequestsManager(th.Thread):
+	"""Stops the server cleanly when asked to by another server process (`--stop`, or a server started from the same folder), instead of being ended by force."""
+
+
+	def __init__(self):
+
+		super().__init__(daemon=True)
+
+
+	def run(self):
+
+		try:
+
+			global sc4mp_server_running
+
+			set_thread_name("StopThread", enumerate=False)
+
+			while not sc4mp_server_running:
+				time.sleep(SC4MP_DELAY)
+
+			while sc4mp_server_running:
+
+				if os.path.exists(get_stop_request_path()):
+					self.stop()
+
+				time.sleep(SC4MP_DELAY)
+
+		except Exception as e:
+
+			show_error(e, no_ui=True)
+
+
+	def stop(self):
+
+		global sc4mp_server_running
+
+		report("Stopping...")
+
+		os.unlink(get_stop_request_path())
+
+		# Stop accepting connections, and give the requests being handled a minute to finish
+		sc4mp_server_running = False
+		deadline = time.time() + 60
+		while sc4mp_request_threads > 0 and time.time() < deadline:
+			time.sleep(SC4MP_DELAY)
+
+		# Stop the system tray icon, so it doesn't stay in the tray after the process exits
+		if sc4mp_system_tray_icon_manager:
+			sc4mp_system_tray_icon_manager.icon.stop()
+
+		# The main thread is waiting for a connection, so end the process from here
+		os._exit(0)
 
 
 class BackupsManager(th.Thread):
