@@ -12,13 +12,46 @@ Alternatively, use the [SC4MP Server Dockerizer](https://github.com/andreRBarata
 
 # Docker
 
-The server can be run as a [Docker](https://www.docker.com/) container using the included `Dockerfile`:
+The server can be run as a [Docker](https://www.docker.com/) container. An image is published to `ghcr.io/kegsmr/sc4mp-server` for each release, for `linux/amd64` and `linux/arm64`:
+
+```sh
+docker run -d -p 7240:7240 -v sc4mp:/data ghcr.io/kegsmr/sc4mp-server
+```
+
+The image is tagged with the version (e.g. `0.9.0`), the minor version (e.g. `0.9`) and `latest`. The `edge` tag is built from the `feature` branch, for testing.
+
+The server directory (config, plugins, regions, databases and backups) is stored in the `/data` volume. Port `7240` must be reachable from the internet for players to connect.
+
+To update, pull the new image and recreate the container. The server's own updater and system tray icon are not used in the container.
+
+```sh
+docker pull ghcr.io/kegsmr/sc4mp-server
+docker rm -f <container>
+docker run -d -p 7240:7240 -v sc4mp:/data ghcr.io/kegsmr/sc4mp-server
+```
+
+To build the image yourself instead, use the included `Dockerfile` and `docker-compose.yml`, which maps `/data` to `./data`:
 
 ```sh
 docker compose up -d
 ```
 
-The server directory (config, plugins, regions, databases and backups) is stored in the `/data` volume, which `docker-compose.yml` maps to `./data`. Port `7240` must be reachable from the internet for players to connect.
+For example, a private server with a password:
+
+```yaml
+services:
+  sc4mp-server:
+    image: ghcr.io/kegsmr/sc4mp-server
+    ports:
+      - "7240:7240"
+    volumes:
+      - ./data:/data
+    environment:
+      SC4MP_INFO_SERVER_NAME: "My Private Server"
+      SC4MP_SECURITY_PASSWORD_ENABLED: "True"
+      SC4MP_SECURITY_PASSWORD: "change-me"
+    restart: unless-stopped
+```
 
 Any option in `serverconfig.ini` can be overridden with an environment variable named `SC4MP_<SECTION>_<OPTION>`, for example:
 
