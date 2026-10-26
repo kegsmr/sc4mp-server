@@ -15,7 +15,7 @@ Alternatively, use the [SC4MP Server Dockerizer](https://github.com/andreRBarata
 The server can be run as a [Docker](https://www.docker.com/) container. An image is published to `ghcr.io/kegsmr/sc4mp-server` for each release, for `linux/amd64` and `linux/arm64`:
 
 ```sh
-docker run -d -p 7240:7240 -v sc4mp:/data ghcr.io/kegsmr/sc4mp-server
+docker run -d --name sc4mp --restart unless-stopped -p 7240:7240 -v sc4mp:/data ghcr.io/kegsmr/sc4mp-server
 ```
 
 The image is tagged with the version (e.g. `0.9.0`), the minor version (e.g. `0.9`) and `latest`. The `edge` tag is built from the `feature` branch, for testing.
@@ -26,8 +26,8 @@ To update, pull the new image and recreate the container. The server's own updat
 
 ```sh
 docker pull ghcr.io/kegsmr/sc4mp-server
-docker rm -f <container>
-docker run -d -p 7240:7240 -v sc4mp:/data ghcr.io/kegsmr/sc4mp-server
+docker rm -f sc4mp
+docker run -d --name sc4mp --restart unless-stopped -p 7240:7240 -v sc4mp:/data ghcr.io/kegsmr/sc4mp-server
 ```
 
 To build the image yourself instead, use the included `Dockerfile` and `docker-compose.yml`, which maps `/data` to `./data`:

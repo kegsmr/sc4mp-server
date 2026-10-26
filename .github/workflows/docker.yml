@@ -4,7 +4,7 @@ name: Docker
 # Pull requests only build it.
 on:
   release:
-    types: [published]
+    types: [prereleased, released]
   push:
     branches: [feature]
   pull_request:
@@ -13,13 +13,17 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # Emulates arm64 for the Raspberry Pi and ARM VPS build
+      # Emulates arm64
       - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
@@ -32,15 +36,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # A release tagged `v0.9.0` is published as `0.9.0`, `0.9` and `latest` (pre-releases get only their version)
+      # A release tagged `v0.9.0` is published as `0.9.0`, `0.9` and `latest`. Pre-releases get only their version.
       - name: Choose the image tags
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
+          flavor: |
+            latest=${{ github.event_name == 'release' && !github.event.release.prerelease }}
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ !github.event.release.prerelease }}
             type=raw,value=edge,enable=${{ github.ref == 'refs/heads/feature' }}
 
       - name: Build and publish
