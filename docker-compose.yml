@@ -1,0 +1,13 @@
+services:
+  sc4mp-server:
+    build: .
+    ports:
+      - "7240:7240"
+    volumes:
+      - ./data:/data
+    environment:
+      # Any config option can be set with SC4MP_<SECTION>_<OPTION>
+      SC4MP_INFO_SERVER_NAME: "My SC4MP Server"
+      # SC4MP_SECURITY_PASSWORD_ENABLED: "True"
+      # SC4MP_SECURITY_PASSWORD: "change-me"
+    restart: unless-stopped

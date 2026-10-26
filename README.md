@@ -10,6 +10,62 @@ Download and run the installer from the [latest release](https://github.com/kegs
 Alternatively, use the [SC4MP Server Dockerizer](https://github.com/andreRBarata/sc4mp-server-docker) by [andreRBarata](https://github.com/andreRBarata) and deploy your server as a [Docker](https://www.docker.com/) container.
 
 
+# Docker
+
+The server can be run as a [Docker](https://www.docker.com/) container. An image is published to `ghcr.io/kegsmr/sc4mp-server` for each release, for `linux/amd64` and `linux/arm64`:
+
+```sh
+docker run -d --name sc4mp --restart unless-stopped -p 7240:7240 -v sc4mp:/data ghcr.io/kegsmr/sc4mp-server
+```
+
+The image is tagged with the version (e.g. `0.9.0`), the minor version (e.g. `0.9`) and `latest`. The `edge` tag is built from the `feature` branch, for testing.
+
+The server directory (config, plugins, regions, databases and backups) is stored in the `/data` volume. Port `7240` must be reachable from the internet for players to connect.
+
+To update, pull the new image and recreate the container. The server's own updater and system tray icon are not used in the container.
+
+```sh
+docker pull ghcr.io/kegsmr/sc4mp-server
+docker rm -f sc4mp
+docker run -d --name sc4mp --restart unless-stopped -p 7240:7240 -v sc4mp:/data ghcr.io/kegsmr/sc4mp-server
+```
+
+To build the image yourself instead, use the included `Dockerfile` and `docker-compose.yml`, which maps `/data` to `./data`:
+
+```sh
+docker compose up -d
+```
+
+For example, a private server with a password:
+
+```yaml
+services:
+  sc4mp-server:
+    image: ghcr.io/kegsmr/sc4mp-server
+    ports:
+      - "7240:7240"
+    volumes:
+      - ./data:/data
+    environment:
+      SC4MP_INFO_SERVER_NAME: "My Private Server"
+      SC4MP_SECURITY_PASSWORD_ENABLED: "True"
+      SC4MP_SECURITY_PASSWORD: "change-me"
+    restart: unless-stopped
+```
+
+Any option in `serverconfig.ini` can be overridden with an environment variable named `SC4MP_<SECTION>_<OPTION>`, for example:
+
+| Variable | Config option |
+|----------|---------------|
+| `SC4MP_NETWORK_PORT` | `[NETWORK] port` |
+| `SC4MP_INFO_SERVER_NAME` | `[INFO] server_name` |
+| `SC4MP_SECURITY_PASSWORD_ENABLED` | `[SECURITY] password_enabled` |
+| `SC4MP_SECURITY_PASSWORD` | `[SECURITY] password` |
+| `SC4MP_RULES_CLAIM_DURATION` | `[RULES] claim_duration` |
+
+Environment variables take priority over `serverconfig.ini` and are not written to it. If you change the port, map the same port in `docker-compose.yml` (e.g. `"7241:7241"`) so the server's announced port matches.
+
+
 # Usage
 
 Follow the instructions included in the `Readme.html` file.
