@@ -46,7 +46,7 @@ SC4MP_VERSION = "0.8.5"
 
 SC4MP_SERVERS = get_server_list()
 
-SC4MP_GITHUB_REPO = "kegsmr/sc4mp-server"
+SC4MP_GITHUB_REPO = "sc4multiplayer/sc4mp-server"
 
 SC4MP_URL = "www.sc4mp.org"
 SC4MP_CONTRIBUTORS_URL = f"https://github.com/{SC4MP_GITHUB_REPO}/contributors/"
