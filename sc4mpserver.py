@@ -49,7 +49,7 @@ SC4MP_VERSION = "0.9.0"
 
 SC4MP_SERVERS = get_server_list()
 
-SC4MP_GITHUB_REPO = "kegsmr/sc4mp-server"
+SC4MP_GITHUB_REPO = "sc4multiplayer/sc4mp-server"
 
 SC4MP_URL = "www.sc4mp.org"
 SC4MP_CONTRIBUTORS_URL = f"https://github.com/{SC4MP_GITHUB_REPO}/contributors/"
@@ -74,6 +74,7 @@ SC4MP_PORT = None
 SC4MP_BUFFER_SIZE = 4096
 
 SC4MP_DELAY = .1
+SC4MP_FILESTREAM_TIMEOUT = 60	# seconds a launcher downloading files can stop reading for (eg. while it writes a file), however low `connection_timeout` is
 
 SC4MP_CHAT_MAX_LENGTH = 500
 SC4MP_CHAT_RATE = (5, 5)	# players can send this many chat messages in this many seconds
@@ -701,6 +702,10 @@ def purge_directory(directory):
 
 
 def send_filestream(c, rootpath):
+
+	# The launcher stops reading for a moment while it writes each file, which isn't a slow client
+	if c.gettimeout() is not None and c.gettimeout() < SC4MP_FILESTREAM_TIMEOUT:
+		c.settimeout(SC4MP_FILESTREAM_TIMEOUT)
 
 	file_table = get_file_table(rootpath)
 
