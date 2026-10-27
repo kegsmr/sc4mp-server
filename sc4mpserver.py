@@ -9,6 +9,7 @@ import re
 import shutil
 import socket
 import string
+import struct
 import subprocess
 import sys
 import threading as th
@@ -182,8 +183,6 @@ def main():
 		# -s / --server-path argument
 		global sc4mp_server_path
 		if args.server_path:
-			if not sc4mp_force_update:
-				sc4mp_skip_update = True
 			sc4mp_server_path = args.server_path
 			os.makedirs(sc4mp_server_path, exist_ok=True)
 
@@ -206,6 +205,9 @@ def main():
 
 		# If there's another server running from the same directory, kill it
 		prevent_multiple()
+
+		# Record this server, so an update can stop and restart every server running from this executable
+		register_instance()
 
 		# Exit if --stop argument is provided
 		if args.stop:
@@ -301,6 +303,81 @@ def prevent_multiple():
 		except Exception as e:
 
 			raise ServerException(f"Failed to terminate the server process already running.\n\n{e}") from e
+
+
+def register_instance():
+	"""Records this server's process and arguments next to the executable (Windows distribution only)."""
+
+	if is_windows() and is_frozen():
+
+		try:
+
+			pid = os.getpid()
+
+			os.makedirs("_Instances", exist_ok=True)
+
+			update_json(os.path.join("_Instances", f"{pid}.json"), {
+				"pid": pid,
+				"creation": datetime.strftime(get_process_creation_time(pid), "%Y%m%d%H%M%S"),
+				"args": sys.argv[1:],
+			})
+
+		except Exception as e:
+
+			show_error(f"Failed to register the server instance.\n\n{e}", no_ui=True)
+
+
+def get_other_instances():
+	"""Returns the arguments of the other servers currently running from this executable, by PID."""
+
+	instances = {}
+
+	if os.path.exists("_Instances"):
+
+		for filename in os.listdir("_Instances"):
+
+			path = os.path.join("_Instances", filename)
+
+			try:
+
+				instance = load_json(path)
+
+				pid = instance["pid"]
+				if pid == os.getpid():
+					continue
+
+				# The PID may have been reused by another process, so compare creation times too
+				try:
+					creation = datetime.strftime(get_process_creation_time(pid), "%Y%m%d%H%M%S")
+				except Exception:
+					creation = None
+
+				if creation == instance["creation"]:
+					instances[pid] = instance["args"]
+				else:
+					os.unlink(path)	# not running anymore
+
+			except Exception as e:
+
+				show_error(f"Failed to read the server instance at \"{path}\".\n\n{e}", no_ui=True)
+
+	return instances
+
+
+def acquire_update_lock():
+	"""Creates `updater.lock` next to the executable. Returns `False` if another server is already updating."""
+
+	try:
+		if time.time() - os.path.getmtime("updater.lock") > 3600:
+			os.unlink("updater.lock")	# left over from an update that didn't finish
+	except FileNotFoundError:
+		pass
+
+	try:
+		os.close(os.open("updater.lock", os.O_CREAT | os.O_EXCL))
+		return True
+	except FileExistsError:
+		return False
 
 
 def prep():
@@ -761,6 +838,15 @@ def fatal_error(e):
 	#sys.exit()
 
 
+def get_bitmap_dimensions(filename):
+	"""Returns the width and height of a bitmap file."""
+
+	with open(filename, "rb") as file:
+		data = file.read(26)
+
+	return struct.unpack_from("<i", data, 18)[0], abs(struct.unpack_from("<i", data, 22)[0])
+
+
 def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag):
 
 	prefix = f"({savegameX:0>{3}}-{savegameY:0>{3}})"
@@ -1195,6 +1281,11 @@ class Server(th.Thread):
 					# Download the update if the version doesn't match
 					if sc4mp_force_update or unformat_version(latest_release_info["tag_name"]) > unformat_version(SC4MP_VERSION):
 
+						# Only one server running from this executable can install the update (e.g. when several start together); it restarts the others
+						if not acquire_update_lock():
+							print("Another server running from this executable is installing the update.")
+							return
+
 						# Local function for update thread
 						def update():
 							
@@ -1265,34 +1356,69 @@ class Server(th.Thread):
 								# Report installing update
 								report("Installing update...")
 
-								# Create `updater.bat``								
-								args = sys.argv
-								args.pop(0)
-								if "-u" in args:
-									args.remove("-u")
-								if "--force-update" in args:
-									args.remove("--force-update")
+								# Arguments to relaunch a server with after the update
+								def relaunch_args(args):
+									args = [arg for arg in args if arg not in ("-u", "--force-update")]
+									if "-k" not in args and "--skip-update" not in args:
+										args.append("-k")	# so a failed install relaunches the current version instead of updating again in a loop
+									return subprocess.list2cmdline(args)
+
+								# Other servers running from this executable, which have to be stopped for the installer and started again afterwards
+								other_instances = get_other_instances()
+
+								# Create `updater.bat`
+								lines = [
+									"@echo off\n",
+									f"cd /d \"{os.getcwd()}\"\n",
+									"echo Waiting for the server to exit...\n",
+									f":wait{os.getpid()}\n",
+									f"tasklist /fi \"PID eq {os.getpid()}\" | find \"{os.getpid()}\" >nul && (timeout /t 1 /nobreak >nul & goto wait{os.getpid()})\n",	# the installer can't replace files the server still has open
+								]
+								for pid in other_instances:
+									lines += [
+										f"echo Stopping server {pid}...\n",
+										f"TASKKILL /F /PID {pid} >nul 2>&1\n",
+										f":wait{pid}\n",
+										f"tasklist /fi \"PID eq {pid}\" | find \"{pid}\" >nul && (timeout /t 1 /nobreak >nul & goto wait{pid})\n",
+									]
+								lines += [
+									"echo Running installer...\n",
+									f"cd {destination.parent}\n",
+									f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",
+									"cd ..\n",
+									"del updater.lock\n",
+									"echo Relaunching servers...\n",
+								]
+								for args in other_instances.values():
+									lines += [f"start \"\" {PROCESS_NAME} {relaunch_args(args)}\n"]
+								lines += [f"{PROCESS_NAME} {relaunch_args(sys.argv[1:])}\n"]
 								with open("updater.bat", "w") as batch_file:
-									batch_file.writelines([
-										"@echo off\n",
-										f"cd /d \"{os.getcwd()}\"\n",
-										"echo Running installer...\n",
-										f"cd {destination.parent}\n",
-										f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",
-										"cd ..\n",
-										"echo Relaunching server...\n",
-										f"{PROCESS_NAME} {' '.join(args)}\n"
-									])
+									batch_file.writelines(lines)
 
 								# Start installer in very silent mode and exit
 								subprocess.Popen(["updater.bat"])
+
+								return True
 							
 							except Exception as e:
 
 								show_error(f"An error occurred in the update thread.\n\n{e}", no_ui=True)
 
-						# Run update function
-						update()
+								# Let this or another server try again next time
+								try:
+									os.unlink("updater.lock")
+								except Exception:
+									pass
+
+								return False
+
+						# Run update function, and keep running if it failed
+						if not update():
+							return
+
+						# Stop the system tray icon, since its thread would otherwise keep the process running after `sys.exit()`
+						if sc4mp_system_tray_icon_manager:
+							sc4mp_system_tray_icon_manager.icon.stop()
 
 						# Exit when complete
 						sys.exit()
@@ -1931,6 +2057,15 @@ class RegionsManager(th.Thread):
 								if entry.get("locked", False):
 									self.outputs[save_id] = "Tile is locked."
 
+								# Filter out cities outside the bounds of the region (each pixel of `config.bmp` is one tile)
+								try:
+									region_width, region_height = get_bitmap_dimensions(os.path.join(sc4mp_server_path, "Regions", region, "config.bmp"))
+								except Exception as e:
+									show_error(f"Unable to read the region configuration for \"{region}\", skipping bounds check.\n\n{e}")
+									region_width, region_height = None, None
+								if region_width is not None and (savegameX + savegameSizeX > region_width or savegameY + savegameSizeY > region_height):
+									self.outputs[save_id] = "Invalid city location."
+
 								# Filter out godmode savegames if required
 								if sc4mp_config["RULES"]["godmode_filter"]:
 									if savegameModeFlag == 0:
@@ -1953,6 +2088,11 @@ class RegionsManager(th.Thread):
 											if expires > datetime.now():
 												self.outputs[save_id] = "City already claimed."
 										reclaimed = True
+
+								# Filter out claims of savegames SC4 only rewrote as neighbours of the saved city, since their simulation date doesn't change (an older launcher can push one on its own, which skips savegame filter 2)
+								if entry.get("owner") != user_id:
+									if file_md5(savegame.decompress_subfile("2990c1e5")) in entry.get("date_subfile_hashes", []):
+										self.outputs[save_id] = "Unpause the game, then retry."
 
 								# Filter out cliams of users who have exhausted their region claims
 								if ("owner" not in entry or entry["owner"] != user_id):
@@ -2309,6 +2449,9 @@ class RequestHandler(BaseRequestHandler):
 		self.user_id = None
 		self.guest = False
 
+		# Set by `res_save()`, so its temporary files can be purged if the save is rejected
+		self.save_id = None
+
 
 	def run(self):
 
@@ -2326,7 +2469,10 @@ class RequestHandler(BaseRequestHandler):
 				if self.command != "Ping":
 					print(f"{self.address} - {self.command}")
 
-				self.handle_request()
+				try:
+					self.handle_request()
+				finally:
+					self.purge_temp_files()
 
 			except ServerException as e:
 
@@ -2553,13 +2699,22 @@ class RequestHandler(BaseRequestHandler):
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Enforce max file count and file sizes
-		if not file_sizes or len(file_sizes) > 17 or max(file_sizes) > 500_000_000:
+		error = None
+		if not file_sizes:
+			error = "No files."
+		elif len(file_sizes) > 17:
+			error = "Too many files."
+		elif max(file_sizes) > 500_000_000:
+			error = "File too large."
+
+		if error is not None:
 			discard_bytes(c, sum(file_sizes))
-			self.respond(result="No files." if not file_sizes else "Too many files." if len(file_sizes) > 17 else "File too large.")
+			self.respond(result=error)
 			return
 
 		# Set save id
-		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id)
+		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id + "_" + os.urandom(4).hex())	# unique, even for pushes by the same user in the same second
+		self.save_id = save_id
 
 		# Receive files
 		count = 0
@@ -2696,6 +2851,17 @@ class RequestHandler(BaseRequestHandler):
 			# Delete savegame arrays to avoid file deletion errors
 			savegames = None
 			new_savegames = None
+
+
+	def purge_temp_files(self):
+		"""Deletes the temporary files of a save push that was never passed to the regions manager."""
+
+		# Saves passed to the regions manager are cleaned up by the regions manager
+		if self.save_id is not None and self.save_id not in sc4mp_regions_manager.outputs:
+			shutil.rmtree(os.path.join(sc4mp_server_path, "_Temp", "inbound", self.save_id), ignore_errors=True)
+
+		# The connection can be reused for more requests
+		self.save_id = None
 
 
 	def res_add_server(self):
@@ -3517,6 +3683,8 @@ class Logger():
 	def __init__(self):
 		
 		self.terminal = sys.stdout
+		if self.terminal is not None:
+			self.terminal.reconfigure(errors="replace")	# characters the console can't show (eg. emoji on a cp1252 console) are printed as "?"
 		self.log = SC4MP_LOG_PATH if sc4mp_server_path == "_SC4MP" else os.path.join(sc4mp_server_path, SC4MP_LOG_PATH)
 		if os.path.exists(self.log):
 			os.remove(self.log)
