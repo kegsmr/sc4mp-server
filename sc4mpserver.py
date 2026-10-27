@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import inspect
 import json
@@ -9,13 +10,13 @@ import re
 import shutil
 import socket
 import string
+import struct
 import subprocess
 import sys
 import threading as th
 import time
 import traceback
 import platform
-import urllib.request
 from argparse import ArgumentParser, Namespace
 from collections import deque
 from datetime import datetime, timedelta
@@ -34,15 +35,17 @@ try:
 except ImportError:
 	sc4mp_has_pystray = False
 
-from core.config import *
-from core.dbpf import *
-from core.networking import *
+from core.config import Config
+from core.database import Database
+from core.dbpf import SC4Savegame
+from core.events import EventChannel
+from core.networking import ClientSocket, ServerSocket, BaseRequestHandler, \
+	NetworkException, ConnectionClosedException, COMMAND_SUBSCRIBE, COMMAND_CHAT
 from core.util import *
-
 
 # Globals
 
-SC4MP_VERSION = "0.8.5"
+SC4MP_VERSION = "0.9.0"
 
 SC4MP_SERVERS = get_server_list()
 
@@ -71,6 +74,13 @@ SC4MP_PORT = None
 SC4MP_BUFFER_SIZE = 4096
 
 SC4MP_DELAY = .1
+SC4MP_FILESTREAM_TIMEOUT = 60	# seconds a launcher sending or receiving files can pause for (eg. while it writes a file), however low `connection_timeout` is
+
+SC4MP_CHAT_MAX_LENGTH = 500
+SC4MP_CHAT_RATE = (5, 5)	# players can send this many chat messages in this many seconds
+SC4MP_STOP_TIMEOUT = 30	# seconds to wait for a running server to stop before ending it by force
+SC4MP_UPDATE_CHECK_INTERVAL = 6 * 3600	# seconds between update checks while the server runs
+SC4MP_UPDATE_IDLE_TIME = 30 * 60	# seconds since the last city was saved before an update is installed
 
 SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
@@ -79,6 +89,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		# ("upnp", False),	#TODO
 		# ("domain", None),	#TODO for servers hosted on a DDNS or other specific domain
 		("discoverable", True),
+		("domain", '')
 	]),
 	("INFO", [
 		("server_id", generate_server_id()),
@@ -106,6 +117,14 @@ SC4MP_CONFIG_DEFAULTS = [
 		("max_request_threads", 200),
 		("connection_timeout", 600),
 		("filetable_update_interval", 600),
+	]),
+	("CHAT", [
+		("chat_enabled", True),
+		("chat_history", 1000),		# recent chat messages sent to players when they join
+		("chat_filter", True),		# hide the words in `chat_filter.txt`
+		("chat_motd", ""),		# message of the day, shown in chat to players when they join
+		("chat_motd_interval", 0),	# minutes between showing the message of the day again to everyone online (0 to only show it when players join)
+		("guest_chat", True),		# let players who join without the password chat
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 6),
@@ -135,6 +154,7 @@ sc4mp_server_running = False
 sc4mp_request_threads = 0
 
 sc4mp_system_tray_icon_manager = None
+sc4mp_last_save = None
 
 
 # Functions
@@ -171,8 +191,6 @@ def main():
 		# -s / --server-path argument
 		global sc4mp_server_path
 		if args.server_path:
-			if not sc4mp_force_update:
-				sc4mp_skip_update = True
 			sc4mp_server_path = args.server_path
 			os.makedirs(sc4mp_server_path, exist_ok=True)
 
@@ -195,6 +213,9 @@ def main():
 
 		# If there's another server running from the same directory, kill it
 		prevent_multiple()
+
+		# Record this server, so an update can stop and restart every server running from this executable
+		register_instance()
 
 		# Exit if --stop argument is provided
 		if args.stop:
@@ -273,9 +294,22 @@ def prevent_multiple():
 						o_p_c = None
 
 					if other_process_creation == o_p_c:
-						# `TASKKILL` returns 128 if the process isn't running anymore (e.g. it exited but its process object still exists)
-						if subprocess.call(f"TASKKILL /F /PID {other_process_pid}", shell=True) not in (0, 128):
-							raise ServerException("`TASKKILL` failed to terminate the server process already running.")
+
+						# Ask it to stop, so it finishes the requests it's handling and removes its tray icon (see `StopRequestsManager`)
+						update_json(get_stop_request_path(), {"pid": other_process_pid})
+						stop_time = time.time()
+						while time.time() - stop_time < SC4MP_STOP_TIMEOUT and process_is_running(other_process_pid, other_process_creation):
+							time.sleep(.5)
+
+						# End it by force if it didn't stop (e.g. an older version, which doesn't check for stop requests)
+						if process_is_running(other_process_pid, other_process_creation):
+							# `TASKKILL` returns 128 if the process isn't running anymore (e.g. it exited but its process object still exists)
+							if subprocess.call(f"TASKKILL /F /PID {other_process_pid}", shell=True) not in (0, 128):
+								raise ServerException("`TASKKILL` failed to terminate the server process already running.")
+
+						# So this server doesn't take the request as its own
+						if os.path.exists(get_stop_request_path()):
+							os.unlink(get_stop_request_path())
 
 			this_process_pid = os.getpid()
 			this_process_creation = datetime.strftime(get_process_creation_time(this_process_pid), DATETIME_FORMAT)
@@ -290,6 +324,112 @@ def prevent_multiple():
 		except Exception as e:
 
 			raise ServerException(f"Failed to terminate the server process already running.\n\n{e}") from e
+
+
+def register_instance():
+	"""Records this server's process and arguments next to the executable (Windows distribution only)."""
+
+	if is_windows() and is_frozen():
+
+		try:
+
+			pid = os.getpid()
+
+			os.makedirs("_Instances", exist_ok=True)
+
+			update_json(os.path.join("_Instances", f"{pid}.json"), {
+				"pid": pid,
+				"creation": datetime.strftime(get_process_creation_time(pid), "%Y%m%d%H%M%S"),
+				"args": sys.argv[1:],
+			})
+
+		except Exception as e:
+
+			show_error(f"Failed to register the server instance.\n\n{e}", no_ui=True)
+
+
+def get_other_instances():
+	"""Returns the arguments of the other servers currently running from this executable, by PID."""
+
+	instances = {}
+
+	if os.path.exists("_Instances"):
+
+		for filename in os.listdir("_Instances"):
+
+			path = os.path.join("_Instances", filename)
+
+			try:
+
+				instance = load_json(path)
+
+				pid = instance["pid"]
+				if pid == os.getpid():
+					continue
+
+				# The PID may have been reused by another process, so compare creation times too
+				try:
+					creation = datetime.strftime(get_process_creation_time(pid), "%Y%m%d%H%M%S")
+				except Exception:
+					creation = None
+
+				if creation == instance["creation"]:
+					instances[pid] = instance["args"]
+				else:
+					os.unlink(path)	# not running anymore
+
+			except Exception as e:
+
+				show_error(f"Failed to read the server instance at \"{path}\".\n\n{e}", no_ui=True)
+
+	return instances
+
+
+def acquire_update_lock():
+	"""Creates `updater.lock` next to the executable. Returns `False` if another server is already updating."""
+
+	try:
+		if time.time() - os.path.getmtime("updater.lock") > 3600:
+			os.unlink("updater.lock")	# left over from an update that didn't finish
+	except FileNotFoundError:
+		pass
+
+	try:
+		os.close(os.open("updater.lock", os.O_CREAT | os.O_EXCL))
+		return True
+	except FileExistsError:
+		return False
+
+
+def get_stop_request_path():
+	"""The file that asks the server running from `sc4mp_server_path` to stop (see `StopRequestsManager`)."""
+
+	return os.path.join(sc4mp_server_path, "stop.json")
+
+
+def process_is_running(pid, creation):
+	"""Whether the process with this ID and creation time (as in `process.json`) is still running (Windows-only)."""
+
+	# The ID may have been reused by another process
+	try:
+		if datetime.strftime(get_process_creation_time(pid), "%Y%m%d%H%M%S") != creation:
+			return False
+	except Exception:
+		return False	# no such process
+
+	PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+	STILL_ACTIVE = 259
+
+	# The process object can outlive the process, so check it hasn't exited
+	handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+	if not handle:
+		return False
+	try:
+		exit_code = ctypes.c_ulong()
+		ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+		return exit_code.value == STILL_ACTIVE
+	finally:
+		ctypes.windll.kernel32.CloseHandle(handle)
 
 
 def prep():
@@ -402,7 +542,7 @@ def set_savegame_data(entry, savegame: SC4Savegame):
 			if mayor_name is not None:
 				last_mayor_name = entry.get("last_mayor_name", None)
 				if mayor_name != last_mayor_name:
-					mayor_names = sc4mp_users_database_manager.data[owner]["mayors"]
+					mayor_names = sc4mp_users_database_manager[owner]["mayors"]
 					if mayor_name not in mayor_names:
 						mayor_names.append(mayor_name)
 
@@ -469,9 +609,12 @@ def export(export_type):
 	elif export_type == "regions":
 		directory = "Regions"
 
-	# Set target and destination directories
+	# Set target and destination directories (each regions export gets a new folder, so requests can finish reading the old one)
 	target = os.path.join(sc4mp_server_path, directory)
-	destination = os.path.join(sc4mp_server_path, "_Temp", "outbound", directory)
+	if export_type == "regions":
+		destination = sc4mp_regions_exports.new_path()
+	else:
+		destination = os.path.join(sc4mp_server_path, "_Temp", "outbound", directory)
 
 	# Erase file table if exists
 	if destination in sc4mp_filetables_manager.filetables.keys():
@@ -522,8 +665,26 @@ def export(export_type):
 	#if (not os.path.exists(destination)):
 	#	os.makedirs(destination)
 	
-	# Copy recursively
-	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups')) #, '_Database'))	
+	# Copy recursively. Files that haven't changed since the current regions export are hard linked to it instead of copied,
+	# since exports are never changed once made
+	previous = None
+	if export_type == "regions":
+		previous = sc4mp_regions_exports.current
+
+	def copy_file(source, destination_file):
+		if previous is not None:
+			try:
+				previous_file = os.path.join(previous, os.path.relpath(source, target))
+				source_stat = os.stat(source)
+				previous_stat = os.stat(previous_file)
+				if source_stat.st_size == previous_stat.st_size and source_stat.st_mtime_ns == previous_stat.st_mtime_ns:
+					os.link(previous_file, destination_file)
+					return destination_file
+			except OSError:
+				pass	# eg. a new file, or links aren't supported, so it's copied
+		return shutil.copy2(source, destination_file)
+
+	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups'), copy_function=copy_file) #, '_Database'))	
 
 	# Don't send the `Downloads` folder to clients, since it isn't a region
 	if export_type == "regions":
@@ -531,6 +692,11 @@ def export(export_type):
 
 	# Generate filetable
 	sc4mp_filetables_manager.generate(destination)
+
+	# Serve the new export from now on, and delete old ones nothing is reading from
+	if export_type == "regions":
+		sc4mp_regions_exports.publish(destination)
+		sc4mp_regions_exports.delete_old()
 
 
 def purge_directory(directory):
@@ -554,46 +720,28 @@ def purge_directory(directory):
 
 
 def send_filestream(c, rootpath):
-	
 
-	# Loop through all files in path and append them to a list
-	#fullpaths = []
-	#for path, directories, files in os.walk(rootpath):
-	#	for file in files:
-	#		fullpaths.append(os.path.join(path, file))
+	# The launcher stops reading for a moment while it writes each file, which isn't a slow client
+	if c.gettimeout() is not None and c.gettimeout() < SC4MP_FILESTREAM_TIMEOUT:
+		c.settimeout(SC4MP_FILESTREAM_TIMEOUT)
 
-	# Get fullpaths to files in rootpath
-	#fullpaths = rootpath.rglob("*")
+	file_table = get_file_table(rootpath)
 
-	# Get file table
-	while sc4mp_server_running:
-		try:
-			filetable = sc4mp_filetables_manager.filetables[rootpath]
-			break
-		except KeyError:
-			print("[WARNING] Waiting for file table to generate...")
-			time.sleep(SC4MP_DELAY * 10)
-
-	#filetable = [(md5(fullpath), os.path.getsize(fullpath), os.path.relpath(fullpath, rootpath)) for fullpath in fullpaths]
-
-	# Send the file table to the client
-	send_json(c, filetable)
-
-	# Receive the modified filetable from the client and verify it
-	ft = [tuple(item) for item in recv_json(c)]
+	# Receive the filetable from the client and verify it
+	ft = [tuple(item) for item in c.recv_json()]
 	for item in ft:
-		if not item in filetable:
+		if not item in file_table:
 			c.close()
 			return
 	filetable = ft
 
 	# Loop through the filetable and send the respective data
-	for checksum, size, relpath in filetable:
+	for _, size, relpath in filetable:
 		with open(os.path.join(rootpath, relpath), "rb") as file:
 			size_read = 0
 			while True:
 				size_remaining = size - size_read
-				buffer_size = SC4MP_BUFFER_SIZE if size_remaining > SC4MP_BUFFER_SIZE else size_remaining
+				buffer_size = min(size_remaining, SC4MP_BUFFER_SIZE)
 				data = file.read(buffer_size)
 				if not data:
 					break
@@ -601,84 +749,17 @@ def send_filestream(c, rootpath):
 				c.sendall(data)
 
 
-def send_tree(c, rootpath):
+def get_file_table(rootpath):
+
+	while sc4mp_server_running:
+		try:
+			filetable = sc4mp_filetables_manager.filetables[rootpath]
+			break
+		except KeyError:
+			print("[WARNING] Waiting for file table to generate...")
+			time.sleep(SC4MP_DELAY * 10)
 	
-
-	# Loop through all files in path and append them to a list
-	fullpaths = []
-	for path, directories, files in os.walk(rootpath):
-		for file in files:
-			fullpaths.append(os.path.join(path, file))
-
-	# Send file count
-	c.sendall(str(len(fullpaths)).encode())
-
-	# Separator
-	c.recv(SC4MP_BUFFER_SIZE)
-
-	# Send size
-	size = 0
-	for fullpath in fullpaths:
-		size += os.path.getsize(fullpath)
-	c.sendall(str(size).encode())
-
-	# Loop through the file list and send each one to the client
-	for fullpath in fullpaths:
-
-		# Separator
-		c.recv(SC4MP_BUFFER_SIZE)
-
-		# Get relative path to file 
-		relpath = os.path.relpath(fullpath, rootpath)
-
-		# Send hashcode
-		c.sendall(md5(fullpath).encode())
-
-		# Separator
-		c.recv(SC4MP_BUFFER_SIZE)
-
-		# Send filesize
-		c.sendall(str(os.path.getsize(fullpath)).encode())
-
-		# Separator
-		c.recv(SC4MP_BUFFER_SIZE)
-
-		# Send relative path
-		c.sendall(relpath.encode())
-
-		# Send the file if not cached
-		if c.recv(SC4MP_BUFFER_SIZE).decode() != "y":
-			with open(fullpath, "rb") as file:
-				while True:
-					bytes_read = file.read(SC4MP_BUFFER_SIZE)
-					if not bytes_read:
-						break
-					c.sendall(bytes_read)
-
-
-def send_or_cached(c, filename):
-	
-	c.sendall(md5(filename).encode())
-	if c.recv(SC4MP_BUFFER_SIZE).decode() == "n":
-		send_file(c, filename)
-	else:
-		c.close()
-
-
-def send_file(c, filename):
-	
-
-	report("Sending file " + filename + "...")
-
-	filesize = os.path.getsize(filename)
-	c.sendall(str(filesize).encode())
-
-	with open(filename, "rb") as f:
-		while True:
-			bytes_read = f.read(SC4MP_BUFFER_SIZE)
-			if not bytes_read:
-				break
-			c.sendall(bytes_read)
+	return filetable
 
 
 def discard_bytes(c, size):
@@ -693,13 +774,11 @@ def discard_bytes(c, size):
 
 
 def receive_file(c, filename, filesize):
-	
 
-	#if (filesize is None):
-	#
-	#	filesize = int(c.recv(SC4MP_BUFFER_SIZE).decode())
-	#
-	#	c.sendall(SC4MP_SEPARATOR)
+	# The launcher may stop sending for a moment while it reads the next part of a savegame, which isn't a slow client
+	if c.gettimeout() is not None and c.gettimeout() < SC4MP_FILESTREAM_TIMEOUT:
+		c.settimeout(SC4MP_FILESTREAM_TIMEOUT)
+
 
 	report("Receiving " + str(filesize) + " bytes...")
 	report("writing to " + filename)
@@ -718,6 +797,14 @@ def receive_file(c, filename, filesize):
 			f.write(bytes_read)
 			filesize_read += len(bytes_read)
 			#print('Downloading "' + filename + '" (' + str(filesize_read) + " / " + str(filesize) + " bytes)...", int(filesize_read), int(filesize)) #os.path.basename(os.path.normpath(filename))
+
+
+def sleep_while_running(seconds):
+	"""Sleeps for `seconds`, or until the server stops, so threads that wait a long time between tasks don't keep the process alive."""
+
+	end = time.time() + seconds
+	while sc4mp_server_running and time.time() < end:
+		time.sleep(SC4MP_DELAY)
 
 
 def report(message, obj=None, msg_type="INFO", ): #TODO do this in the logger to make sure output prints correctly
@@ -837,6 +924,15 @@ def fatal_error(e):
 	#sys.exit()
 
 
+def get_bitmap_dimensions(filename):
+	"""Returns the width and height of a bitmap file."""
+
+	with open(filename, "rb") as file:
+		data = file.read(26)
+
+	return struct.unpack_from("<i", data, 18)[0], abs(struct.unpack_from("<i", data, 22)[0])
+
+
 def set_savegame_filename(savegameX, savegameY, savegameCityName, savegameMayorName, savegameModeFlag):
 
 	prefix = f"({savegameX:0>{3}}-{savegameY:0>{3}})"
@@ -905,6 +1001,32 @@ def open_upnp_port(port, protocol="TCP", description="Port Forwarding via UPnP")
         )
 
 
+def guest_chat_enabled():
+	"""Whether players who join without the password (guests) can chat: only on public servers with a password and chat turned on."""
+
+	return sc4mp_config["CHAT"]["guest_chat"] and sc4mp_config["CHAT"]["chat_enabled"] and sc4mp_config["SECURITY"]["password_enabled"] and not sc4mp_config["SECURITY"]["private"]
+
+
+def set_headers(s):
+
+	return s.set_headers(
+		server_id=sc4mp_config["INFO"]["server_id"],
+		server_name=sc4mp_config["INFO"]["server_name"],
+		server_description=sc4mp_config["INFO"]["server_description"],
+		server_url=sc4mp_config["INFO"]["server_url"],
+		server_version=SC4MP_VERSION,
+		private=sc4mp_config["SECURITY"]["private"],
+		password_enabled=sc4mp_config["SECURITY"]["password_enabled"],
+		user_plugins_enabled=sc4mp_config["RULES"]["user_plugins"],
+		claim_duration=sc4mp_config["RULES"]["claim_duration"],
+		max_region_claims=sc4mp_config["RULES"]["max_region_claims"],
+		godmode_filter=sc4mp_config["RULES"]["godmode_filter"],
+		chat_enabled=sc4mp_config["CHAT"]["chat_enabled"],
+		guest_chat=guest_chat_enabled(),
+		time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+	)
+
+
 # Workers
 
 class Server(th.Thread):
@@ -920,13 +1042,20 @@ class Server(th.Thread):
 
 		self.load_config()
 		self.create_subdirectories()
-		self.check_updates()
+		if self.check_updates():
+			# Stop the system tray icon, since its thread would otherwise keep the process running after `sys.exit()`
+			if sc4mp_system_tray_icon_manager:
+				sc4mp_system_tray_icon_manager.icon.stop()
+			sys.exit()	# `updater.bat` installs the update once this server has exited
 		self.prep_database()
 		self.clear_temp()
 		self.prep_filetables()
 		self.prep_regions() 
 		self.prep_backups()
 		self.prep_server_list()
+		self.prep_events()
+		self.prep_stop_requests()
+		self.prep_updates()
 		# self.prep_upnp()
 
 	
@@ -939,7 +1068,7 @@ class Server(th.Thread):
 			report("Starting server...")
 
 			report("- creating socket...")
-			s = socket.socket()
+			s = self.socket()
 
 			# Allow binding the port again right after a restart, while connections from before are in TIME_WAIT (not on Windows, where this would let other programs bind the same port)
 			if os.name != "nt":
@@ -960,6 +1089,9 @@ class Server(th.Thread):
 
 			report("- listening for connections...")
 			s.listen(5)
+
+			# Stop waiting for a connection every second, since on Windows Ctrl+C can't interrupt the wait
+			s.settimeout(1)
 			
 			sc4mp_server_running = True
 
@@ -979,7 +1111,10 @@ class Server(th.Thread):
 
 					try:
 
-						c, (host, port) = s.accept()
+						try:
+							c, (host, port) = s.accept()
+						except socket.timeout:
+							continue
 
 						c.settimeout(sc4mp_config["PERFORMANCE"]["connection_timeout"])
 
@@ -991,7 +1126,7 @@ class Server(th.Thread):
 							client_requests.setdefault(host, 0)
 							client_requests[host] += 1
 
-						report("Connection accepted with " + str(host) + ":" + str(port) + ".")
+						# report(f"Connection accepted with {host}.")
 
 						self.log_client(c)
 
@@ -1024,6 +1159,13 @@ class Server(th.Thread):
 			sc4mp_server_running = False
 
 
+	def socket(self) -> ServerSocket:
+
+		s = ServerSocket()
+		set_headers(s)
+		return s
+
+
 	def log_client(self, c):
 		
 
@@ -1031,7 +1173,7 @@ class Server(th.Thread):
 		ip = c.getpeername()[0]
 
 		# Get clients database
-		clients_data = sc4mp_clients_database_manager.data
+		clients_data = sc4mp_clients_database_manager
 		
 		# Get data entry that matches ip
 		client_entry = None
@@ -1210,9 +1352,13 @@ class Server(th.Thread):
 			SC4MP_SERVER_DESCRIPTION = default_server_description'''
 
 
-	def check_updates(self):
+	def check_updates(self, periodic=False) -> bool:
+		"""Checks for an update, and starts `updater.bat` to install it. Returns `True` if it did, in which case this server has to exit."""
 
-		if not sc4mp_skip_update:
+		# `-k` and `-u` are for the check at startup only (servers are restarted with `-k` after an update, so they still update later)
+		force_update = sc4mp_force_update and not periodic
+
+		if periodic or not sc4mp_skip_update:
 
 			print("Checking for updates...")
 
@@ -1228,7 +1374,7 @@ class Server(th.Thread):
 				exec_dir = exec_path.parent
 
 				# Only update if running a Windows distribution
-				if sc4mp_force_update or exec_file == PROCESS_NAME:
+				if force_update or exec_file == PROCESS_NAME:
 
 					# Get latest release info
 					try:
@@ -1238,7 +1384,12 @@ class Server(th.Thread):
 						raise ServerException("GitHub API call timed out.") from e
 
 					# Download the update if the version doesn't match
-					if sc4mp_force_update or unformat_version(latest_release_info["tag_name"]) > unformat_version(SC4MP_VERSION):
+					if force_update or unformat_version(latest_release_info["tag_name"]) > unformat_version(SC4MP_VERSION):
+
+						# Only one server running from this executable can install the update (e.g. when several start together); it restarts the others
+						if not acquire_update_lock():
+							print("Another server running from this executable is installing the update.")
+							return
 
 						# Local function for update thread
 						def update():
@@ -1310,46 +1461,64 @@ class Server(th.Thread):
 								# Report installing update
 								report("Installing update...")
 
-								# Create `updater.bat``								
-								args = sys.argv
-								args.pop(0)
-								if "-u" in args:
-									args.remove("-u")
-								if "--force-update" in args:
-									args.remove("--force-update")
-								if "-k" not in args and "--skip-update" not in args:
-									args.append("-k")	# so a failed install relaunches the current version instead of updating again in a loop
+								# Arguments to relaunch a server with after the update
+								def relaunch_args(args):
+									args = [arg for arg in args if arg not in ("-u", "--force-update")]
+									if "-k" not in args and "--skip-update" not in args:
+										args.append("-k")	# so a failed install relaunches the current version instead of updating again in a loop
+									return subprocess.list2cmdline(args)
+
+								# Other servers running from this executable, which have to be stopped for the installer and started again afterwards
+								other_instances = get_other_instances()
+
+								# Create `updater.bat`
+								lines = [
+									"@echo off\n",
+									f"cd /d \"{os.getcwd()}\"\n",
+									"echo Waiting for the server to exit...\n",
+									f":wait{os.getpid()}\n",
+									f"tasklist /fi \"PID eq {os.getpid()}\" | find \"{os.getpid()}\" >nul && (timeout /t 1 /nobreak >nul & goto wait{os.getpid()})\n",	# the installer can't replace files the server still has open
+								]
+								for pid in other_instances:
+									lines += [
+										f"echo Stopping server {pid}...\n",
+										f"TASKKILL /F /PID {pid} >nul 2>&1\n",
+										f":wait{pid}\n",
+										f"tasklist /fi \"PID eq {pid}\" | find \"{pid}\" >nul && (timeout /t 1 /nobreak >nul & goto wait{pid})\n",
+									]
+								lines += [
+									"echo Running installer...\n",
+									f"cd {destination.parent}\n",
+									f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",
+									"cd ..\n",
+									"del updater.lock\n",
+									"echo Relaunching servers...\n",
+								]
+								for args in other_instances.values():
+									lines += [f"start \"\" {PROCESS_NAME} {relaunch_args(args)}\n"]
+								lines += [f"{PROCESS_NAME} {relaunch_args(sys.argv[1:])}\n"]
 								with open("updater.bat", "w") as batch_file:
-									batch_file.writelines([
-										"@echo off\n",
-										f"cd /d \"{os.getcwd()}\"\n",
-										"echo Waiting for the server to exit...\n",
-										":wait\n",
-										f"tasklist /fi \"PID eq {os.getpid()}\" | find \"{os.getpid()}\" >nul && (timeout /t 1 /nobreak >nul & goto wait)\n",	# the installer can't replace files the server still has open
-										"echo Running installer...\n",
-										f"cd {destination.parent}\n",
-										f"{destination.stem} /dir=\"{os.getcwd()}\" /verysilent\n",
-										"cd ..\n",
-										"echo Relaunching server...\n",
-										f"{PROCESS_NAME} {subprocess.list2cmdline(args)}\n"
-									])
+									batch_file.writelines(lines)
 
 								# Start installer in very silent mode and exit
 								subprocess.Popen(["updater.bat"])
+
+								return True
 							
 							except Exception as e:
 
 								show_error(f"An error occurred in the update thread.\n\n{e}", no_ui=True)
 
-						# Run update function
-						update()
+								# Let this or another server try again next time
+								try:
+									os.unlink("updater.lock")
+								except Exception:
+									pass
 
-						# Stop the system tray icon, since its thread would otherwise keep the process running after `sys.exit()`
-						if sc4mp_system_tray_icon_manager:
-							sc4mp_system_tray_icon_manager.icon.stop()
+								return False
 
-						# Exit when complete
-						sys.exit()
+						# Run update function (this server keeps running if it failed)
+						return update()
 				
 			except Exception as e:
 
@@ -1521,6 +1690,9 @@ class Server(th.Thread):
 
 		report("Preparing regions...")
 
+		global sc4mp_regions_exports
+		sc4mp_regions_exports = RegionsExports()
+
 		export("regions")
 
 		# Regions manager
@@ -1557,8 +1729,34 @@ class Server(th.Thread):
 			sc4mp_filetables_manager.start()
 
 
-	def prep_server_list(self):
+	def prep_stop_requests(self):
+
+		if sc4mp_nostart:
+			return
+
+		# A request left over from a server that was ended by force is not for this one
+		if os.path.exists(get_stop_request_path()):
+			os.unlink(get_stop_request_path())
+
+		StopRequestsManager().start()
+
+
+	def prep_updates(self):
 		
+
+		if sc4mp_nostart:
+			return
+
+		# Only the Windows executable can update itself
+		if not (is_windows() and is_frozen()):
+			return
+
+		report("Preparing updates...")
+
+		UpdatesManager().start()
+
+
+	def prep_server_list(self):
 
 		if sc4mp_nostart:
 			return
@@ -1571,6 +1769,44 @@ class Server(th.Thread):
 		global sc4mp_server_list
 		sc4mp_server_list = ServerList()
 		sc4mp_server_list.start()
+
+
+	def prep_events(self):
+
+		if sc4mp_nostart:
+			return
+
+		report("Preparing events channel...")
+
+		global sc4mp_event_channel
+		sc4mp_event_channel = EventChannel()
+
+		# Recent chat messages (sent to players when they subscribe), kept in `_Database/chat.jsonl` across restarts, and when each user last sent one
+		global sc4mp_chat_history, sc4mp_chat_times, sc4mp_chat_lock, sc4mp_chat_filter, sc4mp_chat_appended
+		sc4mp_chat_filter = None
+		sc4mp_chat_history = deque(maxlen=max(0, int(sc4mp_config["CHAT"]["chat_history"] or 0)))
+		sc4mp_chat_times = {}
+		sc4mp_chat_appended = 0	# messages added to `chat.jsonl` since it was last rewritten
+		sc4mp_chat_lock = th.Lock()
+		chat_filename = os.path.join(sc4mp_server_path, "_Database", "chat.jsonl")
+		try:
+			with open(chat_filename, encoding="utf-8") as file:
+				for line in file:
+					try:
+						sc4mp_chat_history.append(json.loads(line))
+					except Exception:
+						pass	# skip a line that was cut off
+			with open(chat_filename, "w", encoding="utf-8") as file:	# keep only the recent messages
+				for event in sc4mp_chat_history:
+					file.write(json.dumps(event) + "\n")
+		except FileNotFoundError:
+			pass
+		except Exception as e:
+			show_error(f"An error occurred while loading the chat history.\n\n{e}")
+
+		# Message of the day, shown again every `chat_motd_interval` minutes
+		if sc4mp_config["CHAT"]["chat_motd"] and sc4mp_config["CHAT"]["chat_motd_interval"]:
+			MotdManager().start()
 
 
 	def prep_upnp(self):
@@ -1591,6 +1827,87 @@ class Server(th.Thread):
 			except Exception as e:
 
 				raise ServerException(f"An error occurred while opening a port with UPnP. Disable UPnP in `serverconfig.ini`, forward port {port} manually, then restart the server.\n\n{e}") from e
+
+
+class MotdManager(th.Thread):
+	"""Shows the message of the day in chat again, to everyone online, every `chat_motd_interval` minutes."""
+
+
+	def __init__(self):
+
+		super().__init__(daemon=True)
+
+
+	def run(self):
+
+		try:
+
+			set_thread_name("MotdThread", enumerate=False)
+
+			while not sc4mp_server_running:
+				time.sleep(SC4MP_DELAY)
+
+			while sc4mp_server_running:
+				time.sleep(60 * sc4mp_config["CHAT"]["chat_motd_interval"])
+				sc4mp_event_channel.push('motd', {'motd': str(sc4mp_config["CHAT"]["chat_motd"])})
+
+		except Exception as e:
+
+			show_error(e)
+
+
+class StopRequestsManager(th.Thread):
+	"""Stops the server cleanly when asked to by another server process (`--stop`, or a server started from the same folder), instead of being ended by force."""
+
+
+	def __init__(self):
+
+		super().__init__(daemon=True)
+
+
+	def run(self):
+
+		try:
+
+			global sc4mp_server_running
+
+			set_thread_name("StopThread", enumerate=False)
+
+			while not sc4mp_server_running:
+				time.sleep(SC4MP_DELAY)
+
+			while sc4mp_server_running:
+
+				if os.path.exists(get_stop_request_path()):
+					self.stop()
+
+				time.sleep(SC4MP_DELAY)
+
+		except Exception as e:
+
+			show_error(e, no_ui=True)
+
+
+	def stop(self):
+
+		global sc4mp_server_running
+
+		report("Stopping...")
+
+		os.unlink(get_stop_request_path())
+
+		# Stop accepting connections, and give the requests being handled a minute to finish
+		sc4mp_server_running = False
+		deadline = time.time() + 60
+		while sc4mp_request_threads > 0 and time.time() < deadline:
+			time.sleep(SC4MP_DELAY)
+
+		# Stop the system tray icon, so it doesn't stay in the tray after the process exits
+		if sc4mp_system_tray_icon_manager:
+			sc4mp_system_tray_icon_manager.icon.stop()
+
+		# The main thread is waiting for a connection, so end the process from here
+		os._exit(0)
 
 
 class BackupsManager(th.Thread):
@@ -1620,7 +1937,7 @@ class BackupsManager(th.Thread):
 			while sc4mp_server_running:
 
 				# Delay
-				time.sleep(3600 * sc4mp_config["BACKUPS"]["server_backup_interval"])
+				sleep_while_running(3600 * sc4mp_config["BACKUPS"]["server_backup_interval"])
 
 				while sc4mp_server_running:
 
@@ -1789,77 +2106,111 @@ class BackupsManager(th.Thread):
 		return referenced_files
 
 
-class DatabaseManager(th.Thread):
-	
+class UpdatesManager(th.Thread):
+	"""Checks for updates every few hours while the server runs, and installs them once the server isn't in use."""
 
-	
-	def __init__(self, filename):
-		
 
-		super().__init__()
-	
-		self.filename = filename #os.path.join(sc4mp_server_path, "_Database", "users.json")
-		self.data = self.load_json(self.filename)
+	def __init__(self):
+
+		super().__init__(daemon=True)
 
 
 	def run(self):
-		
+
+		try:
+
+			global sc4mp_server_running
+
+			set_thread_name("UpdtMgrThread", enumerate=False)
+
+			while not sc4mp_server_running:
+				time.sleep(SC4MP_DELAY)
+
+			while sc4mp_server_running:
+
+				time.sleep(SC4MP_UPDATE_CHECK_INTERVAL)
+
+				try:
+
+					# Wait until the server isn't in use
+					while sc4mp_server_running and not self.idle():
+						time.sleep(60)
+
+					if sc4mp_server_running and sc4mp_server.check_updates(periodic=True):
+						self.exit()
+
+				except Exception as e:
+
+					show_error(f"An error occurred while checking for updates.\n\n{e}", no_ui=True)
+
+		except Exception as e:
+
+			show_error(e, no_ui=True)
+
+
+	def idle(self) -> bool:
+		"""Whether no requests are being handled and no city has been saved recently."""
+
+		if sc4mp_request_threads > 0:
+			return False
+
+		if sc4mp_last_save is not None and datetime.now() - sc4mp_last_save < timedelta(seconds=SC4MP_UPDATE_IDLE_TIME):
+			return False
+
+		return True
+
+
+	def exit(self):
+		"""Exits the server so `updater.bat` can install the update (it starts the server again afterwards)."""
+
+		global sc4mp_server_running
+
+		report("Exiting to install the update...")
+
+		# Stop accepting connections, and give the requests being handled a minute to finish
+		sc4mp_server_running = False
+		deadline = time.time() + 60
+		while sc4mp_request_threads > 0 and time.time() < deadline:
+			time.sleep(SC4MP_DELAY)
+
+		# Stop the system tray icon, so it doesn't stay in the tray after the process exits
+		if sc4mp_system_tray_icon_manager:
+			sc4mp_system_tray_icon_manager.icon.stop()
+
+		# The main thread is waiting for a connection, so end the process from here
+		os._exit(0)
+
+
+class DatabaseManager(th.Thread, Database):
+
+
+	def __init__(self, filename):
+
+		th.Thread.__init__(self)
+		Database.__init__(self, filename)
+
+	
+	def run(self):
 	
 		try:
 
 			global sc4mp_server_running
 
 			while not sc4mp_server_running:
-				
 				time.sleep(SC4MP_DELAY)
 
 			set_thread_name("DbThread")
-
-			#report("Monitoring database for changes...", self) #TODO why is the spacing wrong?
 			
-			old_data = str(self.data)
-			
-			while sc4mp_server_running: #TODO pretty dumb way of checking if a dictionary has been modified. also this thread probably needs to stop at some point
+			while sc4mp_server_running: 
 				try:
 					time.sleep(SC4MP_DELAY)
-					new_data = str(self.data)
-					if old_data != new_data:
-						#report('Updating "' + self.filename + '"...', self) #TODO make verbose
-						self.update_json(self.filename, self.data)
-						#report("- done.", self) #TODO make verbose
-					old_data = new_data
+					self.update_json()
 				except Exception as e:
 					show_error(e)
 
 		except Exception as e:
 
 			fatal_error(e)
-
-
-	def load_json(self, filename):
-		
-		try:
-			with open(filename, 'r') as file:
-				return json.load(file)
-		except Exception:
-			return {}
-
-	
-	def update_json(self, filename, data):
-		
-		# Write to a temporary file first so a crash or error mid-write can't truncate the original
-		temp_filename = f"{filename}.tmp"
-		with open(temp_filename, 'w') as file:
-			json.dump(data, file, indent=4)
-			file.flush()
-			os.fsync(file.fileno())
-		try:
-			os.replace(temp_filename, filename)
-		except PermissionError:
-			# On Windows, the replace fails while another process or thread has the file open, so fall back to writing in place
-			with open(filename, 'w') as file:
-				json.dump(data, file, indent=4)
-			os.unlink(temp_filename)
 
 
 class RegionsManager(th.Thread):
@@ -1875,6 +2226,7 @@ class RegionsManager(th.Thread):
 		self.export_regions = False
 		self.tasks = []
 		self.outputs = {}
+		self.claims = {}	# accepted save pushes that founded or took over a city, by save ID
 		#self.lastmtime = self.get_mtime()
 
 
@@ -1901,8 +2253,9 @@ class RegionsManager(th.Thread):
 					#	self.lastmtime = mtime
 					#	self.regions_modified = True
 
-					# Export regions if requested, otherwise check for new tasks
-					if self.export_regions:
+					# Export regions if requested, otherwise check for new tasks. Saves waiting to be processed go first, since
+					# their launchers are waiting for the result (and the export then includes them)
+					if self.export_regions and len(self.tasks) == 0:
 
 						report("Exporting regions as requested...", self)
 
@@ -1958,6 +2311,15 @@ class RegionsManager(th.Thread):
 								if entry.get("locked", False):
 									self.outputs[save_id] = "Tile is locked."
 
+								# Filter out cities outside the bounds of the region (each pixel of `config.bmp` is one tile)
+								try:
+									region_width, region_height = get_bitmap_dimensions(os.path.join(sc4mp_server_path, "Regions", region, "config.bmp"))
+								except Exception as e:
+									show_error(f"Unable to read the region configuration for \"{region}\", skipping bounds check.\n\n{e}")
+									region_width, region_height = None, None
+								if region_width is not None and (savegameX + savegameSizeX > region_width or savegameY + savegameSizeY > region_height):
+									self.outputs[save_id] = "Invalid city location."
+
 								# Filter out godmode savegames if required
 								if sc4mp_config["RULES"]["godmode_filter"]:
 									if savegameModeFlag == 0:
@@ -1980,6 +2342,11 @@ class RegionsManager(th.Thread):
 											if expires > datetime.now():
 												self.outputs[save_id] = "City already claimed."
 										reclaimed = True
+
+								# Filter out claims of savegames SC4 only rewrote as neighbours of the saved city, since their simulation date doesn't change (an older launcher can push one on its own, which skips savegame filter 2)
+								if entry.get("owner") != user_id:
+									if file_md5(savegame.decompress_subfile("2990c1e5")) in entry.get("date_subfile_hashes", []):
+										self.outputs[save_id] = "Unpause the game, then retry."
 
 								# Filter out cliams of users who have exhausted their region claims
 								if ("owner" not in entry or entry["owner"] != user_id):
@@ -2031,6 +2398,8 @@ class RegionsManager(th.Thread):
 									#TODO delete old backups
 
 									# Set entry values
+									# A city is new if it's established on a tile that never had one: no established savegame (`gamemode`) and no mayor name, which only established cities have
+									founded = savegameModeFlag != 0 and not entry.get("gamemode") and not entry.get("mayor_name")
 									entry["filename"] = new_filename
 									entry["owner"] = user_id
 									entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2045,8 +2414,31 @@ class RegionsManager(th.Thread):
 									# Mark regions as modified
 									self.regions_modified = True
 
-									# Report success
+									# Players are called in chat by the mayor name of the last city they founded, since cities they take over keep the previous mayor's name
+									if founded and savegameMayorName:
+										sc4mp_users_database_manager[user_id]["founded_mayor_name"] = savegameMayorName
+
+									# Report success (and new cities and cities taken over from other mayors, which are announced in chat)
+									if founded or reclaimed:
+										self.claims[save_id] = {
+											'city': savegameCityName,
+											'region': region,
+											'coords': (savegameX, savegameY),
+											'reclaimed': not founded
+										}
 									self.outputs[save_id] = "ok"
+
+									# Push channel event
+									sc4mp_event_channel.push(
+										'save', {
+											'user_id': user_id,
+											'save_id': save_id,
+											'region': region,
+											'coords': (savegameX, savegameY),
+											'filename': entry['filename']
+										},
+										exclude=[user_id]
+									)
 
 							except Exception as e:
 
@@ -2080,6 +2472,9 @@ class RegionsManager(th.Thread):
 
 							except Exception as e:
 								pass
+
+							# Delete old exports once the requests reading from them are done
+							sc4mp_regions_exports.delete_old()
 							
 							time.sleep(SC4MP_DELAY)
 
@@ -2122,7 +2517,7 @@ class RegionsManager(th.Thread):
 
 	def get_mtime(self):
 
-		os.path.getmtime(os.path.join(sc4mp_server_path, "Regions"))
+		return os.path.getmtime(os.path.join(sc4mp_server_path, "Regions"))
 			
 
 class FileTablesManager(th.Thread):
@@ -2133,6 +2528,7 @@ class FileTablesManager(th.Thread):
 		super().__init__()
 
 		self.filetables = {}
+		self.checksums = {}	# the md5 of each file by its path, size and modified time, from the last file table of each folder (eg. Regions)
 
 
 	def run(self):
@@ -2149,8 +2545,9 @@ class FileTablesManager(th.Thread):
 
 				try:
 
-					time.sleep(sc4mp_config["PERFORMANCE"]["filetable_update_interval"])
-					self.update()
+					sleep_while_running(sc4mp_config["PERFORMANCE"]["filetable_update_interval"])
+					if sc4mp_server_running:
+						self.update()
 
 				except Exception as e:
 
@@ -2163,8 +2560,8 @@ class FileTablesManager(th.Thread):
 
 	def update(self):
 
-		# Loop through all file tables
-		for rootpath, filetable in self.filetables.items():
+		# Loop through all file tables (iterate over a copy since regions exports add and remove them)
+		for rootpath, filetable in list(self.filetables.items()):
 			
 			# Loop through file table and check for missing files and files which have changed size (iterate over a copy since entries are removed)
 			for entry in list(filetable):
@@ -2201,7 +2598,22 @@ class FileTablesManager(th.Thread):
 			for file in files:
 				fullpaths.append(os.path.join(path, file))
 
-		self.filetables[rootpath] = [(md5(fullpath), os.path.getsize(fullpath), Path(os.path.relpath(fullpath, rootpath)).as_posix()) for fullpath in fullpaths]
+		# Only hash files that changed since the last file table of this folder, since exports keep the files' modified times
+		kind = os.path.basename(rootpath).split("-")[0]
+		old_checksums = self.checksums.get(kind, {})
+		checksums = {}
+		filetable = []
+		for fullpath in fullpaths:
+			relpath = Path(os.path.relpath(fullpath, rootpath)).as_posix()
+			stat = os.stat(fullpath)
+			key = (relpath, stat.st_size, stat.st_mtime_ns)
+			checksum = old_checksums.get(key)
+			if checksum is None:
+				checksum = md5(fullpath)
+			checksums[key] = checksum
+			filetable.append((checksum, stat.st_size, relpath))
+		self.checksums[kind] = checksums
+		self.filetables[rootpath] = filetable
 
 		#print(self.filetables[path])
 
@@ -2217,23 +2629,102 @@ class FileTablesManager(th.Thread):
 		print("- done.")
 
 
-class RequestHandler(th.Thread):
-	
+class RegionsExports():
+	"""Keeps each regions export in its own folder (`_Temp/outbound/Regions-<n>`). Requests pin the export they read from, so a
+	new export never changes files that are still being sent. Old exports are deleted once no request is using them."""
 
+
+	def __init__(self):
+
+		self.lock = th.Lock()
+		self.outbound = os.path.join(sc4mp_server_path, "_Temp", "outbound")
+		self.count = 0
+		self.current = None
+		self.users = {}		# export path -> number of requests reading from it
+		self.retry_time = 0
+
+		# Old exports left over from the last run get deleted after the first export
+		os.makedirs(self.outbound, exist_ok=True)
+		for name in os.listdir(self.outbound):
+			path = os.path.join(self.outbound, name)
+			if name.startswith("Regions-") and os.path.isdir(path):
+				self.users[path] = 0
+
+
+	def new_path(self):
+		"""Returns a new folder for an export. It's tracked right away, so it gets deleted if the export fails. Exports and
+		`delete_old` both run on the regions manager thread, so an export can't be deleted while it's being made."""
+
+		while True:
+			self.count += 1
+			path = os.path.join(self.outbound, f"Regions-{self.count}")
+			if not os.path.exists(path):
+				with self.lock:
+					self.users[path] = 0
+				return path
+
+
+	def publish(self, path):
+
+		with self.lock:
+			self.current = path
+
+
+	def pin(self):
+		"""Returns the current export and keeps it from being deleted until `unpin` is called."""
+
+		with self.lock:
+			path = self.current
+			self.users[path] += 1
+			return path
+
+
+	def unpin(self, path):
+
+		with self.lock:
+			self.users[path] -= 1
+
+
+	def delete_old(self):
+		"""Deletes exports that are not current and that no request is using. Requests only pin the current export, so nothing
+		can start using these. If a deletion fails (eg. a file is still open on Windows), it's retried later."""
+
+		if time.time() < self.retry_time:
+			return
+
+		with self.lock:
+			old = [path for path, users in self.users.items() if path != self.current and users == 0]
+
+		for path in old:
+			if path in sc4mp_filetables_manager.filetables:
+				sc4mp_filetables_manager.erase(path)
+			try:
+				shutil.rmtree(path)
+			except FileNotFoundError:
+				pass
+			except Exception as e:
+				report(f"Failed to delete old regions export \"{path}\", will retry later. ({e})", self, "WARNING")
+				self.retry_time = time.time() + 10
+				continue
+			with self.lock:
+				self.users.pop(path)
+
+
+class RequestHandler(BaseRequestHandler):
+	
 
 	def __init__(self, c):
 		
+		super().__init__(c, private=sc4mp_config["SECURITY"]["private"])
 
-		super().__init__()
-		
-		self.c = c
+		self.user_id = None
+		self.guest = False
 
-		# Set by `save()`, so its temporary files can be purged if the save is rejected
+		# Set by `res_save()`, so its temporary files can be purged if the save is rejected
 		self.save_id = None
 
 
 	def run(self):
-		
 
 		try:
 
@@ -2243,89 +2734,23 @@ class RequestHandler(th.Thread):
 
 			try:
 
-				c = self.c
-
-				try:
-					args = c.recv(SC4MP_BUFFER_SIZE).decode().split(" ")
-				except UnicodeDecodeError:
-					args = [""]	# not an SC4MP request (e.g. a TLS handshake from a port scanner), so treat it as an invalid request
-
-				request = args[0]
+				self.recv_request()
 
 				# Not pings, which every launcher sends every few seconds, so they'd flood the log
-				if request != "ping":
-					report("Request: " + request, self)
+				if self.command != "Ping":
+					print(f"{self.address} - {self.command}")
 
-				if request == "ping":
-					self.ping(c)
-				elif request == "server_id":
-					self.send_server_id(c)
-				elif request == "server_name":
-					self.send_server_name(c)
-				elif request == "server_description":
-					self.send_server_description(c)
-				elif request == "server_url":
-					self.send_server_url(c)
-				elif request == "server_version":
-					self.send_server_version(c)
-				elif request == "user_id":
-					self.send_user_id(c, args[1])
-				elif request == "token":
-					self.request_header(c, args)
-					self.send_token(c)
-				elif request == "plugins":
-					if sc4mp_config["SECURITY"]["private"]:
-						self.request_header(c, args)
-					self.send_plugins(c)
-				elif request == "regions":
-					if sc4mp_config["SECURITY"]["private"]:
-						self.request_header(c, args)
-					self.send_regions(c)
-				elif request == "save":
-					self.request_header(c, args)
-					try:
-						self.save(c)
-					finally:
-						self.purge_temp_files()
-				elif request == "add_server":
-					try:
-						self.add_server(c, args[1])
-					except IndexError as e:
-						print("[WARNING] Unable to add outdated server to server list")
-				elif request == "server_list":
-					self.server_list(c)
-				elif request == "password_enabled":
-					self.password_enabled(c)
-				elif request == "check_password":
-					self.check_password(c, " ".join(args[1:]))
-				elif request == "user_plugins_enabled":
-					self.user_plugins_enabled(c)
-				elif request == "private":
-					self.private(c)
-				elif request == "time":
-					c.sendall(datetime.now().strftime("%Y-%m-%d %H:%M:%S").encode())
-				elif request == "info":
-					send_json(c, {  
-						"server_id": sc4mp_config["INFO"]["server_id"],  
-						"server_name": sc4mp_config["INFO"]["server_name"],
-						"server_description": sc4mp_config["INFO"]["server_description"],
-						"server_url": sc4mp_config["INFO"]["server_url"],
-						"server_version": SC4MP_VERSION,
-						"private": sc4mp_config["SECURITY"]["private"],
-						"password_enabled": sc4mp_config["SECURITY"]["password_enabled"],
-						"user_plugins_enabled": sc4mp_config["RULES"]["user_plugins"],
-						"claim_duration": sc4mp_config["RULES"]["claim_duration"],
-						"max_region_claims": sc4mp_config["RULES"]["max_region_claims"],
-						"godmode_filter": sc4mp_config["RULES"]["godmode_filter"],
-					})
-				elif request == "background":
-					self.send_background(c)
-				else:
-					print("[WARNING] Invalid request!") # (\"{request}\")!")
+				# The headers are copied from the listening socket, so their time is from when the server started
+				self.c.set_headers(time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-				c.close()
-			
-				#report("- connection closed.", self)
+				try:
+					self.handle_request()
+				finally:
+					self.purge_temp_files()
+
+			except ServerException as e:
+
+				print(f"[WARNING] {e}")
 
 			except Exception as e:
 
@@ -2338,77 +2763,140 @@ class RequestHandler(th.Thread):
 			fatal_error(e)
 
 
-	def request_header(self, c, args):
-		
+	def authenticate(self):
 
-		if unformat_version(args[1])[:2] < unformat_version(SC4MP_VERSION)[:2]:
-			c.close()
-			raise ServerException("Invalid version.")
+		version = self.get_header('version', str)
+		if unformat_version(version)[:2] < unformat_version(SC4MP_VERSION)[:2]:
+			self.error("Incorrect version.")
 
 		if sc4mp_config["SECURITY"]["password_enabled"]:
-			if " ".join(args[3:]) != sc4mp_config["SECURITY"]["password"]:
-				c.close()
-				raise ServerException("Incorrect password.")
+			password = self.headers.get('password')
+			if password != sc4mp_config["SECURITY"]["password"]:
+				if self.command in [COMMAND_SUBSCRIBE, COMMAND_CHAT] and guest_chat_enabled():
+					self.user_id = self.authenticate_guest(self.c, self.headers.get('user_id'))
+					return
+				self.error("Incorrect password.")
 
-		self.user_id = self.log_user(c, args[2])
+		self.user_id = \
+			self.authenticate_user(self.c, self.get_header('user_id', str))
 
 
-	def ping(self, c):
+	def authenticate_guest(self, c, user_id):
+		"""Lets a player who doesn't have the password subscribe to events and chat, without adding them to the users database."""
+
+		# Older launchers send no user ID for guests
+		if not isinstance(user_id, str) or not user_id:
+			self.error("Invalid user ID.")
+
+		user_id = hashlib.sha256(user_id.encode()).hexdigest()[:32]
+
+		client_entry = sc4mp_clients_database_manager.get(c.getpeername()[0]) or {}
+		user_entry = sc4mp_users_database_manager.get(user_id) or {}
+		if user_entry.get("ban") or client_entry.get("ban"):
+			self.error("You are banned from this server.")
+
+		# Banned mayors can't chat as guests from the same IP
+		for ip_user_id in client_entry.get("users", []):
+			if (sc4mp_users_database_manager.get(ip_user_id) or {}).get("ban"):
+				self.error("You are banned from this server.")
+
+		self.guest = True
+
+		return user_id
+
+
+	def authenticate_user(self, c, user_id):
+
+		# Use a hashcode of the user id for extra security
+		user_id = hashlib.sha256(user_id.encode()).hexdigest()[:32]
+
+		# Get the ip
+		user_ip = c.getpeername()[0]
 		
-		c.sendall(b"pong")
-
-
-	def send_server_id(self, c):
+		# Get clients database
+		clients_data = sc4mp_clients_database_manager
 		
-		c.sendall(SC4MP_SERVER_ID.encode())
+		# Get data entry that matches ip
+		client_entry = clients_data[user_ip]
 
+		# Check if the client has exceeded the user limit
+		if user_id not in client_entry["users"]:
+			if (sc4mp_config["SECURITY"]["max_ip_users"] is None or len(client_entry["users"]) < sc4mp_config["SECURITY"]["max_ip_users"]):
+				client_entry["users"].append(user_id)
+			else:
+				self.error("User limit exceeded.")
 
-	def send_server_name(self, c):
+		# Get users database
+		users_data = sc4mp_users_database_manager
 		
-		c.sendall(SC4MP_SERVER_NAME.encode())
+		# Get data entry that matches user id or get & set to {}
+		user_entry = users_data.setdefault(user_id, {})
 
+		# Set default values if missing
+		user_entry.setdefault("clients", [])
+		user_entry.setdefault("mayors", [])
+		user_entry.setdefault("ban", False)
+		user_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-	def send_server_description(self, c):
+		# Close connection and throw error if the user is banned
+		if (user_entry["ban"] or client_entry["ban"]): #TODO check for client bans in server loop
+			self.error("You are banned from this server.")
 		
-		c.sendall(SC4MP_SERVER_DESCRIPTION.encode())
+		# Log the time
+		user_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-
-	def send_server_url(self, c):
+		# Log the IP
+		clients_entry = user_entry["clients"]
+		if user_ip not in clients_entry:
+			clients_entry.append(user_ip)
 		
-		c.sendall(sc4mp_config["INFO"]["server_url"].encode())
+		# Return the user id
+		return user_id
 
 
-	def send_server_version(self, c):
-		
-		c.sendall(SC4MP_VERSION.encode())
+	def error(self, message='An error occurred.'):
+
+		self.respond(error=message)
+
+		raise ServerException(
+			f"Error for {self.c.getpeername()[0]}: {message!r}"
+		)
 
 
-	def send_user_id(self, c, in_hash):
-		
+	def res_user_id(self):
+
+		in_hash = self.get_header('hash', str)
 
 		# Get database
-		data = sc4mp_users_database_manager.data
+		data = sc4mp_users_database_manager
 
-		# Send the user_id that matches the hash
+		# Get the user_id that matches the hash
+		found = False
+		user_id = None
 		for user_id in data:
 			try:
 				token = data[user_id]["token"]
 				if hashlib.sha256((user_id + token).encode()).hexdigest() == in_hash:
-					c.sendall(user_id.encode())
+					found = True
 					break
 			except Exception:
 				pass
 
+		# Send it if found, otherwise return failure
+		if found:
+			self.respond(status='success', user_id=user_id)
+		else:
+			self.respond(status='failure')
 
-	def send_token(self, c):
-		
+
+	def res_token(self):
 		
 		user_id = self.user_id
 
 		token = ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits) for i in range(32))
 
 		# Get database
-		data = sc4mp_users_database_manager.data
+		data = sc4mp_users_database_manager
 
 		# Get database entry for user
 		key = user_id
@@ -2421,21 +2909,49 @@ class RequestHandler(th.Thread):
 		entry["token"] = token
 
 		# Send token
-		c.sendall(token.encode())
+		self.respond(token=token)
 
 
-	def send_plugins(self, c):
-		
+	def res_plugins_table(self):
 
-		#filename = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", "Plugins.zip")))
-		#send_or_cached(c, filename)
-
-		send_filestream(c, os.path.join(sc4mp_server_path, "Plugins"))
-		#send_tree(c, os.path.join(sc4mp_server_path, "Plugins"))
+		self.respond()
+		self.c.send_json(
+			get_file_table(os.path.join(sc4mp_server_path, "Plugins"))
+		)
 
 
-	def send_regions(self, c):
-		
+	def res_plugins_data(self):
+
+		self.respond()
+		send_filestream(self.c, os.path.join(sc4mp_server_path, "Plugins"))
+
+
+	def res_regions_data(self):
+
+		self.export_regions()
+
+		# Send the files from one export, even if a newer one is made meanwhile
+		path = sc4mp_regions_exports.pin()
+		try:
+			self.respond()
+			send_filestream(self.c, path)
+		finally:
+			sc4mp_regions_exports.unpin(path)
+
+
+	def res_regions_table(self):
+
+		self.export_regions()	# so the table includes saves pushed since the last export
+
+		path = sc4mp_regions_exports.pin()
+		try:
+			self.respond()
+			self.c.send_json(get_file_table(path))
+		finally:
+			sc4mp_regions_exports.unpin(path)
+
+
+	def export_regions(self):
 
 		if sc4mp_regions_manager.regions_modified:
 			sc4mp_regions_manager.export_regions = True
@@ -2443,63 +2959,36 @@ class RequestHandler(th.Thread):
 				time.sleep(SC4MP_DELAY)
 			time.sleep(SC4MP_DELAY * 2)
 
-		#filename = os.path.join(sc4mp_server_path, os.path.join("_Temp", os.path.join("outbound", "Regions.zip")))
-		#send_or_cached(c, filename)
 
-		send_filestream(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
-		#send_tree(c, os.path.join(sc4mp_server_path, "_Temp", "outbound", "Regions"))
-
-
-	#def delete(self, c):
-	#	
-	#
-	#	c.sendall(SC4MP_SEPARATOR)
-	#
-	#	user_id = self.log_user(c)
-	#	c.sendall(SC4MP_SEPARATOR)
-	#	region = c.recv(SC4MP_BUFFER_SIZE).decode()
-	#	c.sendall(SC4MP_SEPARATOR)
-	#	city = c.recv(SC4MP_BUFFER_SIZE).decode()
-	#
-	#	c.sendall(SC4MP_SEPARATOR) #TODO verify that the user can make the deletion
-	#
-	#	#TODO only delete file if user is authorized
-	#
-	#	filename = os.path.join(sc4mp_server_path, os.path.join("Regions", os.path.join(region, city)))
-	#
-	#	os.remove(filename)
-
-
-	def save(self, c):
+	def res_save(self):
 		
-		
+		c = self.c
 		user_id = self.user_id
 
-		# Separator
-		c.sendall(b"ok")
+		self.respond()
 
 		# Receive region name, file sizes
-		region, file_sizes = recv_json(c)
+		region, file_sizes = c.recv_json()
 		region = sanitize_directory_name(region)
 		file_sizes = [int(file_size) for file_size in file_sizes]
 
 		# Enforce max file count and file sizes
 		error = None
 		if not file_sizes:
-			error = b"No files."
+			error = "No files."
 		elif len(file_sizes) > 17:
-			error = b"Too many files."
-		elif max(file_sizes) > 500000000:
-			error = b"File too large."
+			error = "Too many files."
+		elif max(file_sizes) > 500_000_000:
+			error = "File too large."
 
 		if error is not None:
-			c.sendall(b"ok")
 			discard_bytes(c, sum(file_sizes))
-			c.sendall(error)
+			self.respond(result=error)
 			return
 
-		# Separator
-		c.sendall(b"ok")
+		# Don't install updates right after a city is saved (see `UpdatesManager`)
+		global sc4mp_last_save
+		sc4mp_last_save = datetime.now()
 
 		# Set save id
 		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id + "_" + os.urandom(4).hex())	# unique, even for pushes by the same user in the same second
@@ -2508,14 +2997,6 @@ class RequestHandler(th.Thread):
 		# Receive files
 		count = 0
 		for file_size in file_sizes:
-
-			# Receive region name
-			#region = c.recv(SC4MP_BUFFER_SIZE).decode()
-			#.sendall(b"ok")
-
-			# Receive city name
-			#city = c.recv(SC4MP_BUFFER_SIZE).decode()
-			#c.sendall(b"ok")
 
 			# Receive file
 			path = os.path.join(sc4mp_server_path, "_Temp", "inbound", save_id, region)
@@ -2526,12 +3007,6 @@ class RequestHandler(th.Thread):
 
 			count += 1
 
-			#c.sendall(b"ok")
-
-		# Separator
-		#c.sendall(b"ok")
-		#c.recv(SC4MP_BUFFER_SIZE)
-
 		# Get path to save directory
 		path = os.path.join(sc4mp_server_path, "_Temp", "inbound", save_id)
 
@@ -2540,8 +3015,8 @@ class RequestHandler(th.Thread):
 
 		# Only allow save pushes of one region
 		if len(regions) > 1:
-			c.sendall(b"Too many regions.")
-			return		
+			self.respond(result="Too many regions.")
+			return
 
 		# Loop through regions. Should only loop once since save pushes of multiple regions are filtered out.
 		for region in regions:
@@ -2561,7 +3036,7 @@ class RequestHandler(th.Thread):
 				print(f"[WARNING] Invalid savegame: {e!r}")
 				for savegame in savegames:
 					savegame.close()
-				c.sendall(b"Invalid savegame.")
+				self.respond(result="Invalid savegame.")
 				return
 			
 			# Filter out tiles that do not border every other tile
@@ -2636,172 +3111,367 @@ class RequestHandler(th.Thread):
 					time.sleep(SC4MP_DELAY)
 
 				# Send the output to the client
-				c.sendall((sc4mp_regions_manager.outputs[save_id]).encode())
+				self.respond(result=sc4mp_regions_manager.outputs[save_id])
+
+				# Announce new cities in chat
+				claim = sc4mp_regions_manager.claims.pop(save_id, None)
+				if claim is not None:
+					try:
+						self.announce_city(claim)
+					except Exception as e:
+						show_error(f"An error occurred while announcing a new city in chat.\n\n{e}")
 
 			else:
 
 				# Report to the client that the save push is invalid
-				c.sendall(b"Unpause the game, then retry.")
+				self.respond(result="Unpause the game, then retry.")
 
 			# Delete savegame arrays to avoid file deletion errors
 			savegames = None
 			new_savegames = None
-
-		# Try to delete temporary files
-		#try:
-		#	shutil.rmtree(path)
-		#except Exception:
-		#	pass
 
 
 	def purge_temp_files(self):
 		"""Deletes the temporary files of a save push that was never passed to the regions manager."""
 
 		# Saves passed to the regions manager are cleaned up by the regions manager
-		if self.save_id is None or self.save_id in sc4mp_regions_manager.outputs:
-			return
+		if self.save_id is not None and self.save_id not in sc4mp_regions_manager.outputs:
+			shutil.rmtree(os.path.join(sc4mp_server_path, "_Temp", "inbound", self.save_id), ignore_errors=True)
 
-		shutil.rmtree(os.path.join(sc4mp_server_path, "_Temp", "inbound", self.save_id), ignore_errors=True)
+		# The connection can be reused for more requests
+		self.save_id = None
 
 
-	def add_server(self, c, port):
+	def res_add_server(self):
 		
-		if not sc4mp_config["NETWORK"]["discoverable"]:
-			return
-		host = c.getpeername()[0]
-		port = int(port)
-		server = (host, port)
-		if len(sc4mp_server_list.server_queue) < sc4mp_server_list.SERVER_LIMIT:
-			sc4mp_server_list.server_queue.enqueue(server, left=True) # skip to the front of the queue
+		if sc4mp_config["NETWORK"]["discoverable"]:
+
+			host = self.get_header('host', str) or self.c.getpeername()[0]
+			port = self.get_header('port', int)
+
+			server = (host, port)
+
+			if len(sc4mp_server_list.server_queue) < sc4mp_server_list.SERVER_LIMIT:
+				sc4mp_server_list.server_queue.enqueue(server, left=True) # skip to the front of the queue
+
+			self.respond(status='success')
+
+		else:
+
+			self.error("Server is not discoverable.")
 
 
-	def server_list(self, c):
-		
+	def res_server_list(self):
 
-		if not sc4mp_config["NETWORK"]["discoverable"]:
-			return
-		
+		if sc4mp_config["NETWORK"]["discoverable"]:
+			self.respond()
+		else:
+			self.error("Server is not discoverable.")
+
 		server_dict = sc4mp_server_list.servers.copy()
 		
 		servers = set()
 		for server_info in server_dict.values():
 			servers.add((server_info["host"], server_info["port"]))
 
-		send_json(c, list(servers))
+		self.c.send_json(list(servers))
 
 
-	def log_user(self, c, user_id):
-		
+	def res_check_password(self):
 
-		# Use a hashcode of the user id for extra security
-		user_id = hashlib.sha256(user_id.encode()).hexdigest()[:32]
+		password = self.get_header('password', str)
 
-		# Get the ip
-		user_ip = c.getpeername()[0]
-		
-		# Get clients database
-		clients_data = sc4mp_clients_database_manager.data
-		
-		# Get data entry that matches ip
-		client_entry = clients_data[user_ip]
-
-		# Check if the client has exceeded the user limit
-		if user_id not in client_entry["users"]:
-			if (sc4mp_config["SECURITY"]["max_ip_users"] is None or len(client_entry["users"]) < sc4mp_config["SECURITY"]["max_ip_users"]):
-				client_entry["users"].append(user_id)
-			else:
-				c.close()
-				raise ServerException("Authentication error.")
-
-		# Get users database
-		users_data = sc4mp_users_database_manager.data
-		
-		# Get data entry that matches user id or get & set to {}
-		user_entry = users_data.setdefault(user_id, {})
-
-		# Set default values if missing
-		user_entry.setdefault("clients", [])
-		user_entry.setdefault("mayors", [])
-		user_entry.setdefault("ban", False)
-		user_entry.setdefault("first_contact", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-
-		# Close connection and throw error if the user is banned
-		if (user_entry["ban"] or client_entry["ban"]): #TODO check for client bans in server loop
-			c.close()
-			raise ServerException("Authentication error.")
-		
-		# Log the time
-		user_entry["last_contact"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-		# Log the IP
-		clients_entry = user_entry["clients"]
-		if user_ip not in clients_entry:
-			clients_entry.append(user_ip)
-		
-		# Return the user id
-		return user_id
-
-
-	def password_enabled(self, c):
-		
-		if sc4mp_config['SECURITY']['password_enabled']:
-			c.sendall(b"y")
-		else:
-			c.sendall(b"n")
-
-
-	def check_password(self, c, password):
-		
 		if password == sc4mp_config["SECURITY"]["password"]:
-			c.sendall(b'y')
+			status = 'success'
 		else:
-			c.sendall(b'n')
+			status = 'failure'
+
+		self.respond(status=status)
 
 
-	def user_plugins_enabled(self, c):
-		
-		if sc4mp_config['RULES']['user_plugins']:
-			c.sendall(b"y")
-		else:
-			c.sendall(b"n")
+	def res_loading_background(self):
 
-
-	def private(self, c):
-		
-		if sc4mp_config['SECURITY']['private']:
-			c.sendall(b"y")
-		else:
-			c.sendall(b"n")
-
-
-	def refresh(self, c):
-		
-
-		user_id = self.user_id
-
-		# Loop through regions
-		regions_directory = os.path.join(sc4mp_server_path, "Regions")
-		for region in os.listdir(regions_directory):
-			if os.path.isdir(os.path.join(regions_directory, region)):
-				#print(region)
-				region_data = load_json(os.path.join(sc4mp_server_path, "Regions", region, "_Database", "region.json"))
-				for city_entry in region_data.values():
-					if (city_entry is not None and city_entry["owner"] != user_id):
-						c.sendall(city_entry["hashcode"].encode())
-						if c.recv(SC4MP_BUFFER_SIZE).decode() == "missing":
-							c.sendall(region.encode())
-							c.recv(SC4MP_BUFFER_SIZE)
-							send_file(c, os.path.join(sc4mp_server_path, "Regions", region, city_entry["filename"]))
-							c.recv(SC4MP_BUFFER_SIZE)
-		c.sendall(b'done')
-
-
-	def send_background(self, c):
-
-		background_image_filename = os.path.join(sc4mp_server_path, "background.png")
+		background_image_filename = \
+			os.path.join(sc4mp_server_path, "background.png")
 
 		if os.path.exists(background_image_filename):
-			c.sendall(open(background_image_filename, "rb").read())
+			data = open(background_image_filename, "rb").read()
+			self.respond(size=len(data))
+			self.c.sendall(data)
+		else:
+			self.error("Server has no loading background.")
+
+
+	def res_subscribe(self):
+
+		if not self.user_id:
+			self.error("Invalid user ID.")
+
+		with sc4mp_chat_lock:
+			chat_history = list(sc4mp_chat_history)
+
+		# After the recent messages, welcome the player (only them) with the message of the day
+		welcome = {'event': 'welcome', 'server_name': sc4mp_config["INFO"]["server_name"]}
+		if sc4mp_config["CHAT"]["chat_motd"]:
+			welcome['motd'] = str(sc4mp_config["CHAT"]["chat_motd"])
+
+		subscription_id = sc4mp_event_channel.subscribe(
+			self.user_id, events=chat_history + [welcome],
+			context={'name': self.get_chat_name(self.user_id)}	# so other players' chats can say who joined and left
+		)
+
+		try:
+
+			self.respond(status='success')
+
+			while sc4mp_server_running:
+				try:
+					for events in self.split_events(sc4mp_event_channel.listen(subscription_id)):
+						self.respond(events=events)
+				except NetworkException:
+					break
+
+		except Exception:
+
+			self.error(
+				message='An unexpected error occurred in the event channel.'
+			)
+
+		finally:
+
+			sc4mp_event_channel.unsubscribe(subscription_id)
+
+
+	@staticmethod
+	def split_events(events, max_size=50000):
+		"""Splits events into lists small enough for a message header (eg. the chat history sent when subscribing). Always yields at least one list, so clients get an empty list when there are no events."""
+
+		chunk = []
+		size = 0
+		for event in events:
+			event_size = len(json.dumps(event)) + 2
+			if chunk and size + event_size > max_size:
+				yield chunk
+				chunk = []
+				size = 0
+			chunk.append(event)
+			size += event_size
+		yield chunk
+
+
+	def res_chat(self):
+
+		if not sc4mp_config["CHAT"]["chat_enabled"]:
+			self.error("Chat is disabled on this server.")
+
+		message = self.headers.get('message')
+		if not isinstance(message, str) or len(message) > 10 * SC4MP_CHAT_MAX_LENGTH:
+			self.error("Invalid message.")
+
+		# Remove control characters and extra whitespace
+		message = " ".join(
+			"".join(
+				character if character.isprintable() else " "
+				for character in message
+			).split()
+		)
+
+		if not message:
+			self.error("Empty message.")
+		if len(message) > SC4MP_CHAT_MAX_LENGTH:
+			self.error(f"Messages can't be longer than {SC4MP_CHAT_MAX_LENGTH} characters.")
+
+		now = time.time()
+		count, seconds = SC4MP_CHAT_RATE
+		rate_key = self.user_id
+		if self.guest:
+			rate_key = self.address	# so guests can't get past the rate limit with a new user ID
+		with sc4mp_chat_lock:	# so simultaneous requests can't get past the rate limit
+			times = [t for t in sc4mp_chat_times.get(rate_key, []) if now - t < seconds]
+			too_fast = len(times) >= count
+			if not too_fast:
+				sc4mp_chat_times[rate_key] = times + [now]
+		if too_fast:
+			self.error("You're sending messages too quickly. Wait a few seconds.")
+
+		message = self.filter_chat(message)
+
+		# The name comes from the user's claims, so players can't pretend to be someone else
+		name = self.get_chat_name(self.user_id)
+
+		report(f"{name} ({self.user_id[:8]}): {message}")
+
+		event = {
+			'user_id': self.user_id,
+			'name': name,
+			'message': message,
+			'time': now	# seconds since the epoch, so clients can show it in their own time zone
+		}
+
+		# The city the player saved most recently, shown next to their name
+		if not self.guest:
+			region, entry = self.get_latest_claim(self.user_id, "city_name")
+			city = self.filter_chat(" ".join(str((entry or {}).get("city_name") or "").split())[:SC4MP_CHAT_MAX_LENGTH])
+			if city:
+				event.update(city=city, region=region)
+		self.push_chat_event('chat', event)
+
+		self.respond(status='success')
+
+
+	@staticmethod
+	def push_chat_event(event_type, event):
+		"""Adds an event to the chat history (and `chat.jsonl`) and pushes it to every player."""
+
+		global sc4mp_chat_appended
+
+		with sc4mp_chat_lock:
+			sc4mp_chat_history.append({'event': event_type, **event, 'history': True})	# not new for players who join later
+			try:
+				chat_filename = os.path.join(sc4mp_server_path, "_Database", "chat.jsonl")
+				sc4mp_chat_appended += 1
+				if sc4mp_chat_appended < sc4mp_chat_history.maxlen:
+					with open(chat_filename, "a", encoding="utf-8") as file:
+						file.write(json.dumps(sc4mp_chat_history[-1]) + "\n")
+				else:
+					# Keep only the recent messages every so often, so the file doesn't keep growing while the server runs
+					with open(chat_filename, "w", encoding="utf-8") as file:
+						for history_event in sc4mp_chat_history:
+							file.write(json.dumps(history_event) + "\n")
+					sc4mp_chat_appended = 0
+			except Exception as e:
+				show_error(f"An error occurred while saving the chat history.\n\n{e}")
+		sc4mp_event_channel.push(event_type, event)
+
+
+	def announce_city(self, claim):
+		"""Tells everyone in chat that a player founded (or took over) a city."""
+
+		if not sc4mp_config["CHAT"]["chat_enabled"]:
+			return
+
+		name = self.get_chat_name(self.user_id)
+		city = self.filter_chat(" ".join(str(claim['city'] or "").split())[:SC4MP_CHAT_MAX_LENGTH]) or "a city"
+
+		action = "founded"
+		if claim['reclaimed']:
+			action = "took over"
+		report(f"{name} ({self.user_id[:8]}) {action} {city} in {claim['region']}.")
+
+		self.push_chat_event('city_founded', {
+			'user_id': self.user_id,
+			'name': name,
+			'time': time.time(),
+			**claim,
+			'city': city,
+		})
+
+
+	@staticmethod
+	def filter_chat(text):
+		"""Replaces the words in `chat_filter.txt` with asterisks, if the chat filter is turned on. The file is created from the default list if missing, and reloaded when it changes."""
+
+		global sc4mp_chat_filter
+
+		if not sc4mp_config["CHAT"]["chat_filter"]:
+			return text
+
+		try:
+
+			filename = os.path.join(sc4mp_server_path, "chat_filter.txt")
+			if not os.path.exists(filename):
+				shutil.copy(get_sc4mp_path("chat_filter.txt"), filename)
+
+			mtime = os.path.getmtime(filename)
+			if sc4mp_chat_filter is None or sc4mp_chat_filter[0] != mtime:
+				words = []
+				with open(filename, encoding="utf-8") as file:
+					for line in file:
+						word = line.strip()
+						if not word or word.startswith("#"):
+							continue
+						if word.endswith("*"):
+							words.append(re.escape(word[:-1].strip()) + r"\w*")
+						else:
+							words.append(re.escape(word))
+				words.sort(key=len, reverse=True)
+				pattern = re.compile(r"(?<!\w)(?:" + "|".join(words) + r")(?!\w)", re.IGNORECASE) if words else None
+				sc4mp_chat_filter = (mtime, pattern)
+
+			pattern = sc4mp_chat_filter[1]
+			if pattern is None:
+				return text
+			return pattern.sub(lambda match: "*" * len(match.group(0)), text)
+
+		except Exception as e:
+			show_error(f"An error occurred while filtering a chat message.\n\n{e}")
+			return text
+
+
+	def get_chat_name(self, user_id):
+		"""Returns the user's name in chat: the mayor name of the last city they founded, or else of their latest claim (or "Defacto", SC4's default mayor name). Players with the same name are told apart by their name colors, which come from their user IDs."""
+
+		# Guests can't use a mayor's name, and keep theirs while they're connected
+		if self.guest:
+			return f"Guest {user_id[:4]}"
+
+		mayor_name = self.get_mayor_name(user_id)
+
+		with sc4mp_chat_lock:
+
+			entry = sc4mp_users_database_manager.get(user_id) or {}
+
+			# Keep the name if no claim was found, since a `region.json` may not be readable while it's being written
+			if mayor_name is None and entry.get("chat_mayor_name"):
+				return entry["chat_mayor_name"]
+
+			mayor_name = self.filter_chat(mayor_name or "") or "Defacto"
+
+			if entry.get("chat_mayor_name") != mayor_name or "chat_name" in entry:
+				entry["chat_mayor_name"] = mayor_name
+				entry.pop("chat_name", None)	# numbered names from before are no longer used
+				sc4mp_users_database_manager[user_id] = entry
+
+		return mayor_name
+
+
+	def get_mayor_name(self, user_id):
+
+		# The name given when founding a city, since cities taken over keep the previous mayor's name
+		user_entry = sc4mp_users_database_manager.get(user_id) or {}
+		mayor_name = user_entry.get("founded_mayor_name")
+		if mayor_name:
+			return mayor_name
+
+		# Players who haven't founded a city since the server started keeping track: the latest of the mayor names they've saved with
+		mayor_names = user_entry.get("mayors")
+		if mayor_names:
+			return mayor_names[-1]
+
+		return None
+
+
+	@staticmethod
+	def get_latest_claim(user_id, key):
+		"""Returns the region and database entry of the user's most recently saved city that has a value for `key` (eg. "mayor_name"), or `(None, None)`."""
+
+		latest = (None, None)
+		modified = ""
+
+		regions_path = os.path.join(sc4mp_server_path, "Regions")
+		for region in os.listdir(regions_path):
+			try:
+				data = load_json(os.path.join(regions_path, region, "_Database", "region.json"))
+			except Exception:
+				continue
+			for entry in data.values():
+				if entry is None or entry.get("owner") != user_id or not entry.get(key):
+					continue
+				if (entry.get("modified") or "") >= modified:
+					latest = (region, entry)
+					modified = entry.get("modified") or ""
+
+		return latest
 
 
 class ServerList(th.Thread):
@@ -2868,7 +3538,7 @@ class ServerList(th.Thread):
 			while sc4mp_server_running:
 				
 				# Wait to ping the next server
-				time.sleep(random.randint(1,60))
+				sleep_while_running(random.randint(1,60))
 
 				# Remove servers from the server list if the limit has been reached
 				while len(self.servers) > self.SERVER_LIMIT:
@@ -2950,13 +3620,10 @@ class ServerList(th.Thread):
 
 
 	def create_socket(self, server):
-		
-		host = server[0]
-		port = server[1]
+
 		try:
-			s = socket.socket()
-			s.settimeout(10)
-			s.connect((host, port))
+			s = ClientSocket(server)
+			set_headers(s)
 			return s
 		except Exception as e:
 			raise ServerException("Server not found.") from e
@@ -2964,41 +3631,45 @@ class ServerList(th.Thread):
 	
 	def request_server_id(self, server):
 		
-		s = self.create_socket(server)
-		s.sendall(b"server_id")
-		return s.recv(SC4MP_BUFFER_SIZE).decode()
+		SERVER_ID = 'server_id'
+
+		with self.create_socket(server) as s:
+			server_id = s.info().get(SERVER_ID)
+
+		if server_id:
+			return server_id
+		else:
+			raise ServerException(f"Headers missing {SERVER_ID!r}")
 
 
 	def ping(self, server):
-		
-		s = self.create_socket(server)
+
 		try:
-			start = time.time()
-			s.sendall(b"ping")
-			s.recv(SC4MP_BUFFER_SIZE)
-			end = time.time()
-			s.close()
-			return round(1000 * (end - start))
-		except socket.error as e:
+			with self.create_socket(server) as s:
+				start = time.time()
+				s.ping()
+				end = time.time()
+				return round(1000 * (end - start))
+		except (NetworkException, OSError):
 			return None
 
 
 	def add_server(self, server):
-		
-		s = self.create_socket(server)
-		s.sendall(b"add_server " + str(SC4MP_PORT).encode())
+
+		with self.create_socket(server) as s:
+			s.add_server(
+				host=sc4mp_config['NETWORK']['domain'],
+				port=SC4MP_PORT
+			)
+
 
 
 	def server_list(self, server):
-		
-		s = self.create_socket(server)
-		s.sendall(b"server_list")
-		servers = recv_json(s)
-		try:
-			for host, port in servers:
+
+		with self.create_socket(server) as s:
+			server_list = s.server_list()
+			for host, port in server_list:
 				self.server_queue.enqueue((host, port))
-		except TypeError as e:
-			raise ServerException("Unable to receive server list from outdated server") from e
 
 
 class SystemTrayIconManager(th.Thread):
@@ -3342,7 +4013,12 @@ class Logger():
 			output = color + timestamp + label + msg_type + message
 
 		# Print
-		self.terminal.write(output)
+		try:
+			self.terminal.write(output)
+		except UnicodeEncodeError:
+			# The console can't show some characters (eg. emoji in a chat message on a cp1252 console)
+			encoding = getattr(self.terminal, "encoding", None) or "ascii"
+			self.terminal.write(output.encode(encoding, errors="replace").decode(encoding))
 		with open(self.log, "a", encoding='utf-8') as log:
 			log.write(output)
 			log.close()  
