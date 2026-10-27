@@ -74,7 +74,7 @@ SC4MP_PORT = None
 SC4MP_BUFFER_SIZE = 4096
 
 SC4MP_DELAY = .1
-SC4MP_FILESTREAM_TIMEOUT = 60	# seconds a launcher downloading files can stop reading for (eg. while it writes a file), however low `connection_timeout` is
+SC4MP_FILESTREAM_TIMEOUT = 60	# seconds a launcher sending or receiving files can pause for (eg. while it writes a file), however low `connection_timeout` is
 
 SC4MP_CHAT_MAX_LENGTH = 500
 SC4MP_CHAT_RATE = (5, 5)	# players can send this many chat messages in this many seconds
@@ -756,6 +756,10 @@ def discard_bytes(c, size):
 
 
 def receive_file(c, filename, filesize):
+
+	# The launcher may stop sending for a moment while it reads the next part of a savegame, which isn't a slow client
+	if c.gettimeout() is not None and c.gettimeout() < SC4MP_FILESTREAM_TIMEOUT:
+		c.settimeout(SC4MP_FILESTREAM_TIMEOUT)
 
 
 	report("Receiving " + str(filesize) + " bytes...")
