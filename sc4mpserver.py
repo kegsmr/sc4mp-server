@@ -39,7 +39,7 @@ from core.database import Database
 from core.dbpf import SC4Savegame
 from core.events import EventChannel
 from core.networking import ClientSocket, ServerSocket, BaseRequestHandler, \
-	NetworkException, ConnectionClosedException
+	NetworkException, ConnectionClosedException, COMMAND_SUBSCRIBE, COMMAND_CHAT
 from core.util import *
 
 # Globals
@@ -119,6 +119,7 @@ SC4MP_CONFIG_DEFAULTS = [
 		("chat_filter", True),		# hide the words in `chat_filter.txt`
 		("chat_motd", ""),		# message of the day, shown in chat to players when they join
 		("chat_motd_interval", 0),	# minutes between showing the message of the day again to everyone online (0 to only show it when players join)
+		("guest_chat", True),		# let players who join without the password chat
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 6),
@@ -932,6 +933,12 @@ def open_upnp_port(port, protocol="TCP", description="Port Forwarding via UPnP")
         )
 
 
+def guest_chat_enabled():
+	"""Whether players who join without the password (guests) can chat: only on public servers with a password and chat turned on."""
+
+	return sc4mp_config["CHAT"]["guest_chat"] and sc4mp_config["CHAT"]["chat_enabled"] and sc4mp_config["SECURITY"]["password_enabled"] and not sc4mp_config["SECURITY"]["private"]
+
+
 def set_headers(s):
 
 	return s.set_headers(
@@ -947,6 +954,7 @@ def set_headers(s):
 		max_region_claims=sc4mp_config["RULES"]["max_region_claims"],
 		godmode_filter=sc4mp_config["RULES"]["godmode_filter"],
 		chat_enabled=sc4mp_config["CHAT"]["chat_enabled"],
+		guest_chat=guest_chat_enabled(),
 		time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 	)
 
@@ -2458,6 +2466,7 @@ class RequestHandler(BaseRequestHandler):
 		super().__init__(c, private=sc4mp_config["SECURITY"]["private"])
 
 		self.user_id = None
+		self.guest = False
 
 		# Set by `res_save()`, so its temporary files can be purged if the save is rejected
 		self.save_id = None
@@ -2506,12 +2515,39 @@ class RequestHandler(BaseRequestHandler):
 			self.error("Incorrect version.")
 
 		if sc4mp_config["SECURITY"]["password_enabled"]:
-			password = self.get_header('password', str)
+			password = self.headers.get('password')
 			if password != sc4mp_config["SECURITY"]["password"]:
+				if self.command in [COMMAND_SUBSCRIBE, COMMAND_CHAT] and guest_chat_enabled():
+					self.user_id = self.authenticate_guest(self.c, self.headers.get('user_id'))
+					return
 				self.error("Incorrect password.")
 
 		self.user_id = \
 			self.authenticate_user(self.c, self.get_header('user_id', str))
+
+
+	def authenticate_guest(self, c, user_id):
+		"""Lets a player who doesn't have the password subscribe to events and chat, without adding them to the users database."""
+
+		# Older launchers send no user ID for guests
+		if not isinstance(user_id, str) or not user_id:
+			self.error("Invalid user ID.")
+
+		user_id = hashlib.sha256(user_id.encode()).hexdigest()[:32]
+
+		client_entry = sc4mp_clients_database_manager.get(c.getpeername()[0]) or {}
+		user_entry = sc4mp_users_database_manager.get(user_id) or {}
+		if user_entry.get("ban") or client_entry.get("ban"):
+			self.error("You are banned from this server.")
+
+		# Banned mayors can't chat as guests from the same IP
+		for ip_user_id in client_entry.get("users", []):
+			if (sc4mp_users_database_manager.get(ip_user_id) or {}).get("ban"):
+				self.error("You are banned from this server.")
+
+		self.guest = True
+
+		return user_id
 
 
 	def authenticate_user(self, c, user_id):
@@ -2988,11 +3024,14 @@ class RequestHandler(BaseRequestHandler):
 
 		now = time.time()
 		count, seconds = SC4MP_CHAT_RATE
+		rate_key = self.user_id
+		if self.guest:
+			rate_key = self.address	# so guests can't get past the rate limit with a new user ID
 		with sc4mp_chat_lock:	# so simultaneous requests can't get past the rate limit
-			times = [t for t in sc4mp_chat_times.get(self.user_id, []) if now - t < seconds]
+			times = [t for t in sc4mp_chat_times.get(rate_key, []) if now - t < seconds]
 			too_fast = len(times) >= count
 			if not too_fast:
-				sc4mp_chat_times[self.user_id] = times + [now]
+				sc4mp_chat_times[rate_key] = times + [now]
 		if too_fast:
 			self.error("You're sending messages too quickly. Wait a few seconds.")
 
@@ -3011,10 +3050,11 @@ class RequestHandler(BaseRequestHandler):
 		}
 
 		# The city the player saved most recently, shown next to their name
-		region, entry = self.get_latest_claim(self.user_id, "city_name")
-		city = self.filter_chat(" ".join(str((entry or {}).get("city_name") or "").split())[:SC4MP_CHAT_MAX_LENGTH])
-		if city:
-			event.update(city=city, region=region)
+		if not self.guest:
+			region, entry = self.get_latest_claim(self.user_id, "city_name")
+			city = self.filter_chat(" ".join(str((entry or {}).get("city_name") or "").split())[:SC4MP_CHAT_MAX_LENGTH])
+			if city:
+				event.update(city=city, region=region)
 		self.push_chat_event('chat', event)
 
 		self.respond(status='success')
@@ -3111,6 +3151,10 @@ class RequestHandler(BaseRequestHandler):
 
 	def get_chat_name(self, user_id):
 		"""Returns the user's name in chat: the mayor name of the last city they founded, or else of their latest claim (or "Defacto", SC4's default mayor name). Players with the same name are told apart by their name colors, which come from their user IDs."""
+
+		# Guests can't use a mayor's name, and keep theirs while they're connected
+		if self.guest:
+			return f"Guest {user_id[:4]}"
 
 		mayor_name = self.get_mayor_name(user_id)
 
