@@ -2474,6 +2474,9 @@ class RequestHandler(BaseRequestHandler):
 				if self.command != "Ping":
 					print(f"{self.address} - {self.command}")
 
+				# The headers are copied from the listening socket, so their time is from when the server started
+				self.c.set_headers(time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
 				try:
 					self.handle_request()
 				finally:
