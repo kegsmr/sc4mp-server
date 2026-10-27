@@ -74,6 +74,9 @@ SC4MP_BUFFER_SIZE = 4096
 
 SC4MP_DELAY = .1
 
+SC4MP_CHAT_MAX_LENGTH = 500
+SC4MP_CHAT_RATE = (5, 5)	# players can send this many chat messages in this many seconds
+
 SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
 		("host", "0.0.0.0"),
@@ -109,6 +112,12 @@ SC4MP_CONFIG_DEFAULTS = [
 		("max_request_threads", 200),
 		("connection_timeout", 600),
 		("filetable_update_interval", 600),
+	]),
+	("CHAT", [
+		("chat_enabled", True),
+		("chat_history", 1000),		# recent chat messages sent to players when they join
+		("chat_filter", True),		# hide the words in `chat_filter.txt`
+		("chat_motd", ""),		# message of the day, shown in chat to players when they join
 	]),
 	("BACKUPS", [
 		("server_backup_interval", 6),
@@ -920,6 +929,7 @@ def set_headers(s):
 		claim_duration=sc4mp_config["RULES"]["claim_duration"],
 		max_region_claims=sc4mp_config["RULES"]["max_region_claims"],
 		godmode_filter=sc4mp_config["RULES"]["godmode_filter"],
+		chat_enabled=sc4mp_config["CHAT"]["chat_enabled"],
 		time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 	)
 
@@ -1643,6 +1653,29 @@ class Server(th.Thread):
 		global sc4mp_event_channel
 		sc4mp_event_channel = EventChannel()
 
+		# Recent chat messages (sent to players when they subscribe), kept in `_Database/chat.jsonl` across restarts, and when each user last sent one
+		global sc4mp_chat_history, sc4mp_chat_times, sc4mp_chat_lock, sc4mp_chat_filter, sc4mp_chat_appended
+		sc4mp_chat_filter = None
+		sc4mp_chat_history = deque(maxlen=max(0, int(sc4mp_config["CHAT"]["chat_history"] or 0)))
+		sc4mp_chat_times = {}
+		sc4mp_chat_appended = 0	# messages added to `chat.jsonl` since it was last rewritten
+		sc4mp_chat_lock = th.Lock()
+		chat_filename = os.path.join(sc4mp_server_path, "_Database", "chat.jsonl")
+		try:
+			with open(chat_filename, encoding="utf-8") as file:
+				for line in file:
+					try:
+						sc4mp_chat_history.append(json.loads(line))
+					except Exception:
+						pass	# skip a line that was cut off
+			with open(chat_filename, "w", encoding="utf-8") as file:	# keep only the recent messages
+				for event in sc4mp_chat_history:
+					file.write(json.dumps(event) + "\n")
+		except FileNotFoundError:
+			pass
+		except Exception as e:
+			show_error(f"An error occurred while loading the chat history.\n\n{e}")
+
 
 	def prep_upnp(self):
 
@@ -1905,6 +1938,7 @@ class RegionsManager(th.Thread):
 		self.export_regions = False
 		self.tasks = []
 		self.outputs = {}
+		self.claims = {}	# accepted save pushes that founded or took over a city, by save ID
 		#self.lastmtime = self.get_mtime()
 
 
@@ -2075,6 +2109,8 @@ class RegionsManager(th.Thread):
 									#TODO delete old backups
 
 									# Set entry values
+									# A city is new if it's established on a tile that never had one: no established savegame (`gamemode`) and no mayor name, which only established cities have
+									founded = savegameModeFlag != 0 and not entry.get("gamemode") and not entry.get("mayor_name")
 									entry["filename"] = new_filename
 									entry["owner"] = user_id
 									entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2089,7 +2125,18 @@ class RegionsManager(th.Thread):
 									# Mark regions as modified
 									self.regions_modified = True
 
-									# Report success
+									# Players are called in chat by the mayor name of the last city they founded, since cities they take over keep the previous mayor's name
+									if founded and savegameMayorName:
+										sc4mp_users_database_manager[user_id]["founded_mayor_name"] = savegameMayorName
+
+									# Report success (and new cities and cities taken over from other mayors, which are announced in chat)
+									if founded or reclaimed:
+										self.claims[save_id] = {
+											'city': savegameCityName,
+											'region': region,
+											'coords': (savegameX, savegameY),
+											'reclaimed': not founded
+										}
 									self.outputs[save_id] = "ok"
 
 									# Push channel event
@@ -2725,6 +2772,14 @@ class RequestHandler(BaseRequestHandler):
 				# Send the output to the client
 				self.respond(result=sc4mp_regions_manager.outputs[save_id])
 
+				# Announce new cities in chat
+				claim = sc4mp_regions_manager.claims.pop(save_id, None)
+				if claim is not None:
+					try:
+						self.announce_city(claim)
+					except Exception as e:
+						show_error(f"An error occurred while announcing a new city in chat.\n\n{e}")
+
 			else:
 
 				# Report to the client that the save push is invalid
@@ -2811,7 +2866,18 @@ class RequestHandler(BaseRequestHandler):
 		if not self.user_id:
 			self.error("Invalid user ID.")
 
-		subscription_id = sc4mp_event_channel.subscribe(self.user_id)
+		with sc4mp_chat_lock:
+			chat_history = list(sc4mp_chat_history)
+
+		# After the recent messages, welcome the player (only them) with the message of the day
+		welcome = {'event': 'welcome', 'server_name': sc4mp_config["INFO"]["server_name"]}
+		if sc4mp_config["CHAT"]["chat_motd"]:
+			welcome['motd'] = str(sc4mp_config["CHAT"]["chat_motd"])
+
+		subscription_id = sc4mp_event_channel.subscribe(
+			self.user_id, events=chat_history + [welcome],
+			context={'name': self.get_chat_name(self.user_id)}	# so other players' chats can say who joined and left
+		)
 
 		try:
 
@@ -2819,9 +2885,8 @@ class RequestHandler(BaseRequestHandler):
 
 			while sc4mp_server_running:
 				try:
-					self.respond(
-						events=sc4mp_event_channel.listen(subscription_id)
-					)
+					for events in self.split_events(sc4mp_event_channel.listen(subscription_id)):
+						self.respond(events=events)
 				except NetworkException:
 					break
 
@@ -2834,6 +2899,230 @@ class RequestHandler(BaseRequestHandler):
 		finally:
 
 			sc4mp_event_channel.unsubscribe(subscription_id)
+
+
+	@staticmethod
+	def split_events(events, max_size=50000):
+		"""Splits events into lists small enough for a message header (eg. the chat history sent when subscribing). Always yields at least one list, so clients get an empty list when there are no events."""
+
+		chunk = []
+		size = 0
+		for event in events:
+			event_size = len(json.dumps(event)) + 2
+			if chunk and size + event_size > max_size:
+				yield chunk
+				chunk = []
+				size = 0
+			chunk.append(event)
+			size += event_size
+		yield chunk
+
+
+	def res_chat(self):
+
+		if not sc4mp_config["CHAT"]["chat_enabled"]:
+			self.error("Chat is disabled on this server.")
+
+		message = self.headers.get('message')
+		if not isinstance(message, str) or len(message) > 10 * SC4MP_CHAT_MAX_LENGTH:
+			self.error("Invalid message.")
+
+		# Remove control characters and extra whitespace
+		message = " ".join(
+			"".join(
+				character if character.isprintable() else " "
+				for character in message
+			).split()
+		)
+
+		if not message:
+			self.error("Empty message.")
+		if len(message) > SC4MP_CHAT_MAX_LENGTH:
+			self.error(f"Messages can't be longer than {SC4MP_CHAT_MAX_LENGTH} characters.")
+
+		now = time.time()
+		count, seconds = SC4MP_CHAT_RATE
+		with sc4mp_chat_lock:	# so simultaneous requests can't get past the rate limit
+			times = [t for t in sc4mp_chat_times.get(self.user_id, []) if now - t < seconds]
+			too_fast = len(times) >= count
+			if not too_fast:
+				sc4mp_chat_times[self.user_id] = times + [now]
+		if too_fast:
+			self.error("You're sending messages too quickly. Wait a few seconds.")
+
+		message = self.filter_chat(message)
+
+		# The name comes from the user's claims, so players can't pretend to be someone else
+		name = self.get_chat_name(self.user_id)
+
+		report(f"{name} ({self.user_id[:8]}): {message}")
+
+		event = {
+			'user_id': self.user_id,
+			'name': name,
+			'message': message,
+			'time': now	# seconds since the epoch, so clients can show it in their own time zone
+		}
+
+		# The city the player saved most recently, shown next to their name
+		region, entry = self.get_latest_claim(self.user_id, "city_name")
+		city = self.filter_chat(" ".join(str((entry or {}).get("city_name") or "").split())[:SC4MP_CHAT_MAX_LENGTH])
+		if city:
+			event.update(city=city, region=region)
+		self.push_chat_event('chat', event)
+
+		self.respond(status='success')
+
+
+	@staticmethod
+	def push_chat_event(event_type, event):
+		"""Adds an event to the chat history (and `chat.jsonl`) and pushes it to every player."""
+
+		global sc4mp_chat_appended
+
+		with sc4mp_chat_lock:
+			sc4mp_chat_history.append({'event': event_type, **event, 'history': True})	# not new for players who join later
+			try:
+				chat_filename = os.path.join(sc4mp_server_path, "_Database", "chat.jsonl")
+				sc4mp_chat_appended += 1
+				if sc4mp_chat_appended < sc4mp_chat_history.maxlen:
+					with open(chat_filename, "a", encoding="utf-8") as file:
+						file.write(json.dumps(sc4mp_chat_history[-1]) + "\n")
+				else:
+					# Keep only the recent messages every so often, so the file doesn't keep growing while the server runs
+					with open(chat_filename, "w", encoding="utf-8") as file:
+						for history_event in sc4mp_chat_history:
+							file.write(json.dumps(history_event) + "\n")
+					sc4mp_chat_appended = 0
+			except Exception as e:
+				show_error(f"An error occurred while saving the chat history.\n\n{e}")
+		sc4mp_event_channel.push(event_type, event)
+
+
+	def announce_city(self, claim):
+		"""Tells everyone in chat that a player founded (or took over) a city."""
+
+		if not sc4mp_config["CHAT"]["chat_enabled"]:
+			return
+
+		name = self.get_chat_name(self.user_id)
+		city = self.filter_chat(" ".join(str(claim['city'] or "").split())[:SC4MP_CHAT_MAX_LENGTH]) or "a city"
+
+		action = "founded"
+		if claim['reclaimed']:
+			action = "took over"
+		report(f"{name} ({self.user_id[:8]}) {action} {city} in {claim['region']}.")
+
+		self.push_chat_event('city_founded', {
+			'user_id': self.user_id,
+			'name': name,
+			'time': time.time(),
+			**claim,
+			'city': city,
+		})
+
+
+	@staticmethod
+	def filter_chat(text):
+		"""Replaces the words in `chat_filter.txt` with asterisks, if the chat filter is turned on. The file is created from the default list if missing, and reloaded when it changes."""
+
+		global sc4mp_chat_filter
+
+		if not sc4mp_config["CHAT"]["chat_filter"]:
+			return text
+
+		try:
+
+			filename = os.path.join(sc4mp_server_path, "chat_filter.txt")
+			if not os.path.exists(filename):
+				shutil.copy(get_sc4mp_path("chat_filter.txt"), filename)
+
+			mtime = os.path.getmtime(filename)
+			if sc4mp_chat_filter is None or sc4mp_chat_filter[0] != mtime:
+				words = []
+				with open(filename, encoding="utf-8") as file:
+					for line in file:
+						word = line.strip()
+						if not word or word.startswith("#"):
+							continue
+						if word.endswith("*"):
+							words.append(re.escape(word[:-1].strip()) + r"\w*")
+						else:
+							words.append(re.escape(word))
+				words.sort(key=len, reverse=True)
+				pattern = re.compile(r"(?<!\w)(?:" + "|".join(words) + r")(?!\w)", re.IGNORECASE) if words else None
+				sc4mp_chat_filter = (mtime, pattern)
+
+			pattern = sc4mp_chat_filter[1]
+			if pattern is None:
+				return text
+			return pattern.sub(lambda match: "*" * len(match.group(0)), text)
+
+		except Exception as e:
+			show_error(f"An error occurred while filtering a chat message.\n\n{e}")
+			return text
+
+
+	def get_chat_name(self, user_id):
+		"""Returns the user's name in chat: the mayor name of the last city they founded, or else of their latest claim (or "Defacto", SC4's default mayor name). Players with the same name are told apart by their name colors, which come from their user IDs."""
+
+		mayor_name = self.get_mayor_name(user_id)
+
+		with sc4mp_chat_lock:
+
+			entry = sc4mp_users_database_manager.get(user_id) or {}
+
+			# Keep the name if no claim was found, since a `region.json` may not be readable while it's being written
+			if mayor_name is None and entry.get("chat_mayor_name"):
+				return entry["chat_mayor_name"]
+
+			mayor_name = self.filter_chat(mayor_name or "") or "Defacto"
+
+			if entry.get("chat_mayor_name") != mayor_name or "chat_name" in entry:
+				entry["chat_mayor_name"] = mayor_name
+				entry.pop("chat_name", None)	# numbered names from before are no longer used
+				sc4mp_users_database_manager[user_id] = entry
+
+		return mayor_name
+
+
+	def get_mayor_name(self, user_id):
+
+		# The name given when founding a city, since cities taken over keep the previous mayor's name
+		user_entry = sc4mp_users_database_manager.get(user_id) or {}
+		mayor_name = user_entry.get("founded_mayor_name")
+		if mayor_name:
+			return mayor_name
+
+		# Players who haven't founded a city since the server started keeping track: the latest of the mayor names they've saved with
+		mayor_names = user_entry.get("mayors")
+		if mayor_names:
+			return mayor_names[-1]
+
+		return None
+
+
+	@staticmethod
+	def get_latest_claim(user_id, key):
+		"""Returns the region and database entry of the user's most recently saved city that has a value for `key` (eg. "mayor_name"), or `(None, None)`."""
+
+		latest = (None, None)
+		modified = ""
+
+		regions_path = os.path.join(sc4mp_server_path, "Regions")
+		for region in os.listdir(regions_path):
+			try:
+				data = load_json(os.path.join(regions_path, region, "_Database", "region.json"))
+			except Exception:
+				continue
+			for entry in data.values():
+				if entry is None or entry.get("owner") != user_id or not entry.get(key):
+					continue
+				if (entry.get("modified") or "") >= modified:
+					latest = (region, entry)
+					modified = entry.get("modified") or ""
+
+		return latest
 
 
 class ServerList(th.Thread):
@@ -3375,7 +3664,12 @@ class Logger():
 			output = color + timestamp + label + msg_type + message
 
 		# Print
-		self.terminal.write(output)
+		try:
+			self.terminal.write(output)
+		except UnicodeEncodeError:
+			# The console can't show some characters (eg. emoji in a chat message on a cp1252 console)
+			encoding = getattr(self.terminal, "encoding", None) or "ascii"
+			self.terminal.write(output.encode(encoding, errors="replace").decode(encoding))
 		with open(self.log, "a", encoding='utf-8') as log:
 			log.write(output)
 			log.close()  
