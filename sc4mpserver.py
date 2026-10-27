@@ -781,6 +781,14 @@ def receive_file(c, filename, filesize):
 			#print('Downloading "' + filename + '" (' + str(filesize_read) + " / " + str(filesize) + " bytes)...", int(filesize_read), int(filesize)) #os.path.basename(os.path.normpath(filename))
 
 
+def sleep_while_running(seconds):
+	"""Sleeps for `seconds`, or until the server stops, so threads that wait a long time between tasks don't keep the process alive."""
+
+	end = time.time() + seconds
+	while sc4mp_server_running and time.time() < end:
+		time.sleep(SC4MP_DELAY)
+
+
 def report(message, obj=None, msg_type="INFO", ): #TODO do this in the logger to make sure output prints correctly
 	
 	'''color = '\033[94m '
@@ -1063,6 +1071,9 @@ class Server(th.Thread):
 
 			report("- listening for connections...")
 			s.listen(5)
+
+			# Stop waiting for a connection every second, since on Windows Ctrl+C can't interrupt the wait
+			s.settimeout(1)
 			
 			sc4mp_server_running = True
 
@@ -1082,7 +1093,10 @@ class Server(th.Thread):
 
 					try:
 
-						c, (host, port) = s.accept()
+						try:
+							c, (host, port) = s.accept()
+						except socket.timeout:
+							continue
 
 						c.settimeout(sc4mp_config["PERFORMANCE"]["connection_timeout"])
 
@@ -1905,7 +1919,7 @@ class BackupsManager(th.Thread):
 			while sc4mp_server_running:
 
 				# Delay
-				time.sleep(3600 * sc4mp_config["BACKUPS"]["server_backup_interval"])
+				sleep_while_running(3600 * sc4mp_config["BACKUPS"]["server_backup_interval"])
 
 				while sc4mp_server_running:
 
@@ -2512,8 +2526,9 @@ class FileTablesManager(th.Thread):
 
 				try:
 
-					time.sleep(sc4mp_config["PERFORMANCE"]["filetable_update_interval"])
-					self.update()
+					sleep_while_running(sc4mp_config["PERFORMANCE"]["filetable_update_interval"])
+					if sc4mp_server_running:
+						self.update()
 
 				except Exception as e:
 
@@ -3504,7 +3519,7 @@ class ServerList(th.Thread):
 			while sc4mp_server_running:
 				
 				# Wait to ping the next server
-				time.sleep(random.randint(1,60))
+				sleep_while_running(random.randint(1,60))
 
 				# Remove servers from the server list if the limit has been reached
 				while len(self.servers) > self.SERVER_LIMIT:
