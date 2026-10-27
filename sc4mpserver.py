@@ -2495,6 +2495,7 @@ class FileTablesManager(th.Thread):
 		super().__init__()
 
 		self.filetables = {}
+		self.checksums = {}	# the md5 of each file by its path, size and modified time, from the last file table of each folder (eg. Regions)
 
 
 	def run(self):
@@ -2563,7 +2564,22 @@ class FileTablesManager(th.Thread):
 			for file in files:
 				fullpaths.append(os.path.join(path, file))
 
-		self.filetables[rootpath] = [(md5(fullpath), os.path.getsize(fullpath), Path(os.path.relpath(fullpath, rootpath)).as_posix()) for fullpath in fullpaths]
+		# Only hash files that changed since the last file table of this folder, since exports keep the files' modified times
+		kind = os.path.basename(rootpath).split("-")[0]
+		old_checksums = self.checksums.get(kind, {})
+		checksums = {}
+		filetable = []
+		for fullpath in fullpaths:
+			relpath = Path(os.path.relpath(fullpath, rootpath)).as_posix()
+			stat = os.stat(fullpath)
+			key = (relpath, stat.st_size, stat.st_mtime_ns)
+			checksum = old_checksums.get(key)
+			if checksum is None:
+				checksum = md5(fullpath)
+			checksums[key] = checksum
+			filetable.append((checksum, stat.st_size, relpath))
+		self.checksums[kind] = checksums
+		self.filetables[rootpath] = filetable
 
 		#print(self.filetables[path])
 
