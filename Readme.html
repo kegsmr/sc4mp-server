@@ -6,7 +6,7 @@
 		<link rel="stylesheet" href="resources/readme-styles.css">
 		<nav>
 			<h1><span style="color: #ffd74c">SC4</span><span style="color: #d03333;">MP</span> Server</h1>
-			<p>Readme &bull; Version <version>0.8.4</version></p>	
+			<p>Readme &bull; Version <version>0.8.5</version></p>	
 		</nav>
 	</head>
     <body>
@@ -54,6 +54,14 @@
                 <p><b>request_limit:</b> the maximum amount of requests a client can send in one minute. When the limit is exhausted, future connections from the client will be blocked for the rest of the minute. Set this value to "None" if you would like there to be no request limit.</p>
                 <p><b>max_request_threads:</b> the maximum amount of request threads that can be running at one time. Set the value to "None" if you would like there to be no limit.</p>
 				<p><b>filetable_update_interval:</b> the interval in seconds between filetable updates. A higher interval minimizes CPU and disk usage, but could cause errors if the server's plugins are modified while the server is running.</p>
+			<h3>Chat</h3>
+				<p>Players can chat with each other from the launcher and in game. Each player is named in chat by the mayor name of the last city they founded on your server, or else the latest mayor name they've saved a city with ("Defacto" if they have none). New cities, and cities taken over from other mayors, are also announced in chat. Messages can be up to 500 characters long, and a player can send up to 5 messages every 5 seconds.</p>
+				<p><b>chat_enabled:</b> when this setting is set to "True", players can chat on your server. Set this to "False" to disable the chat.</p>
+				<p><b>chat_history:</b> the number of recent chat messages sent to players when they join. The chat history is kept when the server restarts.</p>
+				<p><b>chat_filter:</b> when this setting is set to "True", the words listed in "chat_filter.txt" are replaced with asterisks in chat messages and names. This file is created in the "_SC4MP" subdirectory with a default list the first time, and can be edited while the server is running. Set this to "False" to disable the filter.</p>
+				<p><b>chat_motd:</b> a message of the day, shown in chat to players when they join. Leave it empty for no message of the day.</p>
+				<p><b>chat_motd_interval:</b> the interval in minutes to show the message of the day again to everyone online. Set the value to 0 to only show it when players join.</p>
+				<p><b>guest_chat:</b> when this setting is set to "True" and the server has a password, players who join without the password (guests) can chat too. Guests are named "Guest" followed by a few characters of their user ID in chat. Guests can't chat on private servers. Set this to "False" to only let players with the password chat.</p>
 			<h3>Backups</h3>
                 <p><b>server_backup_interval:</b> the interval in hours to run server backups.</p>
                 <p><b>backup_server_on_startup:</b> when this setting is set to "True", the server will always backup when starting up. Set this value to "False" if you would like the server to backup only after the backup interval.</p>
@@ -68,12 +76,12 @@
             <p><b>"--restore [path]" option:</b> restores the files from a backup json file found at the specified path.</p>
             <p><b>"-prep" flag:</b> runs the server executable without starting the server.</p>
         <h2>Issues</h2>
-            <p>If you encounter a bug or error when using SC4MP Server, create a ticket on <a href="https://github.com/kegsmr/sc4mp-server/releases">GitHub</a>.</p>
+            <p>If you encounter a bug or error when using SC4MP Server, create a ticket on <a href="https://github.com/sc4multiplayer/sc4mp-server/releases">GitHub</a>.</p>
         <h2>Updates</h2>
-            <p>The latest releases of the SC4MP Server can be found on <a href="https://github.com/kegsmr/sc4mp-server/releases">GitHub</a>.</p>
+            <p>The latest releases of the SC4MP Server can be found on <a href="https://github.com/sc4multiplayer/sc4mp-server/releases">GitHub</a>.</p>
         <h2>Credits</h2>
-            <p>This readme was prepared for the SC4MP Server version <version>0.8.4</version>.</p>
-            <p>View the full list of collaborators on <a href="https://github.com/kegsmr/sc4mp-server/collaborators">GitHub</a>.</p>
+            <p>This readme was prepared for the SC4MP Server version <version>0.8.5</version>.</p>
+            <p>View the full list of collaborators on <a href="https://github.com/sc4multiplayer/sc4mp-server/collaborators">GitHub</a>.</p>
             <p>Special thanks to <a href="http://j5.io/">Julian Cizmic</a>, the original creator of PMR, the primary inspiration for SC4MP.</p>
     </body>
 </html>

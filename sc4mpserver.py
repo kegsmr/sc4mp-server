@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import inspect
 import json
@@ -39,7 +40,7 @@ from core.database import Database
 from core.dbpf import SC4Savegame
 from core.events import EventChannel
 from core.networking import ClientSocket, ServerSocket, BaseRequestHandler, \
-	NetworkException, ConnectionClosedException
+	NetworkException, ConnectionClosedException, COMMAND_SUBSCRIBE, COMMAND_CHAT
 from core.util import *
 
 # Globals
@@ -48,7 +49,7 @@ SC4MP_VERSION = "0.9.0"
 
 SC4MP_SERVERS = get_server_list()
 
-SC4MP_GITHUB_REPO = "kegsmr/sc4mp-server"
+SC4MP_GITHUB_REPO = "sc4multiplayer/sc4mp-server"
 
 SC4MP_URL = "www.sc4mp.org"
 SC4MP_CONTRIBUTORS_URL = f"https://github.com/{SC4MP_GITHUB_REPO}/contributors/"
@@ -73,6 +74,13 @@ SC4MP_PORT = None
 SC4MP_BUFFER_SIZE = 4096
 
 SC4MP_DELAY = .1
+SC4MP_FILESTREAM_TIMEOUT = 60	# seconds a launcher sending or receiving files can pause for (eg. while it writes a file), however low `connection_timeout` is
+
+SC4MP_CHAT_MAX_LENGTH = 500
+SC4MP_CHAT_RATE = (5, 5)	# players can send this many chat messages in this many seconds
+SC4MP_STOP_TIMEOUT = 30	# seconds to wait for a running server to stop before ending it by force
+SC4MP_UPDATE_CHECK_INTERVAL = 6 * 3600	# seconds between update checks while the server runs
+SC4MP_UPDATE_IDLE_TIME = 30 * 60	# seconds since the last city was saved before an update is installed
 
 SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
@@ -110,6 +118,14 @@ SC4MP_CONFIG_DEFAULTS = [
 		("connection_timeout", 600),
 		("filetable_update_interval", 600),
 	]),
+	("CHAT", [
+		("chat_enabled", True),
+		("chat_history", 1000),		# recent chat messages sent to players when they join
+		("chat_filter", True),		# hide the words in `chat_filter.txt`
+		("chat_motd", ""),		# message of the day, shown in chat to players when they join
+		("chat_motd_interval", 0),	# minutes between showing the message of the day again to everyone online (0 to only show it when players join)
+		("guest_chat", True),		# let players who join without the password chat
+	]),
 	("BACKUPS", [
 		("server_backup_interval", 6),
 		("backup_server_on_startup", True),
@@ -136,6 +152,9 @@ sc4mp_server_path = "_SC4MP"
 sc4mp_server_running = False
 
 sc4mp_request_threads = 0
+
+sc4mp_system_tray_icon_manager = None
+sc4mp_last_save = None
 
 
 # Functions
@@ -275,9 +294,22 @@ def prevent_multiple():
 						o_p_c = None
 
 					if other_process_creation == o_p_c:
-						# `TASKKILL` returns 128 if the process isn't running anymore (e.g. it exited but its process object still exists)
-						if subprocess.call(f"TASKKILL /F /PID {other_process_pid}", shell=True) not in (0, 128):
-							raise ServerException("`TASKKILL` failed to terminate the server process already running.")
+
+						# Ask it to stop, so it finishes the requests it's handling and removes its tray icon (see `StopRequestsManager`)
+						update_json(get_stop_request_path(), {"pid": other_process_pid})
+						stop_time = time.time()
+						while time.time() - stop_time < SC4MP_STOP_TIMEOUT and process_is_running(other_process_pid, other_process_creation):
+							time.sleep(.5)
+
+						# End it by force if it didn't stop (e.g. an older version, which doesn't check for stop requests)
+						if process_is_running(other_process_pid, other_process_creation):
+							# `TASKKILL` returns 128 if the process isn't running anymore (e.g. it exited but its process object still exists)
+							if subprocess.call(f"TASKKILL /F /PID {other_process_pid}", shell=True) not in (0, 128):
+								raise ServerException("`TASKKILL` failed to terminate the server process already running.")
+
+						# So this server doesn't take the request as its own
+						if os.path.exists(get_stop_request_path()):
+							os.unlink(get_stop_request_path())
 
 			this_process_pid = os.getpid()
 			this_process_creation = datetime.strftime(get_process_creation_time(this_process_pid), DATETIME_FORMAT)
@@ -367,6 +399,37 @@ def acquire_update_lock():
 		return True
 	except FileExistsError:
 		return False
+
+
+def get_stop_request_path():
+	"""The file that asks the server running from `sc4mp_server_path` to stop (see `StopRequestsManager`)."""
+
+	return os.path.join(sc4mp_server_path, "stop.json")
+
+
+def process_is_running(pid, creation):
+	"""Whether the process with this ID and creation time (as in `process.json`) is still running (Windows-only)."""
+
+	# The ID may have been reused by another process
+	try:
+		if datetime.strftime(get_process_creation_time(pid), "%Y%m%d%H%M%S") != creation:
+			return False
+	except Exception:
+		return False	# no such process
+
+	PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+	STILL_ACTIVE = 259
+
+	# The process object can outlive the process, so check it hasn't exited
+	handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+	if not handle:
+		return False
+	try:
+		exit_code = ctypes.c_ulong()
+		ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+		return exit_code.value == STILL_ACTIVE
+	finally:
+		ctypes.windll.kernel32.CloseHandle(handle)
 
 
 def prep():
@@ -602,8 +665,26 @@ def export(export_type):
 	#if (not os.path.exists(destination)):
 	#	os.makedirs(destination)
 	
-	# Copy recursively
-	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups')) #, '_Database'))	
+	# Copy recursively. Files that haven't changed since the current regions export are hard linked to it instead of copied,
+	# since exports are never changed once made
+	previous = None
+	if export_type == "regions":
+		previous = sc4mp_regions_exports.current
+
+	def copy_file(source, destination_file):
+		if previous is not None:
+			try:
+				previous_file = os.path.join(previous, os.path.relpath(source, target))
+				source_stat = os.stat(source)
+				previous_stat = os.stat(previous_file)
+				if source_stat.st_size == previous_stat.st_size and source_stat.st_mtime_ns == previous_stat.st_mtime_ns:
+					os.link(previous_file, destination_file)
+					return destination_file
+			except OSError:
+				pass	# eg. a new file, or links aren't supported, so it's copied
+		return shutil.copy2(source, destination_file)
+
+	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups'), copy_function=copy_file) #, '_Database'))	
 
 	# Don't send the `Downloads` folder to clients, since it isn't a region
 	if export_type == "regions":
@@ -639,6 +720,10 @@ def purge_directory(directory):
 
 
 def send_filestream(c, rootpath):
+
+	# The launcher stops reading for a moment while it writes each file, which isn't a slow client
+	if c.gettimeout() is not None and c.gettimeout() < SC4MP_FILESTREAM_TIMEOUT:
+		c.settimeout(SC4MP_FILESTREAM_TIMEOUT)
 
 	file_table = get_file_table(rootpath)
 
@@ -690,6 +775,10 @@ def discard_bytes(c, size):
 
 def receive_file(c, filename, filesize):
 
+	# The launcher may stop sending for a moment while it reads the next part of a savegame, which isn't a slow client
+	if c.gettimeout() is not None and c.gettimeout() < SC4MP_FILESTREAM_TIMEOUT:
+		c.settimeout(SC4MP_FILESTREAM_TIMEOUT)
+
 
 	report("Receiving " + str(filesize) + " bytes...")
 	report("writing to " + filename)
@@ -708,6 +797,14 @@ def receive_file(c, filename, filesize):
 			f.write(bytes_read)
 			filesize_read += len(bytes_read)
 			#print('Downloading "' + filename + '" (' + str(filesize_read) + " / " + str(filesize) + " bytes)...", int(filesize_read), int(filesize)) #os.path.basename(os.path.normpath(filename))
+
+
+def sleep_while_running(seconds):
+	"""Sleeps for `seconds`, or until the server stops, so threads that wait a long time between tasks don't keep the process alive."""
+
+	end = time.time() + seconds
+	while sc4mp_server_running and time.time() < end:
+		time.sleep(SC4MP_DELAY)
 
 
 def report(message, obj=None, msg_type="INFO", ): #TODO do this in the logger to make sure output prints correctly
@@ -904,6 +1001,12 @@ def open_upnp_port(port, protocol="TCP", description="Port Forwarding via UPnP")
         )
 
 
+def guest_chat_enabled():
+	"""Whether players who join without the password (guests) can chat: only on public servers with a password and chat turned on."""
+
+	return sc4mp_config["CHAT"]["guest_chat"] and sc4mp_config["CHAT"]["chat_enabled"] and sc4mp_config["SECURITY"]["password_enabled"] and not sc4mp_config["SECURITY"]["private"]
+
+
 def set_headers(s):
 
 	return s.set_headers(
@@ -918,6 +1021,8 @@ def set_headers(s):
 		claim_duration=sc4mp_config["RULES"]["claim_duration"],
 		max_region_claims=sc4mp_config["RULES"]["max_region_claims"],
 		godmode_filter=sc4mp_config["RULES"]["godmode_filter"],
+		chat_enabled=sc4mp_config["CHAT"]["chat_enabled"],
+		guest_chat=guest_chat_enabled(),
 		time=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 	)
 
@@ -937,7 +1042,11 @@ class Server(th.Thread):
 
 		self.load_config()
 		self.create_subdirectories()
-		self.check_updates()
+		if self.check_updates():
+			# Stop the system tray icon, since its thread would otherwise keep the process running after `sys.exit()`
+			if sc4mp_system_tray_icon_manager:
+				sc4mp_system_tray_icon_manager.icon.stop()
+			sys.exit()	# `updater.bat` installs the update once this server has exited
 		self.prep_database()
 		self.clear_temp()
 		self.prep_filetables()
@@ -945,6 +1054,8 @@ class Server(th.Thread):
 		self.prep_backups()
 		self.prep_server_list()
 		self.prep_events()
+		self.prep_stop_requests()
+		self.prep_updates()
 		# self.prep_upnp()
 
 	
@@ -978,6 +1089,9 @@ class Server(th.Thread):
 
 			report("- listening for connections...")
 			s.listen(5)
+
+			# Stop waiting for a connection every second, since on Windows Ctrl+C can't interrupt the wait
+			s.settimeout(1)
 			
 			sc4mp_server_running = True
 
@@ -997,7 +1111,10 @@ class Server(th.Thread):
 
 					try:
 
-						c, (host, port) = s.accept()
+						try:
+							c, (host, port) = s.accept()
+						except socket.timeout:
+							continue
 
 						c.settimeout(sc4mp_config["PERFORMANCE"]["connection_timeout"])
 
@@ -1177,6 +1294,9 @@ class Server(th.Thread):
 		SC4MP_CONFIG_PATH = os.path.join(sc4mp_server_path, "serverconfig.ini")
 
 		report("Loading config...")
+
+		# The config is written into the server folder, which doesn't exist yet the first time the server runs
+		os.makedirs(sc4mp_server_path, exist_ok=True)
 		
 		sc4mp_config = Config(SC4MP_CONFIG_PATH, SC4MP_CONFIG_DEFAULTS, error_callback=show_error, update_constants_callback=update_config_constants)
 
@@ -1232,9 +1352,13 @@ class Server(th.Thread):
 			SC4MP_SERVER_DESCRIPTION = default_server_description'''
 
 
-	def check_updates(self):
+	def check_updates(self, periodic=False) -> bool:
+		"""Checks for an update, and starts `updater.bat` to install it. Returns `True` if it did, in which case this server has to exit."""
 
-		if not sc4mp_skip_update:
+		# `-k` and `-u` are for the check at startup only (servers are restarted with `-k` after an update, so they still update later)
+		force_update = sc4mp_force_update and not periodic
+
+		if periodic or not sc4mp_skip_update:
 
 			print("Checking for updates...")
 
@@ -1250,7 +1374,7 @@ class Server(th.Thread):
 				exec_dir = exec_path.parent
 
 				# Only update if running a Windows distribution
-				if sc4mp_force_update or exec_file == PROCESS_NAME:
+				if force_update or exec_file == PROCESS_NAME:
 
 					# Get latest release info
 					try:
@@ -1260,7 +1384,7 @@ class Server(th.Thread):
 						raise ServerException("GitHub API call timed out.") from e
 
 					# Download the update if the version doesn't match
-					if sc4mp_force_update or unformat_version(latest_release_info["tag_name"]) > unformat_version(SC4MP_VERSION):
+					if force_update or unformat_version(latest_release_info["tag_name"]) > unformat_version(SC4MP_VERSION):
 
 						# Only one server running from this executable can install the update (e.g. when several start together); it restarts the others
 						if not acquire_update_lock():
@@ -1393,16 +1517,8 @@ class Server(th.Thread):
 
 								return False
 
-						# Run update function, and keep running if it failed
-						if not update():
-							return
-
-						# Stop the system tray icon, since its thread would otherwise keep the process running after `sys.exit()`
-						if sc4mp_system_tray_icon_manager:
-							sc4mp_system_tray_icon_manager.icon.stop()
-
-						# Exit when complete
-						sys.exit()
+						# Run update function (this server keeps running if it failed)
+						return update()
 				
 			except Exception as e:
 
@@ -1613,6 +1729,33 @@ class Server(th.Thread):
 			sc4mp_filetables_manager.start()
 
 
+	def prep_stop_requests(self):
+
+		if sc4mp_nostart:
+			return
+
+		# A request left over from a server that was ended by force is not for this one
+		if os.path.exists(get_stop_request_path()):
+			os.unlink(get_stop_request_path())
+
+		StopRequestsManager().start()
+
+
+	def prep_updates(self):
+		
+
+		if sc4mp_nostart:
+			return
+
+		# Only the Windows executable can update itself
+		if not (is_windows() and is_frozen()):
+			return
+
+		report("Preparing updates...")
+
+		UpdatesManager().start()
+
+
 	def prep_server_list(self):
 
 		if sc4mp_nostart:
@@ -1638,6 +1781,33 @@ class Server(th.Thread):
 		global sc4mp_event_channel
 		sc4mp_event_channel = EventChannel()
 
+		# Recent chat messages (sent to players when they subscribe), kept in `_Database/chat.jsonl` across restarts, and when each user last sent one
+		global sc4mp_chat_history, sc4mp_chat_times, sc4mp_chat_lock, sc4mp_chat_filter, sc4mp_chat_appended
+		sc4mp_chat_filter = None
+		sc4mp_chat_history = deque(maxlen=max(0, int(sc4mp_config["CHAT"]["chat_history"] or 0)))
+		sc4mp_chat_times = {}
+		sc4mp_chat_appended = 0	# messages added to `chat.jsonl` since it was last rewritten
+		sc4mp_chat_lock = th.Lock()
+		chat_filename = os.path.join(sc4mp_server_path, "_Database", "chat.jsonl")
+		try:
+			with open(chat_filename, encoding="utf-8") as file:
+				for line in file:
+					try:
+						sc4mp_chat_history.append(json.loads(line))
+					except Exception:
+						pass	# skip a line that was cut off
+			with open(chat_filename, "w", encoding="utf-8") as file:	# keep only the recent messages
+				for event in sc4mp_chat_history:
+					file.write(json.dumps(event) + "\n")
+		except FileNotFoundError:
+			pass
+		except Exception as e:
+			show_error(f"An error occurred while loading the chat history.\n\n{e}")
+
+		# Message of the day, shown again every `chat_motd_interval` minutes
+		if sc4mp_config["CHAT"]["chat_motd"] and sc4mp_config["CHAT"]["chat_motd_interval"]:
+			MotdManager().start()
+
 
 	def prep_upnp(self):
 
@@ -1657,6 +1827,87 @@ class Server(th.Thread):
 			except Exception as e:
 
 				raise ServerException(f"An error occurred while opening a port with UPnP. Disable UPnP in `serverconfig.ini`, forward port {port} manually, then restart the server.\n\n{e}") from e
+
+
+class MotdManager(th.Thread):
+	"""Shows the message of the day in chat again, to everyone online, every `chat_motd_interval` minutes."""
+
+
+	def __init__(self):
+
+		super().__init__(daemon=True)
+
+
+	def run(self):
+
+		try:
+
+			set_thread_name("MotdThread", enumerate=False)
+
+			while not sc4mp_server_running:
+				time.sleep(SC4MP_DELAY)
+
+			while sc4mp_server_running:
+				time.sleep(60 * sc4mp_config["CHAT"]["chat_motd_interval"])
+				sc4mp_event_channel.push('motd', {'motd': str(sc4mp_config["CHAT"]["chat_motd"])})
+
+		except Exception as e:
+
+			show_error(e)
+
+
+class StopRequestsManager(th.Thread):
+	"""Stops the server cleanly when asked to by another server process (`--stop`, or a server started from the same folder), instead of being ended by force."""
+
+
+	def __init__(self):
+
+		super().__init__(daemon=True)
+
+
+	def run(self):
+
+		try:
+
+			global sc4mp_server_running
+
+			set_thread_name("StopThread", enumerate=False)
+
+			while not sc4mp_server_running:
+				time.sleep(SC4MP_DELAY)
+
+			while sc4mp_server_running:
+
+				if os.path.exists(get_stop_request_path()):
+					self.stop()
+
+				time.sleep(SC4MP_DELAY)
+
+		except Exception as e:
+
+			show_error(e, no_ui=True)
+
+
+	def stop(self):
+
+		global sc4mp_server_running
+
+		report("Stopping...")
+
+		os.unlink(get_stop_request_path())
+
+		# Stop accepting connections, and give the requests being handled a minute to finish
+		sc4mp_server_running = False
+		deadline = time.time() + 60
+		while sc4mp_request_threads > 0 and time.time() < deadline:
+			time.sleep(SC4MP_DELAY)
+
+		# Stop the system tray icon, so it doesn't stay in the tray after the process exits
+		if sc4mp_system_tray_icon_manager:
+			sc4mp_system_tray_icon_manager.icon.stop()
+
+		# The main thread is waiting for a connection, so end the process from here
+		os._exit(0)
 
 
 class BackupsManager(th.Thread):
@@ -1686,7 +1937,7 @@ class BackupsManager(th.Thread):
 			while sc4mp_server_running:
 
 				# Delay
-				time.sleep(3600 * sc4mp_config["BACKUPS"]["server_backup_interval"])
+				sleep_while_running(3600 * sc4mp_config["BACKUPS"]["server_backup_interval"])
 
 				while sc4mp_server_running:
 
@@ -1855,6 +2106,81 @@ class BackupsManager(th.Thread):
 		return referenced_files
 
 
+class UpdatesManager(th.Thread):
+	"""Checks for updates every few hours while the server runs, and installs them once the server isn't in use."""
+
+
+	def __init__(self):
+
+		super().__init__(daemon=True)
+
+
+	def run(self):
+
+		try:
+
+			global sc4mp_server_running
+
+			set_thread_name("UpdtMgrThread", enumerate=False)
+
+			while not sc4mp_server_running:
+				time.sleep(SC4MP_DELAY)
+
+			while sc4mp_server_running:
+
+				time.sleep(SC4MP_UPDATE_CHECK_INTERVAL)
+
+				try:
+
+					# Wait until the server isn't in use
+					while sc4mp_server_running and not self.idle():
+						time.sleep(60)
+
+					if sc4mp_server_running and sc4mp_server.check_updates(periodic=True):
+						self.exit()
+
+				except Exception as e:
+
+					show_error(f"An error occurred while checking for updates.\n\n{e}", no_ui=True)
+
+		except Exception as e:
+
+			show_error(e, no_ui=True)
+
+
+	def idle(self) -> bool:
+		"""Whether no requests are being handled and no city has been saved recently."""
+
+		if sc4mp_request_threads > 0:
+			return False
+
+		if sc4mp_last_save is not None and datetime.now() - sc4mp_last_save < timedelta(seconds=SC4MP_UPDATE_IDLE_TIME):
+			return False
+
+		return True
+
+
+	def exit(self):
+		"""Exits the server so `updater.bat` can install the update (it starts the server again afterwards)."""
+
+		global sc4mp_server_running
+
+		report("Exiting to install the update...")
+
+		# Stop accepting connections, and give the requests being handled a minute to finish
+		sc4mp_server_running = False
+		deadline = time.time() + 60
+		while sc4mp_request_threads > 0 and time.time() < deadline:
+			time.sleep(SC4MP_DELAY)
+
+		# Stop the system tray icon, so it doesn't stay in the tray after the process exits
+		if sc4mp_system_tray_icon_manager:
+			sc4mp_system_tray_icon_manager.icon.stop()
+
+		# The main thread is waiting for a connection, so end the process from here
+		os._exit(0)
+
+
 class DatabaseManager(th.Thread, Database):
 
 
@@ -1900,6 +2226,7 @@ class RegionsManager(th.Thread):
 		self.export_regions = False
 		self.tasks = []
 		self.outputs = {}
+		self.claims = {}	# accepted save pushes that founded or took over a city, by save ID
 		#self.lastmtime = self.get_mtime()
 
 
@@ -1926,8 +2253,9 @@ class RegionsManager(th.Thread):
 					#	self.lastmtime = mtime
 					#	self.regions_modified = True
 
-					# Export regions if requested, otherwise check for new tasks
-					if self.export_regions:
+					# Export regions if requested, otherwise check for new tasks. Saves waiting to be processed go first, since
+					# their launchers are waiting for the result (and the export then includes them)
+					if self.export_regions and len(self.tasks) == 0:
 
 						report("Exporting regions as requested...", self)
 
@@ -2015,6 +2343,11 @@ class RegionsManager(th.Thread):
 												self.outputs[save_id] = "City already claimed."
 										reclaimed = True
 
+								# Filter out claims of savegames SC4 only rewrote as neighbours of the saved city, since their simulation date doesn't change (an older launcher can push one on its own, which skips savegame filter 2)
+								if entry.get("owner") != user_id:
+									if file_md5(savegame.decompress_subfile("2990c1e5")) in entry.get("date_subfile_hashes", []):
+										self.outputs[save_id] = "Unpause the game, then retry."
+
 								# Filter out cliams of users who have exhausted their region claims
 								if ("owner" not in entry or entry["owner"] != user_id):
 									if sc4mp_config["RULES"]["max_region_claims"] is not None:
@@ -2065,6 +2398,8 @@ class RegionsManager(th.Thread):
 									#TODO delete old backups
 
 									# Set entry values
+									# A city is new if it's established on a tile that never had one: no established savegame (`gamemode`) and no mayor name, which only established cities have
+									founded = savegameModeFlag != 0 and not entry.get("gamemode") and not entry.get("mayor_name")
 									entry["filename"] = new_filename
 									entry["owner"] = user_id
 									entry["modified"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2079,7 +2414,18 @@ class RegionsManager(th.Thread):
 									# Mark regions as modified
 									self.regions_modified = True
 
-									# Report success
+									# Players are called in chat by the mayor name of the last city they founded, since cities they take over keep the previous mayor's name
+									if founded and savegameMayorName:
+										sc4mp_users_database_manager[user_id]["founded_mayor_name"] = savegameMayorName
+
+									# Report success (and new cities and cities taken over from other mayors, which are announced in chat)
+									if founded or reclaimed:
+										self.claims[save_id] = {
+											'city': savegameCityName,
+											'region': region,
+											'coords': (savegameX, savegameY),
+											'reclaimed': not founded
+										}
 									self.outputs[save_id] = "ok"
 
 									# Push channel event
@@ -2182,6 +2528,7 @@ class FileTablesManager(th.Thread):
 		super().__init__()
 
 		self.filetables = {}
+		self.checksums = {}	# the md5 of each file by its path, size and modified time, from the last file table of each folder (eg. Regions)
 
 
 	def run(self):
@@ -2198,8 +2545,9 @@ class FileTablesManager(th.Thread):
 
 				try:
 
-					time.sleep(sc4mp_config["PERFORMANCE"]["filetable_update_interval"])
-					self.update()
+					sleep_while_running(sc4mp_config["PERFORMANCE"]["filetable_update_interval"])
+					if sc4mp_server_running:
+						self.update()
 
 				except Exception as e:
 
@@ -2250,7 +2598,22 @@ class FileTablesManager(th.Thread):
 			for file in files:
 				fullpaths.append(os.path.join(path, file))
 
-		self.filetables[rootpath] = [(md5(fullpath), os.path.getsize(fullpath), Path(os.path.relpath(fullpath, rootpath)).as_posix()) for fullpath in fullpaths]
+		# Only hash files that changed since the last file table of this folder, since exports keep the files' modified times
+		kind = os.path.basename(rootpath).split("-")[0]
+		old_checksums = self.checksums.get(kind, {})
+		checksums = {}
+		filetable = []
+		for fullpath in fullpaths:
+			relpath = Path(os.path.relpath(fullpath, rootpath)).as_posix()
+			stat = os.stat(fullpath)
+			key = (relpath, stat.st_size, stat.st_mtime_ns)
+			checksum = old_checksums.get(key)
+			if checksum is None:
+				checksum = md5(fullpath)
+			checksums[key] = checksum
+			filetable.append((checksum, stat.st_size, relpath))
+		self.checksums[kind] = checksums
+		self.filetables[rootpath] = filetable
 
 		#print(self.filetables[path])
 
@@ -2355,6 +2718,7 @@ class RequestHandler(BaseRequestHandler):
 		super().__init__(c, private=sc4mp_config["SECURITY"]["private"])
 
 		self.user_id = None
+		self.guest = False
 
 		# Set by `res_save()`, so its temporary files can be purged if the save is rejected
 		self.save_id = None
@@ -2375,6 +2739,9 @@ class RequestHandler(BaseRequestHandler):
 				# Not pings, which every launcher sends every few seconds, so they'd flood the log
 				if self.command != "Ping":
 					print(f"{self.address} - {self.command}")
+
+				# The headers are copied from the listening socket, so their time is from when the server started
+				self.c.set_headers(time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 				try:
 					self.handle_request()
@@ -2403,12 +2770,39 @@ class RequestHandler(BaseRequestHandler):
 			self.error("Incorrect version.")
 
 		if sc4mp_config["SECURITY"]["password_enabled"]:
-			password = self.get_header('password', str)
+			password = self.headers.get('password')
 			if password != sc4mp_config["SECURITY"]["password"]:
+				if self.command in [COMMAND_SUBSCRIBE, COMMAND_CHAT] and guest_chat_enabled():
+					self.user_id = self.authenticate_guest(self.c, self.headers.get('user_id'))
+					return
 				self.error("Incorrect password.")
 
 		self.user_id = \
 			self.authenticate_user(self.c, self.get_header('user_id', str))
+
+
+	def authenticate_guest(self, c, user_id):
+		"""Lets a player who doesn't have the password subscribe to events and chat, without adding them to the users database."""
+
+		# Older launchers send no user ID for guests
+		if not isinstance(user_id, str) or not user_id:
+			self.error("Invalid user ID.")
+
+		user_id = hashlib.sha256(user_id.encode()).hexdigest()[:32]
+
+		client_entry = sc4mp_clients_database_manager.get(c.getpeername()[0]) or {}
+		user_entry = sc4mp_users_database_manager.get(user_id) or {}
+		if user_entry.get("ban") or client_entry.get("ban"):
+			self.error("You are banned from this server.")
+
+		# Banned mayors can't chat as guests from the same IP
+		for ip_user_id in client_entry.get("users", []):
+			if (sc4mp_users_database_manager.get(ip_user_id) or {}).get("ban"):
+				self.error("You are banned from this server.")
+
+		self.guest = True
+
+		return user_id
 
 
 	def authenticate_user(self, c, user_id):
@@ -2592,6 +2986,10 @@ class RequestHandler(BaseRequestHandler):
 			self.respond(result=error)
 			return
 
+		# Don't install updates right after a city is saved (see `UpdatesManager`)
+		global sc4mp_last_save
+		sc4mp_last_save = datetime.now()
+
 		# Set save id
 		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id + "_" + os.urandom(4).hex())	# unique, even for pushes by the same user in the same second
 		self.save_id = save_id
@@ -2715,6 +3113,14 @@ class RequestHandler(BaseRequestHandler):
 				# Send the output to the client
 				self.respond(result=sc4mp_regions_manager.outputs[save_id])
 
+				# Announce new cities in chat
+				claim = sc4mp_regions_manager.claims.pop(save_id, None)
+				if claim is not None:
+					try:
+						self.announce_city(claim)
+					except Exception as e:
+						show_error(f"An error occurred while announcing a new city in chat.\n\n{e}")
+
 			else:
 
 				# Report to the client that the save push is invalid
@@ -2801,7 +3207,18 @@ class RequestHandler(BaseRequestHandler):
 		if not self.user_id:
 			self.error("Invalid user ID.")
 
-		subscription_id = sc4mp_event_channel.subscribe(self.user_id)
+		with sc4mp_chat_lock:
+			chat_history = list(sc4mp_chat_history)
+
+		# After the recent messages, welcome the player (only them) with the message of the day
+		welcome = {'event': 'welcome', 'server_name': sc4mp_config["INFO"]["server_name"]}
+		if sc4mp_config["CHAT"]["chat_motd"]:
+			welcome['motd'] = str(sc4mp_config["CHAT"]["chat_motd"])
+
+		subscription_id = sc4mp_event_channel.subscribe(
+			self.user_id, events=chat_history + [welcome],
+			context={'name': self.get_chat_name(self.user_id)}	# so other players' chats can say who joined and left
+		)
 
 		try:
 
@@ -2809,9 +3226,8 @@ class RequestHandler(BaseRequestHandler):
 
 			while sc4mp_server_running:
 				try:
-					self.respond(
-						events=sc4mp_event_channel.listen(subscription_id)
-					)
+					for events in self.split_events(sc4mp_event_channel.listen(subscription_id)):
+						self.respond(events=events)
 				except NetworkException:
 					break
 
@@ -2824,6 +3240,238 @@ class RequestHandler(BaseRequestHandler):
 		finally:
 
 			sc4mp_event_channel.unsubscribe(subscription_id)
+
+
+	@staticmethod
+	def split_events(events, max_size=50000):
+		"""Splits events into lists small enough for a message header (eg. the chat history sent when subscribing). Always yields at least one list, so clients get an empty list when there are no events."""
+
+		chunk = []
+		size = 0
+		for event in events:
+			event_size = len(json.dumps(event)) + 2
+			if chunk and size + event_size > max_size:
+				yield chunk
+				chunk = []
+				size = 0
+			chunk.append(event)
+			size += event_size
+		yield chunk
+
+
+	def res_chat(self):
+
+		if not sc4mp_config["CHAT"]["chat_enabled"]:
+			self.error("Chat is disabled on this server.")
+
+		message = self.headers.get('message')
+		if not isinstance(message, str) or len(message) > 10 * SC4MP_CHAT_MAX_LENGTH:
+			self.error("Invalid message.")
+
+		# Remove control characters and extra whitespace
+		message = " ".join(
+			"".join(
+				character if character.isprintable() else " "
+				for character in message
+			).split()
+		)
+
+		if not message:
+			self.error("Empty message.")
+		if len(message) > SC4MP_CHAT_MAX_LENGTH:
+			self.error(f"Messages can't be longer than {SC4MP_CHAT_MAX_LENGTH} characters.")
+
+		now = time.time()
+		count, seconds = SC4MP_CHAT_RATE
+		rate_key = self.user_id
+		if self.guest:
+			rate_key = self.address	# so guests can't get past the rate limit with a new user ID
+		with sc4mp_chat_lock:	# so simultaneous requests can't get past the rate limit
+			times = [t for t in sc4mp_chat_times.get(rate_key, []) if now - t < seconds]
+			too_fast = len(times) >= count
+			if not too_fast:
+				sc4mp_chat_times[rate_key] = times + [now]
+		if too_fast:
+			self.error("You're sending messages too quickly. Wait a few seconds.")
+
+		message = self.filter_chat(message)
+
+		# The name comes from the user's claims, so players can't pretend to be someone else
+		name = self.get_chat_name(self.user_id)
+
+		report(f"{name} ({self.user_id[:8]}): {message}")
+
+		event = {
+			'user_id': self.user_id,
+			'name': name,
+			'message': message,
+			'time': now	# seconds since the epoch, so clients can show it in their own time zone
+		}
+
+		# The city the player saved most recently, shown next to their name
+		if not self.guest:
+			region, entry = self.get_latest_claim(self.user_id, "city_name")
+			city = self.filter_chat(" ".join(str((entry or {}).get("city_name") or "").split())[:SC4MP_CHAT_MAX_LENGTH])
+			if city:
+				event.update(city=city, region=region)
+		self.push_chat_event('chat', event)
+
+		self.respond(status='success')
+
+
+	@staticmethod
+	def push_chat_event(event_type, event):
+		"""Adds an event to the chat history (and `chat.jsonl`) and pushes it to every player."""
+
+		global sc4mp_chat_appended
+
+		with sc4mp_chat_lock:
+			sc4mp_chat_history.append({'event': event_type, **event, 'history': True})	# not new for players who join later
+			try:
+				chat_filename = os.path.join(sc4mp_server_path, "_Database", "chat.jsonl")
+				sc4mp_chat_appended += 1
+				if sc4mp_chat_appended < sc4mp_chat_history.maxlen:
+					with open(chat_filename, "a", encoding="utf-8") as file:
+						file.write(json.dumps(sc4mp_chat_history[-1]) + "\n")
+				else:
+					# Keep only the recent messages every so often, so the file doesn't keep growing while the server runs
+					with open(chat_filename, "w", encoding="utf-8") as file:
+						for history_event in sc4mp_chat_history:
+							file.write(json.dumps(history_event) + "\n")
+					sc4mp_chat_appended = 0
+			except Exception as e:
+				show_error(f"An error occurred while saving the chat history.\n\n{e}")
+		sc4mp_event_channel.push(event_type, event)
+
+
+	def announce_city(self, claim):
+		"""Tells everyone in chat that a player founded (or took over) a city."""
+
+		if not sc4mp_config["CHAT"]["chat_enabled"]:
+			return
+
+		name = self.get_chat_name(self.user_id)
+		city = self.filter_chat(" ".join(str(claim['city'] or "").split())[:SC4MP_CHAT_MAX_LENGTH]) or "a city"
+
+		action = "founded"
+		if claim['reclaimed']:
+			action = "took over"
+		report(f"{name} ({self.user_id[:8]}) {action} {city} in {claim['region']}.")
+
+		self.push_chat_event('city_founded', {
+			'user_id': self.user_id,
+			'name': name,
+			'time': time.time(),
+			**claim,
+			'city': city,
+		})
+
+
+	@staticmethod
+	def filter_chat(text):
+		"""Replaces the words in `chat_filter.txt` with asterisks, if the chat filter is turned on. The file is created from the default list if missing, and reloaded when it changes."""
+
+		global sc4mp_chat_filter
+
+		if not sc4mp_config["CHAT"]["chat_filter"]:
+			return text
+
+		try:
+
+			filename = os.path.join(sc4mp_server_path, "chat_filter.txt")
+			if not os.path.exists(filename):
+				shutil.copy(get_sc4mp_path("chat_filter.txt"), filename)
+
+			mtime = os.path.getmtime(filename)
+			if sc4mp_chat_filter is None or sc4mp_chat_filter[0] != mtime:
+				words = []
+				with open(filename, encoding="utf-8") as file:
+					for line in file:
+						word = line.strip()
+						if not word or word.startswith("#"):
+							continue
+						if word.endswith("*"):
+							words.append(re.escape(word[:-1].strip()) + r"\w*")
+						else:
+							words.append(re.escape(word))
+				words.sort(key=len, reverse=True)
+				pattern = re.compile(r"(?<!\w)(?:" + "|".join(words) + r")(?!\w)", re.IGNORECASE) if words else None
+				sc4mp_chat_filter = (mtime, pattern)
+
+			pattern = sc4mp_chat_filter[1]
+			if pattern is None:
+				return text
+			return pattern.sub(lambda match: "*" * len(match.group(0)), text)
+
+		except Exception as e:
+			show_error(f"An error occurred while filtering a chat message.\n\n{e}")
+			return text
+
+
+	def get_chat_name(self, user_id):
+		"""Returns the user's name in chat: the mayor name of the last city they founded, or else of their latest claim (or "Defacto", SC4's default mayor name). Players with the same name are told apart by their name colors, which come from their user IDs."""
+
+		# Guests can't use a mayor's name, and keep theirs while they're connected
+		if self.guest:
+			return f"Guest {user_id[:4]}"
+
+		mayor_name = self.get_mayor_name(user_id)
+
+		with sc4mp_chat_lock:
+
+			entry = sc4mp_users_database_manager.get(user_id) or {}
+
+			# Keep the name if no claim was found, since a `region.json` may not be readable while it's being written
+			if mayor_name is None and entry.get("chat_mayor_name"):
+				return entry["chat_mayor_name"]
+
+			mayor_name = self.filter_chat(mayor_name or "") or "Defacto"
+
+			if entry.get("chat_mayor_name") != mayor_name or "chat_name" in entry:
+				entry["chat_mayor_name"] = mayor_name
+				entry.pop("chat_name", None)	# numbered names from before are no longer used
+				sc4mp_users_database_manager[user_id] = entry
+
+		return mayor_name
+
+
+	def get_mayor_name(self, user_id):
+
+		# The name given when founding a city, since cities taken over keep the previous mayor's name
+		user_entry = sc4mp_users_database_manager.get(user_id) or {}
+		mayor_name = user_entry.get("founded_mayor_name")
+		if mayor_name:
+			return mayor_name
+
+		# Players who haven't founded a city since the server started keeping track: the latest of the mayor names they've saved with
+		mayor_names = user_entry.get("mayors")
+		if mayor_names:
+			return mayor_names[-1]
+
+		return None
+
+
+	@staticmethod
+	def get_latest_claim(user_id, key):
+		"""Returns the region and database entry of the user's most recently saved city that has a value for `key` (eg. "mayor_name"), or `(None, None)`."""
+
+		latest = (None, None)
+		modified = ""
+
+		regions_path = os.path.join(sc4mp_server_path, "Regions")
+		for region in os.listdir(regions_path):
+			try:
+				data = load_json(os.path.join(regions_path, region, "_Database", "region.json"))
+			except Exception:
+				continue
+			for entry in data.values():
+				if entry is None or entry.get("owner") != user_id or not entry.get(key):
+					continue
+				if (entry.get("modified") or "") >= modified:
+					latest = (region, entry)
+					modified = entry.get("modified") or ""
+
+		return latest
 
 
 class ServerList(th.Thread):
@@ -2890,7 +3538,7 @@ class ServerList(th.Thread):
 			while sc4mp_server_running:
 				
 				# Wait to ping the next server
-				time.sleep(random.randint(1,60))
+				sleep_while_running(random.randint(1,60))
 
 				# Remove servers from the server list if the limit has been reached
 				while len(self.servers) > self.SERVER_LIMIT:
@@ -3365,7 +4013,12 @@ class Logger():
 			output = color + timestamp + label + msg_type + message
 
 		# Print
-		self.terminal.write(output)
+		try:
+			self.terminal.write(output)
+		except UnicodeEncodeError:
+			# The console can't show some characters (eg. emoji in a chat message on a cp1252 console)
+			encoding = getattr(self.terminal, "encoding", None) or "ascii"
+			self.terminal.write(output.encode(encoding, errors="replace").decode(encoding))
 		with open(self.log, "a", encoding='utf-8') as log:
 			log.write(output)
 			log.close()  
