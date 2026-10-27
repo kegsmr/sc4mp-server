@@ -71,6 +71,7 @@ SC4MP_PORT = None
 SC4MP_BUFFER_SIZE = 4096
 
 SC4MP_DELAY = .1
+SC4MP_FILESTREAM_TIMEOUT = 60	# seconds a launcher sending or receiving files can pause for (eg. while it writes a file), however low `connection_timeout` is
 
 SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
@@ -556,6 +557,10 @@ def purge_directory(directory):
 def send_filestream(c, rootpath):
 	
 
+	# The launcher stops reading for a moment while it writes each file, which isn't a slow client
+	if c.gettimeout() is not None and c.gettimeout() < SC4MP_FILESTREAM_TIMEOUT:
+		c.settimeout(SC4MP_FILESTREAM_TIMEOUT)
+
 	# Loop through all files in path and append them to a list
 	#fullpaths = []
 	#for path, directories, files in os.walk(rootpath):
@@ -694,6 +699,10 @@ def discard_bytes(c, size):
 
 def receive_file(c, filename, filesize):
 	
+
+	# The launcher may stop sending for a moment while it reads the next part of a savegame, which isn't a slow client
+	if c.gettimeout() is not None and c.gettimeout() < SC4MP_FILESTREAM_TIMEOUT:
+		c.settimeout(SC4MP_FILESTREAM_TIMEOUT)
 
 	#if (filesize is None):
 	#
