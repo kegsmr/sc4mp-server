@@ -78,6 +78,8 @@ SC4MP_DELAY = .1
 SC4MP_CHAT_MAX_LENGTH = 500
 SC4MP_CHAT_RATE = (5, 5)	# players can send this many chat messages in this many seconds
 SC4MP_STOP_TIMEOUT = 30	# seconds to wait for a running server to stop before ending it by force
+SC4MP_UPDATE_CHECK_INTERVAL = 6 * 3600	# seconds between update checks while the server runs
+SC4MP_UPDATE_IDLE_TIME = 30 * 60	# seconds since the last city was saved before an update is installed
 
 SC4MP_CONFIG_DEFAULTS = [
 	("NETWORK", [
@@ -151,6 +153,7 @@ sc4mp_server_running = False
 sc4mp_request_threads = 0
 
 sc4mp_system_tray_icon_manager = None
+sc4mp_last_save = None
 
 
 # Functions
@@ -1004,7 +1007,11 @@ class Server(th.Thread):
 
 		self.load_config()
 		self.create_subdirectories()
-		self.check_updates()
+		if self.check_updates():
+			# Stop the system tray icon, since its thread would otherwise keep the process running after `sys.exit()`
+			if sc4mp_system_tray_icon_manager:
+				sc4mp_system_tray_icon_manager.icon.stop()
+			sys.exit()	# `updater.bat` installs the update once this server has exited
 		self.prep_database()
 		self.clear_temp()
 		self.prep_filetables()
@@ -1013,6 +1020,7 @@ class Server(th.Thread):
 		self.prep_server_list()
 		self.prep_events()
 		self.prep_stop_requests()
+		self.prep_updates()
 		# self.prep_upnp()
 
 	
@@ -1303,9 +1311,13 @@ class Server(th.Thread):
 			SC4MP_SERVER_DESCRIPTION = default_server_description'''
 
 
-	def check_updates(self):
+	def check_updates(self, periodic=False) -> bool:
+		"""Checks for an update, and starts `updater.bat` to install it. Returns `True` if it did, in which case this server has to exit."""
 
-		if not sc4mp_skip_update:
+		# `-k` and `-u` are for the check at startup only (servers are restarted with `-k` after an update, so they still update later)
+		force_update = sc4mp_force_update and not periodic
+
+		if periodic or not sc4mp_skip_update:
 
 			print("Checking for updates...")
 
@@ -1321,7 +1333,7 @@ class Server(th.Thread):
 				exec_dir = exec_path.parent
 
 				# Only update if running a Windows distribution
-				if sc4mp_force_update or exec_file == PROCESS_NAME:
+				if force_update or exec_file == PROCESS_NAME:
 
 					# Get latest release info
 					try:
@@ -1331,7 +1343,7 @@ class Server(th.Thread):
 						raise ServerException("GitHub API call timed out.") from e
 
 					# Download the update if the version doesn't match
-					if sc4mp_force_update or unformat_version(latest_release_info["tag_name"]) > unformat_version(SC4MP_VERSION):
+					if force_update or unformat_version(latest_release_info["tag_name"]) > unformat_version(SC4MP_VERSION):
 
 						# Only one server running from this executable can install the update (e.g. when several start together); it restarts the others
 						if not acquire_update_lock():
@@ -1464,16 +1476,8 @@ class Server(th.Thread):
 
 								return False
 
-						# Run update function, and keep running if it failed
-						if not update():
-							return
-
-						# Stop the system tray icon, since its thread would otherwise keep the process running after `sys.exit()`
-						if sc4mp_system_tray_icon_manager:
-							sc4mp_system_tray_icon_manager.icon.stop()
-
-						# Exit when complete
-						sys.exit()
+						# Run update function (this server keeps running if it failed)
+						return update()
 				
 			except Exception as e:
 
@@ -1686,7 +1690,6 @@ class Server(th.Thread):
 
 	def prep_stop_requests(self):
 
-
 		if sc4mp_nostart:
 			return
 
@@ -1695,6 +1698,21 @@ class Server(th.Thread):
 			os.unlink(get_stop_request_path())
 
 		StopRequestsManager().start()
+
+
+	def prep_updates(self):
+		
+
+		if sc4mp_nostart:
+			return
+
+		# Only the Windows executable can update itself
+		if not (is_windows() and is_frozen()):
+			return
+
+		report("Preparing updates...")
+
+		UpdatesManager().start()
 
 
 	def prep_server_list(self):
@@ -2045,6 +2063,81 @@ class BackupsManager(th.Thread):
 				referenced_files.add((hashcode, size))
 
 		return referenced_files
+
+
+class UpdatesManager(th.Thread):
+	"""Checks for updates every few hours while the server runs, and installs them once the server isn't in use."""
+
+
+	def __init__(self):
+
+		super().__init__(daemon=True)
+
+
+	def run(self):
+
+		try:
+
+			global sc4mp_server_running
+
+			set_thread_name("UpdtMgrThread", enumerate=False)
+
+			while not sc4mp_server_running:
+				time.sleep(SC4MP_DELAY)
+
+			while sc4mp_server_running:
+
+				time.sleep(SC4MP_UPDATE_CHECK_INTERVAL)
+
+				try:
+
+					# Wait until the server isn't in use
+					while sc4mp_server_running and not self.idle():
+						time.sleep(60)
+
+					if sc4mp_server_running and sc4mp_server.check_updates(periodic=True):
+						self.exit()
+
+				except Exception as e:
+
+					show_error(f"An error occurred while checking for updates.\n\n{e}", no_ui=True)
+
+		except Exception as e:
+
+			show_error(e, no_ui=True)
+
+
+	def idle(self) -> bool:
+		"""Whether no requests are being handled and no city has been saved recently."""
+
+		if sc4mp_request_threads > 0:
+			return False
+
+		if sc4mp_last_save is not None and datetime.now() - sc4mp_last_save < timedelta(seconds=SC4MP_UPDATE_IDLE_TIME):
+			return False
+
+		return True
+
+
+	def exit(self):
+		"""Exits the server so `updater.bat` can install the update (it starts the server again afterwards)."""
+
+		global sc4mp_server_running
+
+		report("Exiting to install the update...")
+
+		# Stop accepting connections, and give the requests being handled a minute to finish
+		sc4mp_server_running = False
+		deadline = time.time() + 60
+		while sc4mp_request_threads > 0 and time.time() < deadline:
+			time.sleep(SC4MP_DELAY)
+
+		# Stop the system tray icon, so it doesn't stay in the tray after the process exits
+		if sc4mp_system_tray_icon_manager:
+			sc4mp_system_tray_icon_manager.icon.stop()
+
+		# The main thread is waiting for a connection, so end the process from here
+		os._exit(0)
 
 
 class DatabaseManager(th.Thread, Database):
@@ -2833,6 +2926,10 @@ class RequestHandler(BaseRequestHandler):
 			discard_bytes(c, sum(file_sizes))
 			self.respond(result=error)
 			return
+
+		# Don't install updates right after a city is saved (see `UpdatesManager`)
+		global sc4mp_last_save
+		sc4mp_last_save = datetime.now()
 
 		# Set save id
 		save_id = sanitize_directory_name(datetime.now().strftime("%Y%m%d%H%M%S") + "_" + user_id + "_" + os.urandom(4).hex())	# unique, even for pushes by the same user in the same second
