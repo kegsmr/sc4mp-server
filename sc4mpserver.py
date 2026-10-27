@@ -611,8 +611,26 @@ def export(export_type):
 	#if (not os.path.exists(destination)):
 	#	os.makedirs(destination)
 	
-	# Copy recursively
-	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups')) #, '_Database'))	
+	# Copy recursively. Files that haven't changed since the current regions export are hard linked to it instead of copied,
+	# since exports are never changed once made
+	previous = None
+	if export_type == "regions":
+		previous = sc4mp_regions_exports.current
+
+	def copy_file(source, destination_file):
+		if previous is not None:
+			try:
+				previous_file = os.path.join(previous, os.path.relpath(source, target))
+				source_stat = os.stat(source)
+				previous_stat = os.stat(previous_file)
+				if source_stat.st_size == previous_stat.st_size and source_stat.st_mtime_ns == previous_stat.st_mtime_ns:
+					os.link(previous_file, destination_file)
+					return destination_file
+			except OSError:
+				pass	# eg. a new file, or links aren't supported, so it's copied
+		return shutil.copy2(source, destination_file)
+
+	shutil.copytree(target, destination, ignore=shutil.ignore_patterns('_Backups'), copy_function=copy_file) #, '_Database'))	
 
 	# Don't send the `Downloads` folder to clients, since it isn't a region
 	if export_type == "regions":
@@ -1960,8 +1978,9 @@ class RegionsManager(th.Thread):
 					#	self.lastmtime = mtime
 					#	self.regions_modified = True
 
-					# Export regions if requested, otherwise check for new tasks
-					if self.export_regions:
+					# Export regions if requested, otherwise check for new tasks. Saves waiting to be processed go first, since
+					# their launchers are waiting for the result (and the export then includes them)
+					if self.export_regions and len(self.tasks) == 0:
 
 						report("Exporting regions as requested...", self)
 
